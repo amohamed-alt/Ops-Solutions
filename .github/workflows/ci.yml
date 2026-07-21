@@ -29,7 +29,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           npm install --no-audit --no-fund
-          node --check src/server.js
+          for file in src/*.js test/*.js; do node --check "$file"; done
+          npm test
 
       - name: Validate worker
         working-directory: apps/worker
@@ -51,4 +52,5 @@ jobs:
         run: |
           set -Eeuo pipefail
           touch .env
+          docker compose -f docker-compose.yml config --quiet
           docker compose -f docker-compose.prod.yml config --quiet
