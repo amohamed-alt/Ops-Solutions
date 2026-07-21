@@ -1,0 +1,54 @@
+name: Validate Platform
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Build and validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Validate API
+        working-directory: apps/api
+        run: |
+          set -Eeuo pipefail
+          npm install --no-audit --no-fund
+          node --check src/server.js
+
+      - name: Validate worker
+        working-directory: apps/worker
+        run: |
+          set -Eeuo pipefail
+          npm install --no-audit --no-fund
+          node --check src/worker.js
+
+      - name: Build web application
+        working-directory: apps/web
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+        run: |
+          set -Eeuo pipefail
+          npm install --no-audit --no-fund
+          npm run build
+
+      - name: Validate Docker Compose
+        run: |
+          set -Eeuo pipefail
+          touch .env
+          docker compose -f docker-compose.prod.yml config --quiet
