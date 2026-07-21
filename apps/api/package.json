@@ -1,0 +1,17 @@
+{
+  "name": "@ops-solutions/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "fastify": "5.6.1",
+    "ioredis": "5.8.1",
+    "pg": "8.16.3"
+  }
+}
