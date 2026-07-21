@@ -39,16 +39,31 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_PORT: ${{ secrets.VPS_PORT }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY_B64 }}
         run: |
           set -Eeuo pipefail
 
           : "${VPS_HOST:?Missing VPS_HOST secret}"
           : "${VPS_PORT:?Missing VPS_PORT secret}"
-          : "${VPS_SSH_KEY:?Missing VPS_SSH_KEY secret}"
 
           install -m 700 -d "$HOME/.ssh"
-          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/deploy_key"
+
+          if [[ -n "${VPS_SSH_KEY_B64:-}" ]]; then
+            printf '%s' "$VPS_SSH_KEY_B64" | base64 --decode > "$HOME/.ssh/deploy_key"
+          elif [[ -n "${VPS_SSH_KEY:-}" ]]; then
+            printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > "$HOME/.ssh/deploy_key"
+          else
+            echo "::error::Missing VPS_SSH_KEY_B64 or VPS_SSH_KEY secret"
+            exit 1
+          fi
+
           chmod 600 "$HOME/.ssh/deploy_key"
+
+          if ! ssh-keygen -y -f "$HOME/.ssh/deploy_key" > /dev/null 2>&1; then
+            echo "::error::The deployment SSH private key is invalid. Add VPS_SSH_KEY_B64 using a base64 encoded private key."
+            exit 1
+          fi
+
           ssh-keyscan -p "$VPS_PORT" -H "$VPS_HOST" >> "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/known_hosts"
 
@@ -69,6 +84,7 @@ jobs:
             -i "$HOME/.ssh/deploy_key" \
             -p "$VPS_PORT" \
             -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
             "$VPS_USER@$VPS_HOST" \
             "mkdir -p '$VPS_DEPLOY_PATH' '$VPS_DEPLOY_PATH/.deploy-backups'"
 
@@ -86,6 +102,7 @@ jobs:
             -i "$HOME/.ssh/deploy_key" \
             -p "$VPS_PORT" \
             -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
             "$VPS_USER@$VPS_HOST" \
             "set -Eeuo pipefail; \
              if [ -f '$VPS_DEPLOY_PATH/docker-compose.yml' ] || [ -f '$VPS_DEPLOY_PATH/docker-compose.prod.yml' ]; then \
@@ -127,7 +144,7 @@ jobs:
             --exclude='coverage/' \
             --exclude='logs/' \
             --exclude='.deploy-backups/' \
-            -e "ssh -i $HOME/.ssh/deploy_key -p $VPS_PORT -o BatchMode=yes" \
+            -e "ssh -i $HOME/.ssh/deploy_key -p $VPS_PORT -o BatchMode=yes -o IdentitiesOnly=yes" \
             ./ \
             "$VPS_USER@$VPS_HOST:$VPS_DEPLOY_PATH/"
 
@@ -145,6 +162,7 @@ jobs:
             -i "$HOME/.ssh/deploy_key" \
             -p "$VPS_PORT" \
             -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
             "$VPS_USER@$VPS_HOST" \
             "set -Eeuo pipefail; \
              cd '$VPS_DEPLOY_PATH'; \
