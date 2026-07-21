@@ -1,3 +1,5 @@
+import Link from 'next/link';
+
 export const dynamic = 'force-dynamic';
 
 async function getPlatformStatus() {
@@ -28,38 +30,39 @@ async function getPlatformStatus() {
 const modules = [
   {
     title: 'HubSpot Connection',
-    description: 'OAuth, portal discovery and scope validation.',
-    status: 'Next'
+    description: 'OAuth authorization, encrypted tokens and scope-aware portal connections.',
+    status: 'Built'
+  },
+  {
+    title: 'Portal Discovery',
+    description: 'Properties, owners, pipelines, stages and optional custom objects.',
+    status: 'Built'
   },
   {
     title: 'Semantic Mapping',
-    description: 'Map Rank, Tier and custom properties into one analytics model.',
-    status: 'Planned'
-  },
-  {
-    title: 'Sync Engine',
-    description: 'Reliable initial and incremental CRM synchronization.',
-    status: 'Queue Ready'
+    description: 'Map Rank, Tier and custom properties into one reusable analytics model.',
+    status: 'Built'
   },
   {
     title: 'Dashboard Engine',
     description: 'Reusable metrics, filters, drill-down and smart templates.',
-    status: 'Planned'
+    status: 'Next'
   }
 ];
 
 export default async function HomePage() {
   const platform = await getPlatformStatus();
+  const hubspotConfigured = Boolean(platform.data?.hubspot?.configured);
 
   return (
     <main className="page-shell">
       <section className="hero">
         <div>
-          <div className="eyebrow">OPS SOLUTIONS · PLATFORM FOUNDATION</div>
-          <h1>Intelligent HubSpot analytics, built to adapt.</h1>
+          <div className="eyebrow">OPS SOLUTIONS · HUBSPOT INTELLIGENCE</div>
+          <h1>Analytics that adapts to every HubSpot portal.</h1>
           <p className="hero-copy">
-            The production foundation is online. The next milestone connects a HubSpot portal,
-            discovers its schema and builds dashboards around each customer&apos;s own properties.
+            The platform can securely connect a portal, inspect its custom CRM structure and
+            recommend how each property should map into reusable dashboard concepts.
           </p>
         </div>
 
@@ -69,7 +72,7 @@ export default async function HomePage() {
             <strong>{platform.connected ? 'Platform services healthy' : 'API unavailable'}</strong>
             <span>
               {platform.connected
-                ? 'Web, API, PostgreSQL, Redis and worker runtime are connected.'
+                ? `HubSpot configuration is ${hubspotConfigured ? 'ready' : 'waiting for credentials'}.`
                 : platform.error}
             </span>
           </div>
@@ -78,24 +81,24 @@ export default async function HomePage() {
 
       <section className="metrics-grid" aria-label="Platform status">
         <article className="metric-card">
-          <span>Runtime</span>
-          <strong>Docker</strong>
-          <small>Automatic deployment</small>
+          <span>Connection</span>
+          <strong>OAuth</strong>
+          <small>Encrypted refreshable tokens</small>
         </article>
         <article className="metric-card">
-          <span>Database</span>
+          <span>Discovery</span>
+          <strong>CRM Schema</strong>
+          <small>Properties, owners and pipelines</small>
+        </article>
+        <article className="metric-card">
+          <span>Intelligence</span>
+          <strong>Semantic</strong>
+          <small>Rank, Tier and custom fields</small>
+        </article>
+        <article className="metric-card">
+          <span>Persistence</span>
           <strong>PostgreSQL</strong>
-          <small>Persistent CRM analytics</small>
-        </article>
-        <article className="metric-card">
-          <span>Queue</span>
-          <strong>BullMQ</strong>
-          <small>HubSpot sync jobs</small>
-        </article>
-        <article className="metric-card">
-          <span>Cache</span>
-          <strong>Redis</strong>
-          <small>Fast and controlled workloads</small>
+          <small>Tenant-isolated configuration</small>
         </article>
       </section>
 
@@ -103,10 +106,10 @@ export default async function HomePage() {
         <div className="panel">
           <div className="panel-heading">
             <div>
-              <span className="section-label">BUILD ROADMAP</span>
-              <h2>Core product modules</h2>
+              <span className="section-label">PRODUCT MODULES</span>
+              <h2>Connection and interpretation layer</h2>
             </div>
-            <span className="pill">Foundation v0.1</span>
+            <span className="pill">Foundation v0.2</span>
           </div>
 
           <div className="module-list">
@@ -123,18 +126,19 @@ export default async function HomePage() {
         </div>
 
         <aside className="panel action-panel">
-          <span className="section-label">NEXT MILESTONE</span>
-          <h2>Connect the first HubSpot portal</h2>
+          <span className="section-label">SETUP CENTER</span>
+          <h2>Prepare the first HubSpot portal</h2>
           <p>
-            Add secure OAuth, discover CRM objects and properties, then generate the first
-            mapping recommendations for Rank, Tier and Lead Quality.
+            Review configuration readiness, create the first workspace and follow the exact
+            OAuth and discovery sequence.
           </p>
           <ol>
-            <li>Create HubSpot OAuth app</li>
-            <li>Store encrypted connection tokens</li>
-            <li>Scan properties, pipelines and owners</li>
-            <li>Open the mapping approval wizard</li>
+            <li>Configure production secrets</li>
+            <li>Create the HubSpot OAuth app</li>
+            <li>Connect and discover the portal</li>
+            <li>Approve semantic mappings</li>
           </ol>
+          <Link className="primary-link" href="/setup">Open setup center</Link>
         </aside>
       </section>
     </main>
