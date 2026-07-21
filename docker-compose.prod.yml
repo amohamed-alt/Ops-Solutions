@@ -46,8 +46,17 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3001
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      APP_URL: ${APP_URL:-http://localhost:3210}
       DATABASE_URL: ${DATABASE_URL:-postgresql://ops_solutions:ops_solutions_bootstrap_only@postgres:5432/ops_solutions}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      HUBSPOT_CLIENT_ID: ${HUBSPOT_CLIENT_ID:-}
+      HUBSPOT_CLIENT_SECRET: ${HUBSPOT_CLIENT_SECRET:-}
+      HUBSPOT_REDIRECT_URI: ${HUBSPOT_REDIRECT_URI:-}
+      HUBSPOT_SUCCESS_REDIRECT_URI: ${HUBSPOT_SUCCESS_REDIRECT_URI:-}
+      HUBSPOT_SCOPES: ${HUBSPOT_SCOPES:-}
+      HUBSPOT_OPTIONAL_SCOPES: ${HUBSPOT_OPTIONAL_SCOPES:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -58,7 +67,7 @@ services:
       interval: 15s
       timeout: 5s
       retries: 10
-      start_period: 15s
+      start_period: 20s
     ports:
       - "127.0.0.1:${API_PORT:-3211}:3001"
     networks:
