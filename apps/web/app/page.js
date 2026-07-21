@@ -1,5 +1,7 @@
 import Link from 'next/link';
 
+import styles from './page.module.css';
+
 export const dynamic = 'force-dynamic';
 
 async function getPlatformStatus() {
@@ -138,7 +140,7 @@ export default async function HomePage() {
             <li>Connect and discover the portal</li>
             <li>Approve semantic mappings</li>
           </ol>
-          <Link className="primary-link" href="/setup">Open setup center</Link>
+          <Link className={styles.primaryLink} href="/setup">Open setup center</Link>
         </aside>
       </section>
     </main>
