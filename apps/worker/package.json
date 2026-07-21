@@ -1,0 +1,17 @@
+{
+  "name": "@ops-solutions/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/worker.js"
+  },
+  "dependencies": {
+    "bullmq": "5.80.10",
+    "ioredis": "5.11.1",
+    "pg": "8.22.0"
+  }
+}
