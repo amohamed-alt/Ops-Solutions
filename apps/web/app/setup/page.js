@@ -1,5 +1,7 @@
 import Link from 'next/link';
 
+import styles from './page.module.css';
+
 export const dynamic = 'force-dynamic';
 
 async function getPlatformConfiguration() {
@@ -26,13 +28,13 @@ export default async function SetupPage({ searchParams }) {
   const missing = hubspot?.missing ?? [];
 
   return (
-    <main className="page-shell setup-shell">
-      <div className="setup-topbar">
+    <main className={`page-shell ${styles.setupShell}`}>
+      <div className={styles.topbar}>
         <Link href="/">← Platform overview</Link>
         <span className="pill">Setup center</span>
       </div>
 
-      <section className="setup-hero">
+      <section className={styles.setupHero}>
         <span className="eyebrow">HUBSPOT CONNECTION WORKFLOW</span>
         <h1>Connect once. Discover everything.</h1>
         <p className="hero-copy">
@@ -42,7 +44,7 @@ export default async function SetupPage({ searchParams }) {
       </section>
 
       {connected && (
-        <section className="notice success-notice">
+        <section className={`${styles.notice} ${styles.successNotice}`}>
           <strong>HubSpot portal connected successfully.</strong>
           <span>
             Portal {params?.portalId ?? 'unknown'} is linked to workspace {params?.workspaceId ?? 'unknown'}.
@@ -52,13 +54,13 @@ export default async function SetupPage({ searchParams }) {
       )}
 
       {!platform.available && (
-        <section className="notice error-notice">
+        <section className={`${styles.notice} ${styles.errorNotice}`}>
           <strong>API unavailable</strong>
           <span>{platform.error}</span>
         </section>
       )}
 
-      <section className="setup-grid">
+      <section className={styles.setupGrid}>
         <article className="panel">
           <div className="panel-heading">
             <div>
@@ -68,15 +70,15 @@ export default async function SetupPage({ searchParams }) {
             <span className="pill">{hubspot?.configured ? 'Ready' : 'Pending'}</span>
           </div>
 
-          <div className="check-list">
+          <div className={styles.checkList}>
             {[
               ['HUBSPOT_CLIENT_ID', !missing.includes('HUBSPOT_CLIENT_ID')],
               ['HUBSPOT_CLIENT_SECRET', !missing.includes('HUBSPOT_CLIENT_SECRET')],
               ['HUBSPOT_REDIRECT_URI', !missing.includes('HUBSPOT_REDIRECT_URI')],
               ['ENCRYPTION_KEY', !missing.includes('ENCRYPTION_KEY')]
             ].map(([label, ready]) => (
-              <div className="check-row" key={label}>
-                <span className={ready ? 'check-icon ready' : 'check-icon'}>{ready ? '✓' : '·'}</span>
+              <div className={styles.checkRow} key={label}>
+                <span className={`${styles.checkIcon} ${ready ? styles.ready : ''}`}>{ready ? '✓' : '·'}</span>
                 <code>{label}</code>
                 <strong>{ready ? 'Configured' : 'Required'}</strong>
               </div>
@@ -92,19 +94,19 @@ export default async function SetupPage({ searchParams }) {
             </div>
           </div>
 
-          <div className="scope-list">
+          <div className={styles.scopeList}>
             {(hubspot?.scopes ?? []).map((scope) => <code key={scope}>{scope}</code>)}
             {(hubspot?.optionalScopes ?? []).map((scope) => (
-              <code className="optional-scope" key={scope}>{scope} · optional</code>
+              <code className={styles.optionalScope} key={scope}>{scope} · optional</code>
             ))}
           </div>
         </article>
       </section>
 
-      <section className="panel workflow-panel">
+      <section className={`panel ${styles.workflowPanel}`}>
         <span className="section-label">AUTOMATED SEQUENCE</span>
         <h2>What the platform does after authorization</h2>
-        <div className="workflow-steps">
+        <div className={styles.workflowSteps}>
           {[
             ['01', 'Create workspace', 'Creates an isolated tenant configuration in PostgreSQL.'],
             ['02', 'Authorize HubSpot', 'Uses OAuth state protection and stores encrypted tokens.'],
