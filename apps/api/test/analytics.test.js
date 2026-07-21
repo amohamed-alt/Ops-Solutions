@@ -39,7 +39,7 @@ test('compiles semantic mapping without hardcoding client values', () => {
   ]);
 });
 
-test('compiles virtual property filters recursively', () => {
+test('compiles virtual property filters recursively with parameterized fields', () => {
   const query = compileMetricQuery({
     workspaceId: '11111111-1111-4111-8111-111111111111',
     definition: template.metrics.untouched_contacts,
@@ -47,9 +47,9 @@ test('compiles virtual property filters recursively', () => {
     virtualProperties: template.virtualProperties
   });
 
-  assert.match(query.text, /notes_last_contacted/);
-  assert.match(query.text, /createdate/);
   assert.match(query.text, /INTERVAL '1 day'/);
+  assert.ok(query.values.includes('notes_last_contacted'));
+  assert.ok(query.values.includes('createdate'));
   assert.equal(query.values.at(-1), 2);
 });
 
