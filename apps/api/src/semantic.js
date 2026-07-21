@@ -9,7 +9,7 @@ function normalize(value) {
 
 function optionValues(property) {
   return Array.isArray(property.options)
-    ? property.options.map((option) => normalize(option.label ?? option.value))
+    ? property.options.map((option) => normalize(`${option.label ?? ''} ${option.value ?? ''}`))
     : [];
 }
 
@@ -20,6 +20,7 @@ function scoreOptionPattern(semanticKey, values) {
   const patterns = {
     lead_quality: [
       /\ba\b.*\bb\b.*\bc\b/,
+      /rank a.*rank b.*rank c/,
       /tier 1.*tier 2.*tier 3/,
       /hot.*warm.*cold/,
       /high.*medium.*low/,
@@ -142,14 +143,14 @@ export function inferValueMapping(semanticKey, options) {
   const output = {};
   const normalizedOptions = options.map((option) => ({
     value: String(option.value ?? option.label ?? ''),
-    label: normalize(option.label ?? option.value)
+    label: normalize(`${option.label ?? ''} ${option.value ?? ''}`)
   }));
 
   if (semanticKey === 'lead_quality') {
     const classifiers = [
-      { target: 'highest', patterns: [/^a$/, /tier 1/, /hot/, /high/, /priority 1/, /platinum/] },
-      { target: 'medium', patterns: [/^b$/, /tier 2/, /warm/, /medium/, /priority 2/, /gold/] },
-      { target: 'lowest', patterns: [/^c$/, /tier 3/, /cold/, /low/, /priority 3/, /silver/] }
+      { target: 'highest', patterns: [/\brank a\b/, /\ba\b/, /tier 1/, /hot/, /high/, /priority 1/, /platinum/] },
+      { target: 'medium', patterns: [/\brank b\b/, /\bb\b/, /tier 2/, /warm/, /medium/, /priority 2/, /gold/] },
+      { target: 'lowest', patterns: [/\brank c\b/, /\bc\b/, /tier 3/, /cold/, /low/, /priority 3/, /silver/] }
     ];
 
     for (const option of normalizedOptions) {
