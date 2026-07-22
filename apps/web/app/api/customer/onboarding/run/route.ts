@@ -29,7 +29,8 @@ function autoApprovalCandidates(suggestions: Suggestion[]) {
 }
 
 export async function POST(request: NextRequest) {
-  const access = await requireCustomerWorkspace(request);
+  const requestedWorkspaceId = request.nextUrl.searchParams.get('workspaceId') ?? undefined;
+  const access = await requireCustomerWorkspace(request, requestedWorkspaceId);
   if (!access.ok) return access.response;
   const workspaceId = access.workspace.id;
 

@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { API_URL, internalAdminHeaders, requireCustomerWorkspace } from '../../session';
 
 export async function GET(request: NextRequest) {
-  const access = await requireCustomerWorkspace(request);
+  const requestedWorkspaceId = request.nextUrl.searchParams.get('workspaceId') ?? undefined;
+  const access = await requireCustomerWorkspace(request, requestedWorkspaceId);
   if (!access.ok) return access.response;
   const workspaceId = access.workspace.id;
 

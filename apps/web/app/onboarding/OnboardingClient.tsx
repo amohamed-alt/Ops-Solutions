@@ -58,12 +58,17 @@ const defaultSteps = [
   ['Dashboard generated', 'Your live command center is ready.']
 ];
 
+function workspaceQuery(workspaceId: string) {
+  return workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
+}
+
 export default function OnboardingClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const connectedCallback = searchParams.get('hubspot') === 'connected' || searchParams.get('connected') === '1';
   const [mode, setMode] = useState<'signup' | 'login'>('signup');
   const [session, setSession] = useState<SessionPayload | null>(null);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(searchParams.get('workspaceId') ?? '');
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [signup, setSignup] = useState({ name: '', companyName: '', email: '', password: '' });
   const [login, setLogin] = useState({ email: '', password: '' });
@@ -71,7 +76,11 @@ export default function OnboardingClient() {
   const [isPending, startTransition] = useTransition();
   const buildStarted = useRef(false);
 
-  const workspace = session?.workspaces?.[0];
+  const workspace = useMemo(() => {
+    const rows = session?.workspaces ?? [];
+    return rows.find((item) => item.id === selectedWorkspaceId) ?? rows[0];
+  }, [session?.workspaces, selectedWorkspaceId]);
+  const activeWorkspaceId = workspace?.id ?? '';
   const connected = Boolean(status?.connected || workspace?.hubspotStatus === 'connected');
 
   const loadSession = useCallback(async () => {
@@ -83,49 +92,54 @@ export default function OnboardingClient() {
     }
     const payload = await response.json() as SessionPayload;
     setSession(payload);
+    const rows = payload.workspaces ?? [];
+    const preferred = rows.find((item) => item.id === selectedWorkspaceId) ?? rows[0];
+    if (preferred && preferred.id !== selectedWorkspaceId) setSelectedWorkspaceId(preferred.id);
     return payload;
-  }, []);
+  }, [selectedWorkspaceId]);
 
-  const refreshStatus = useCallback(async () => {
-    const response = await fetch('/api/customer/onboarding/status', { cache: 'no-store' });
+  const refreshStatus = useCallback(async (workspaceId = activeWorkspaceId) => {
+    if (!workspaceId) return null;
+    const response = await fetch(`/api/customer/onboarding/status${workspaceQuery(workspaceId)}`, { cache: 'no-store' });
     const payload = await response.json() as StatusPayload;
     if (!response.ok) throw new Error(payload.message || 'Unable to read onboarding status.');
     setStatus(payload);
     return payload;
-  }, []);
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     loadSession().catch((error) => setMessage(error.message));
   }, [loadSession]);
 
   useEffect(() => {
-    if (!session?.authenticated) return;
-    refreshStatus().catch((error) => setMessage(error.message));
-  }, [session?.authenticated, refreshStatus]);
+    if (!session?.authenticated || !activeWorkspaceId) return;
+    setStatus(null);
+    refreshStatus(activeWorkspaceId).catch((error) => setMessage(error.message));
+  }, [session?.authenticated, activeWorkspaceId, refreshStatus]);
 
   useEffect(() => {
-    if (!session?.authenticated || !connectedCallback || buildStarted.current) return;
+    if (!session?.authenticated || !activeWorkspaceId || !connectedCallback || buildStarted.current) return;
     buildStarted.current = true;
     startTransition(async () => {
       try {
-        const response = await fetch('/api/customer/onboarding/run', { method: 'POST' });
+        const response = await fetch(`/api/customer/onboarding/run${workspaceQuery(activeWorkspaceId)}`, { method: 'POST' });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.message || 'Unable to prepare this HubSpot portal.');
-        window.history.replaceState({}, '', '/onboarding');
-        await refreshStatus();
+        window.history.replaceState({}, '', `/onboarding${workspaceQuery(activeWorkspaceId)}`);
+        await refreshStatus(activeWorkspaceId);
       } catch (error) {
         setMessage(error instanceof Error ? error.message : 'Unable to complete onboarding.');
       }
     });
-  }, [session?.authenticated, connectedCallback, refreshStatus]);
+  }, [session?.authenticated, activeWorkspaceId, connectedCallback, refreshStatus]);
 
   useEffect(() => {
-    if (!session?.authenticated || !connected || status?.ready) return;
+    if (!session?.authenticated || !activeWorkspaceId || !connected || status?.ready) return;
     const timer = window.setInterval(() => {
-      refreshStatus().catch((error) => setMessage(error.message));
+      refreshStatus(activeWorkspaceId).catch((error) => setMessage(error.message));
     }, 3500);
     return () => window.clearInterval(timer);
-  }, [session?.authenticated, connected, status?.ready, refreshStatus]);
+  }, [session?.authenticated, activeWorkspaceId, connected, status?.ready, refreshStatus]);
 
   useEffect(() => {
     if (!status?.ready) return;
@@ -181,11 +195,21 @@ export default function OnboardingClient() {
     });
   }
 
+  function selectWorkspace(workspaceId: string) {
+    if (!workspaceId || workspaceId === activeWorkspaceId) return;
+    buildStarted.current = false;
+    setMessage('');
+    setStatus(null);
+    setSelectedWorkspaceId(workspaceId);
+    window.history.replaceState({}, '', `/onboarding${workspaceQuery(workspaceId)}`);
+  }
+
   function connectHubSpot() {
+    if (!activeWorkspaceId) return;
     setMessage('');
     startTransition(async () => {
       try {
-        const response = await fetch('/api/customer/hubspot/start', { method: 'POST' });
+        const response = await fetch(`/api/customer/hubspot/start${workspaceQuery(activeWorkspaceId)}`, { method: 'POST' });
         const payload = await response.json();
         if (!response.ok || !payload.authorizationUrl) throw new Error(payload.message || 'Unable to start HubSpot connection.');
         window.location.assign(payload.authorizationUrl);
@@ -196,13 +220,14 @@ export default function OnboardingClient() {
   }
 
   function restartBuild() {
+    if (!activeWorkspaceId) return;
     setMessage('');
     startTransition(async () => {
       try {
-        const response = await fetch('/api/customer/onboarding/run', { method: 'POST' });
+        const response = await fetch(`/api/customer/onboarding/run${workspaceQuery(activeWorkspaceId)}`, { method: 'POST' });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.message || 'Unable to build dashboard.');
-        await refreshStatus();
+        await refreshStatus(activeWorkspaceId);
       } catch (error) {
         setMessage(error instanceof Error ? error.message : 'Unable to build dashboard.');
       }
@@ -253,33 +278,43 @@ export default function OnboardingClient() {
               </form>
             )}
           </>
-        ) : !connected ? (
-          <>
-            <span className="onboarding-step-label">STEP 2 OF 6</span>
-            <h2>Connect {workspace?.name || 'your company'} to HubSpot</h2>
-            <p>Approve the read-only permissions. We will discover your CRM structure, map the important business fields and build the dashboard automatically.</p>
-            <div className="onboarding-connect-visual"><PlugZap size={30} /><span>HubSpot OAuth</span></div>
-            <button className="onboarding-primary" onClick={connectHubSpot} disabled={isPending}>{isPending ? <><LoaderCircle className="spin" size={18} />Opening HubSpot…</> : <>Connect HubSpot <ArrowRight size={18} /></>}</button>
-            <div className="onboarding-permissions"><span>Contacts & companies</span><span>Deals & pipelines</span><span>Calls, meetings & tasks</span><span>Owners & properties</span></div>
-          </>
         ) : (
           <>
-            <span className="onboarding-step-label">{status?.ready ? 'YOUR WORKSPACE IS READY' : 'BUILDING YOUR REVENUE COMMAND CENTER'}</span>
-            <h2>{status?.ready ? 'Your dashboards are ready.' : 'Understanding your business…'}</h2>
-            <p>{status?.ready ? `${Number(status.totalRecords || 0).toLocaleString()} HubSpot records are ready for live reporting.` : 'Keep this page open while we analyze your portal and prepare the reporting model.'}</p>
-            <div className="onboarding-progress">
-              {defaultSteps.map(([title, detail], index) => {
-                const complete = index < completedSteps;
-                const active = index === completedSteps && !status?.ready;
-                return <article key={title} className={complete ? 'complete' : active ? 'active' : ''}><span>{complete ? <CheckCircle2 size={18} /> : active ? <LoaderCircle className="spin" size={18} /> : index + 1}</span><div><strong>{title}</strong><small>{detail}</small></div></article>;
-              })}
-            </div>
-            <div className="onboarding-live-counts">
-              <article><strong>{(status?.propertyCounts || []).reduce((sum, row) => sum + Number(row.count || 0), 0).toLocaleString()}</strong><span>CRM properties</span></article>
-              <article><strong>{Number(status?.approvedMappings || 0).toLocaleString()}</strong><span>Fields mapped</span></article>
-              <article><strong>{Number(status?.totalRecords || 0).toLocaleString()}</strong><span>Records synced</span></article>
-            </div>
-            {status?.ready ? <button className="onboarding-primary" onClick={() => router.push('/dashboard')}><BarChart3 size={18} />Open my dashboard <ArrowRight size={18} /></button> : !status?.syncing && !isPending ? <button className="onboarding-primary" onClick={restartBuild}><ScanSearch size={18} />Build my dashboard <ArrowRight size={18} /></button> : <div className="onboarding-building"><LoaderCircle className="spin" size={18} />Building securely in the background…</div>}
+            {(session.workspaces?.length ?? 0) > 1 ? (
+              <label className="onboarding-workspace-picker">
+                <span>Company workspace</span>
+                <div><Building2 size={17} /><select value={activeWorkspaceId} onChange={(event) => selectWorkspace(event.target.value)} disabled={isPending}>{session.workspaces?.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role}</option>)}</select></div>
+              </label>
+            ) : null}
+            {!connected ? (
+              <>
+                <span className="onboarding-step-label">STEP 2 OF 6</span>
+                <h2>Connect {workspace?.name || 'your company'} to HubSpot</h2>
+                <p>Approve the read-only permissions. We will discover your CRM structure, map the important business fields and build the dashboard automatically.</p>
+                <div className="onboarding-connect-visual"><PlugZap size={30} /><span>HubSpot OAuth</span></div>
+                <button className="onboarding-primary" onClick={connectHubSpot} disabled={isPending}>{isPending ? <><LoaderCircle className="spin" size={18} />Opening HubSpot…</> : <>Connect HubSpot <ArrowRight size={18} /></>}</button>
+                <div className="onboarding-permissions"><span>Contacts & companies</span><span>Deals & pipelines</span><span>Calls, meetings & tasks</span><span>Owners & properties</span></div>
+              </>
+            ) : (
+              <>
+                <span className="onboarding-step-label">{status?.ready ? 'YOUR WORKSPACE IS READY' : 'BUILDING YOUR REVENUE COMMAND CENTER'}</span>
+                <h2>{status?.ready ? `${workspace?.name || 'Your company'} is ready.` : `Understanding ${workspace?.name || 'your business'}…`}</h2>
+                <p>{status?.ready ? `${Number(status.totalRecords || 0).toLocaleString()} HubSpot records are ready for live reporting.` : 'Keep this page open while we analyze this portal and prepare its isolated reporting model.'}</p>
+                <div className="onboarding-progress">
+                  {defaultSteps.map(([title, detail], index) => {
+                    const complete = index < completedSteps;
+                    const active = index === completedSteps && !status?.ready;
+                    return <article key={title} className={complete ? 'complete' : active ? 'active' : ''}><span>{complete ? <CheckCircle2 size={18} /> : active ? <LoaderCircle className="spin" size={18} /> : index + 1}</span><div><strong>{title}</strong><small>{detail}</small></div></article>;
+                  })}
+                </div>
+                <div className="onboarding-live-counts">
+                  <article><strong>{(status?.propertyCounts || []).reduce((sum, row) => sum + Number(row.count || 0), 0).toLocaleString()}</strong><span>CRM properties</span></article>
+                  <article><strong>{Number(status?.approvedMappings || 0).toLocaleString()}</strong><span>Fields mapped</span></article>
+                  <article><strong>{Number(status?.totalRecords || 0).toLocaleString()}</strong><span>Records synced</span></article>
+                </div>
+                {status?.ready ? <button className="onboarding-primary" onClick={() => router.push('/dashboard')}><BarChart3 size={18} />Open my dashboard <ArrowRight size={18} /></button> : !status?.syncing && !isPending ? <button className="onboarding-primary" onClick={restartBuild}><ScanSearch size={18} />Build this dashboard <ArrowRight size={18} /></button> : <div className="onboarding-building"><LoaderCircle className="spin" size={18} />Building securely in the background…</div>}
+              </>
+            )}
           </>
         )}
         {message ? <div className="onboarding-error">{message}</div> : null}
