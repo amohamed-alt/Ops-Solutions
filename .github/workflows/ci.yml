@@ -83,6 +83,14 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Validate operational scripts
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/*.sh
+          test -x scripts/verify-production.sh || chmod +x scripts/verify-production.sh
+          VERIFY_MODE=invalid VERIFY_ATTEMPTS=1 scripts/verify-production.sh >/tmp/verify-invalid.log 2>&1 && exit 1 || true
+          grep -q 'VERIFY_MODE must be internal, public, or all' /tmp/verify-invalid.log
+
       - name: Validate Docker Compose
         run: |
           set -Eeuo pipefail
