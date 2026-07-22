@@ -4,6 +4,8 @@ const DATE_PRESETS = new Set([
   'today', 'yesterday', 'last_7_days', 'last_30_days', 'this_month',
   'previous_month', 'this_quarter', 'this_year', 'custom'
 ]);
+const MAX_CSV_BYTES = 5 * 1024 * 1024;
+const CUSTOMER_EXPORTS_PER_MINUTE = 5;
 
 function validationError(message, category = 'INVALID_EXPORT_REQUEST') {
   const error = new Error(message);
@@ -66,7 +68,7 @@ function safeCell(value) {
   if (typeof value === 'number' && Number.isFinite(value)) return String(value);
   if (typeof value === 'boolean') return value ? 'true' : 'false';
   let text = String(value).replace(/\r\n?/g, '\n');
-  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  if (/^[\u0000-\u0020]*[=+\-@]/.test(text)) text = `'${text}`;
   return text;
 }
 
@@ -88,10 +90,12 @@ function humanize(value) {
   return String(value ?? '').replaceAll('_', ' ').replaceAll('-', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export function buildRevenueCsv({ workspace, report, viewName = null }) {
+export function buildRevenueCsv({ workspace, report, viewName = null, dataFreshnessAt = null }) {
+  const freshness = dataFreshnessAt instanceof Date ? dataFreshnessAt.toISOString() : dataFreshnessAt;
   const lines = ['\uFEFF' + csvRow(['Ops Solutions Revenue Intelligence Export'])];
   lines.push(csvRow(['Workspace', workspace.name]));
   lines.push(csvRow(['Generated at', report.generatedAt]));
+  lines.push(csvRow(['Data freshness', freshness || 'No synchronized records']));
   lines.push(csvRow(['Reporting period', `${report.filters.from} to ${report.filters.to}`]));
   lines.push(csvRow(['Saved view', viewName || 'Ad hoc filters']));
   lines.push(csvRow(['Owner filter', report.filters.ownerId ?? 'All owners']));
@@ -117,6 +121,59 @@ export function buildRevenueCsv({ workspace, report, viewName = null }) {
   return lines.join('\r\n');
 }
 
+async function dataFreshness(postgres, workspaceId) {
+  const result = await postgres.query(
+    'SELECT MAX(synced_at) AS data_freshness_at FROM crm_records WHERE workspace_id = $1',
+    [workspaceId]
+  );
+  return result.rows[0]?.data_freshness_at ?? null;
+}
+
+async function buildExport(postgres, workspace, query) {
+  const filters = normalizeReportingFilters(query ?? {});
+  const [report, dataFreshnessAt] = await Promise.all([
+    buildRevenueReportingPack(postgres, workspace.id, filters),
+    dataFreshness(postgres, workspace.id)
+  ]);
+  const viewName = cleanViewName(query?.viewName);
+  const csv = buildRevenueCsv({ workspace, report, viewName, dataFreshnessAt });
+  if (Buffer.byteLength(csv, 'utf8') > MAX_CSV_BYTES) {
+    const error = new Error('This export is too large. Narrow the reporting filters and try again.');
+    error.statusCode = 413;
+    error.category = 'EXPORT_TOO_LARGE';
+    throw error;
+  }
+  return {
+    csv,
+    report,
+    viewName,
+    fileName: `${filenamePart(workspace.name)}-revenue-report-${report.filters.from}-to-${report.filters.to}.csv`
+  };
+}
+
+function sendCsv(reply, result) {
+  return reply
+    .header('content-type', 'text/csv; charset=utf-8')
+    .header('content-disposition', `attachment; filename="${result.fileName}"`)
+    .header('cache-control', 'private, no-store, max-age=0')
+    .header('x-content-type-options', 'nosniff')
+    .send(result.csv);
+}
+
+export async function enforceCustomerRateLimit(redis, workspaceId, userId, now = Date.now()) {
+  const bucket = Math.floor(now / 60_000);
+  const key = `rate:revenue-export:${workspaceId}:${userId}:${bucket}`;
+  const results = await redis.multi().incr(key).expire(key, 120).exec();
+  const count = Number(results?.[0]?.[1] ?? 0);
+  if (count > CUSTOMER_EXPORTS_PER_MINUTE) {
+    const error = new Error('Too many exports were requested. Try again in a minute.');
+    error.statusCode = 429;
+    error.category = 'EXPORT_RATE_LIMITED';
+    throw error;
+  }
+  return { limit: CUSTOMER_EXPORTS_PER_MINUTE, remaining: Math.max(0, CUSTOMER_EXPORTS_PER_MINUTE - count) };
+}
+
 function filenamePart(value) {
   return String(value ?? 'workspace').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'workspace';
 }
@@ -129,16 +186,44 @@ function cleanViewName(value) {
 export function registerReportExportRoutes(app, { postgres, requireAdmin, requireWorkspace }) {
   app.get('/api/v1/workspaces/:workspaceId/analytics/revenue/export.csv', { preHandler: requireAdmin }, async (request, reply) => {
     const workspace = await requireWorkspace(request.params.workspaceId);
-    const filters = normalizeReportingFilters(request.query ?? {});
-    const report = await buildRevenueReportingPack(postgres, workspace.id, filters);
-    const csv = buildRevenueCsv({ workspace, report, viewName: cleanViewName(request.query?.viewName) });
-    const fileName = `${filenamePart(workspace.name)}-revenue-report-${report.filters.from}-to-${report.filters.to}.csv`;
-
-    return reply
-      .header('content-type', 'text/csv; charset=utf-8')
-      .header('content-disposition', `attachment; filename="${fileName}"`)
-      .header('cache-control', 'private, no-store, max-age=0')
-      .header('x-content-type-options', 'nosniff')
-      .send(csv);
+    return sendCsv(reply, await buildExport(postgres, workspace, request.query));
   });
+}
+
+export function registerCustomerReportExportRoutes(app, {
+  postgres,
+  redis,
+  requireViewer,
+  requireWorkspace,
+  writeAudit
+}) {
+  app.get(
+    '/api/v1/customer/workspaces/:workspaceId/exports/revenue.csv',
+    { preHandler: requireViewer },
+    async (request, reply) => {
+      const workspace = await requireWorkspace(request.params.workspaceId);
+      const rateLimit = await enforceCustomerRateLimit(
+        redis,
+        workspace.id,
+        request.customer.user.id
+      );
+      const result = await buildExport(postgres, workspace, request.query);
+      await writeAudit(request, {
+        workspaceId: workspace.id,
+        actorUserId: request.customer.user.id,
+        action: 'report.exported',
+        targetType: 'revenue_report',
+        metadata: {
+          format: 'csv',
+          from: result.report.filters.from,
+          to: result.report.filters.to,
+          viewName: result.viewName
+        }
+      });
+      reply
+        .header('x-rate-limit-limit', String(rateLimit.limit))
+        .header('x-rate-limit-remaining', String(rateLimit.remaining));
+      return sendCsv(reply, result);
+    }
+  );
 }
