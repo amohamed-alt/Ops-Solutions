@@ -8,8 +8,8 @@ This directory contains the HubSpot Developer Platform project for the Ops Solut
 - Distribution: private OAuth beta
 - Production redirect URL: `https://ops.dashboardtalentera.tech/api/v1/hubspot/oauth/callback`
 - Required access: OAuth, contacts, companies, deals, owners, and their schemas
-- Optional access: calls, meetings, and custom-object schemas
-- Tasks remain part of CRM synchronization and are read using the required `crm.objects.contacts.read` scope
+- Optional access: custom-object schemas for Enterprise accounts
+- Calls, meetings, and tasks remain part of CRM synchronization and are read using the required `crm.objects.contacts.read` scope
 - All access is read-only
 
 ## Upload to HubSpot
