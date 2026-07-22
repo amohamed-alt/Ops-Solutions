@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BarChart3, LogOut, Settings, ShieldCheck } from 'lucide-react';
+import { BarChart3, FileSpreadsheet, LogOut, Settings, ShieldCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import styles from './CustomerNavigation.module.css';
@@ -12,7 +12,7 @@ type Session = {
   user?: { displayName?: string; email?: string };
 };
 
-const CUSTOMER_ROUTES = ['/dashboard', '/settings'];
+const CUSTOMER_ROUTES = ['/dashboard', '/exports', '/settings'];
 
 export function CustomerNavigation() {
   const pathname = usePathname();
@@ -57,6 +57,9 @@ export function CustomerNavigation() {
       <div className={styles.links}>
         <Link href="/dashboard" className={pathname.startsWith('/dashboard') ? styles.active : ''}>
           <BarChart3 size={16} /> Dashboard
+        </Link>
+        <Link href="/exports" className={pathname.startsWith('/exports') ? styles.active : ''}>
+          <FileSpreadsheet size={16} /> Exports
         </Link>
         <Link href="/settings/team" className={pathname.startsWith('/settings') ? styles.active : ''}>
           <Settings size={16} /> Team & security
