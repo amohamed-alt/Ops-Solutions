@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 import { requireOperationsAccess, adminHeaders } from '../../../../operations/auth';
 import { API_URL, internalAdminHeaders, requireCustomerWorkspace } from '../../../../customer/session';
 
-export async function GET(request: Request, { params }: { params: Promise<{ workspaceId: string; reportKey: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ workspaceId: string; reportKey: string }> }) {
   const { workspaceId, reportKey } = await params;
   const operationsAccess = requireOperationsAccess(request);
   if (!operationsAccess.ok) {
