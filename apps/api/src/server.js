@@ -16,6 +16,7 @@ import {
   getConnectionForWorkspace,
   HubSpotApiError
 } from './hubspot.js';
+import { registerBackgroundExportRoutes } from './background-exports.js';
 import { inferValueMapping } from './semantic.js';
 import { registerCustomerReportExportRoutes } from './report-exports.js';
 import { registerSavedViewRoutes } from './saved-views.js';
@@ -147,6 +148,7 @@ app.get('/api/v1/platform', async () => ({
     'secure workspace invitation lifecycle',
     'workspace audit trail',
     'user-scoped saved reporting views',
+    'tenant-scoped background report exports',
     'self-service HubSpot OAuth onboarding',
     'workspace persistence',
     'encrypted HubSpot OAuth tokens',
@@ -172,6 +174,15 @@ registerSavedViewRoutes(app, {
 registerCustomerReportExportRoutes(app, {
   postgres,
   redis,
+  requireViewer: customerAuth.requireViewer,
+  requireWorkspace,
+  writeAudit: customerAuth.writeAudit
+});
+
+const backgroundExports = registerBackgroundExportRoutes(app, {
+  postgres,
+  redis,
+  redisUrl: config.redisUrl,
   requireViewer: customerAuth.requireViewer,
   requireWorkspace,
   writeAudit: customerAuth.writeAudit
@@ -502,6 +513,7 @@ async function shutdown(signal) {
   app.log.info({ signal }, 'Shutting down');
   await app.close();
   await Promise.allSettled([
+    backgroundExports.close(),
     syncOperations.close(),
     postgres.end(),
     redis.quit()
@@ -518,10 +530,12 @@ try {
   await runMigrations({ throughVersion: 1 });
   await ensureCustomerAuthSchema(postgres);
   await runMigrations();
+  await backgroundExports.start();
   await app.listen({ port: config.port, host: config.host });
 } catch (error) {
   app.log.fatal({ error }, 'API failed to start');
   await Promise.allSettled([
+    backgroundExports.close(),
     syncOperations.close(),
     postgres.end(),
     redis.quit()
