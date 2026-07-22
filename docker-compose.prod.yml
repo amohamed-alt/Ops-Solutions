@@ -100,7 +100,7 @@ services:
       HUBSPOT_CLIENT_ID: ${HUBSPOT_CLIENT_ID:-}
       HUBSPOT_CLIENT_SECRET: ${HUBSPOT_CLIENT_SECRET:-}
       HUBSPOT_API_BASE_URL: ${HUBSPOT_API_BASE_URL:-https://api.hubapi.com}
-      HUBSPOT_TOKEN_URL: ${HUBSPOT_TOKEN_URL:-https://api.hubapi.com/oauth/v1/token}
+      HUBSPOT_TOKEN_URL: ${HUBSPOT_TOKEN_URL:-https://api.hubspot.com/oauth/2026-03/token}
       HUBSPOT_SYNC_OBJECTS: ${HUBSPOT_SYNC_OBJECTS:-contacts,companies,deals,calls,meetings,tasks}
       HUBSPOT_SYNC_PAGE_SIZE: ${HUBSPOT_SYNC_PAGE_SIZE:-100}
       HUBSPOT_REQUEST_DELAY_MS: ${HUBSPOT_REQUEST_DELAY_MS:-240}
