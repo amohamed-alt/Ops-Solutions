@@ -180,7 +180,14 @@ async function replaceAssociations(client, workspaceId, objectType, record) {
             workspace_id, from_object_type, from_record_id,
             to_object_type, to_record_id, association_type, synced_at
           ) VALUES ($1, $2, $3, $4, $5, $6, NOW())
-          ON CONFLICT DO UPDATE SET synced_at = NOW()
+          ON CONFLICT (
+            workspace_id,
+            from_object_type,
+            from_record_id,
+            to_object_type,
+            to_record_id,
+            association_type
+          ) DO UPDATE SET synced_at = NOW()
         `,
         [
           workspaceId,
