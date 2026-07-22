@@ -1,7 +1,7 @@
 export const sdrDashboardTemplate = Object.freeze({
   key: 'sdr-foundation-v1',
   name: 'Smart SDR Dashboard',
-  version: 1,
+  version: 2,
   description: 'A mapping-aware SDR dashboard for HubSpot contacts, deals, calls and meetings.',
   requiredSemanticFields: ['lead_quality'],
   optionalSemanticFields: ['country', 'market', 'lead_source'],
@@ -89,6 +89,19 @@ export const sdrDashboardTemplate = Object.freeze({
       virtualProperty: 'stale_contact'
     },
     {
+      key: 'contacts_needing_action',
+      label: 'Contacts Needing Action',
+      objectType: 'contacts',
+      aggregation: 'count',
+      filters: {
+        operator: 'OR',
+        conditions: [
+          { virtualProperty: 'untouched_contact', operator: 'equals', value: true },
+          { virtualProperty: 'stale_contact', operator: 'equals', value: true }
+        ]
+      }
+    },
+    {
       key: 'open_pipeline',
       label: 'Open Pipeline',
       objectType: 'deals',
@@ -113,24 +126,14 @@ export const sdrDashboardTemplate = Object.freeze({
       label: 'Calls',
       objectType: 'calls',
       aggregation: 'count',
-      filters: {
-        operator: 'AND',
-        conditions: [
-          { field: 'hs_timestamp', operator: 'after_days', value: 30 }
-        ]
-      }
+      activityWindowDays: 30
     },
     {
       key: 'meetings_last_30_days',
       label: 'Meetings',
       objectType: 'meetings',
       aggregation: 'count',
-      filters: {
-        operator: 'AND',
-        conditions: [
-          { field: 'hs_timestamp', operator: 'after_days', value: 30 }
-        ]
-      }
+      activityWindowDays: 30
     }
   ],
   widgets: [
