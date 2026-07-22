@@ -200,6 +200,50 @@ const migrations = [
     downSql: `
       DROP TABLE IF EXISTS saved_reporting_views;
     `
+  },
+  {
+    version: 3,
+    name: 'background_report_exports',
+    sql: `
+      CREATE TABLE IF NOT EXISTS report_export_jobs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        requested_by_user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+        saved_view_id UUID REFERENCES saved_reporting_views(id) ON DELETE SET NULL,
+        format TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        filters JSONB NOT NULL DEFAULT '{}'::jsonb,
+        view_name TEXT,
+        file_name TEXT,
+        content_type TEXT,
+        file_size_bytes INTEGER,
+        artifact BYTEA,
+        error TEXT,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        queued_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        started_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '24 hours'),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CHECK (format IN ('csv', 'xlsx', 'pdf')),
+        CHECK (status IN ('queued', 'processing', 'completed', 'failed', 'expired', 'cancelled')),
+        CHECK (file_size_bytes IS NULL OR file_size_bytes >= 0),
+        CHECK (attempts >= 0)
+      );
+
+      CREATE INDEX IF NOT EXISTS report_export_jobs_user_workspace_idx
+        ON report_export_jobs(requested_by_user_id, workspace_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS report_export_jobs_queue_idx
+        ON report_export_jobs(status, queued_at)
+        WHERE status IN ('queued', 'processing');
+      CREATE INDEX IF NOT EXISTS report_export_jobs_expiry_idx
+        ON report_export_jobs(expires_at)
+        WHERE artifact IS NOT NULL;
+    `,
+    downSql: `
+      DROP TABLE IF EXISTS report_export_jobs;
+    `
   }
 ];
 

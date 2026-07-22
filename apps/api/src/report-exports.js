@@ -129,7 +129,7 @@ async function dataFreshness(postgres, workspaceId) {
   return result.rows[0]?.data_freshness_at ?? null;
 }
 
-async function buildExport(postgres, workspace, query) {
+export async function buildRevenueCsvExport(postgres, workspace, query) {
   const filters = normalizeReportingFilters(query ?? {});
   const [report, dataFreshnessAt] = await Promise.all([
     buildRevenueReportingPack(postgres, workspace.id, filters),
@@ -186,7 +186,7 @@ function cleanViewName(value) {
 export function registerReportExportRoutes(app, { postgres, requireAdmin, requireWorkspace }) {
   app.get('/api/v1/workspaces/:workspaceId/analytics/revenue/export.csv', { preHandler: requireAdmin }, async (request, reply) => {
     const workspace = await requireWorkspace(request.params.workspaceId);
-    return sendCsv(reply, await buildExport(postgres, workspace, request.query));
+    return sendCsv(reply, await buildRevenueCsvExport(postgres, workspace, request.query));
   });
 }
 
@@ -207,7 +207,7 @@ export function registerCustomerReportExportRoutes(app, {
         workspace.id,
         request.customer.user.id
       );
-      const result = await buildExport(postgres, workspace, request.query);
+      const result = await buildRevenueCsvExport(postgres, workspace, request.query);
       await writeAudit(request, {
         workspaceId: workspace.id,
         actorUserId: request.customer.user.id,
