@@ -197,23 +197,14 @@ export function registerCustomerAuthRoutes(app, { postgres, withTransaction }) {
         );
         const user = userResult.rows[0];
         const baseSlug = slugifyWorkspace(companyName) || 'company';
-        let workspace;
-        for (let attempt = 0; attempt < 5; attempt += 1) {
-          const slug = attempt === 0 ? baseSlug : `${baseSlug}-${randomBytes(3).toString('hex')}`;
-          try {
-            const workspaceResult = await client.query(
-              `INSERT INTO workspaces(name, slug)
-               VALUES ($1, $2)
-               RETURNING id, name, slug, status`,
-              [companyName, slug]
-            );
-            workspace = workspaceResult.rows[0];
-            break;
-          } catch (error) {
-            if (error.code !== '23505') throw error;
-          }
-        }
-        if (!workspace) throw new Error('Unable to create a unique company workspace.');
+        const slug = `${baseSlug}-${randomBytes(4).toString('hex')}`;
+        const workspaceResult = await client.query(
+          `INSERT INTO workspaces(name, slug)
+           VALUES ($1, $2)
+           RETURNING id, name, slug, status`,
+          [companyName, slug]
+        );
+        const workspace = workspaceResult.rows[0];
         await client.query(
           `INSERT INTO workspace_memberships(user_id, workspace_id, role)
            VALUES ($1, $2, 'owner')`,
