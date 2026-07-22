@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, Building2, CheckCircle2, Database, HardDriveDownload, LoaderCircle, PlugZap, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react';
+import { Activity, AlertTriangle, Building2, CheckCircle2, Database, HardDriveDownload, LoaderCircle, PlugZap, Radio, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react';
 
 import styles from './workspace.module.css';
 
@@ -19,6 +19,7 @@ type Operations = {
     latestRun: null | { mode: string; status: string; error?: string; started_at?: string; completed_at?: string };
     recordCounts: Array<{ object_type: string; count: number; archived_count: number }>;
     freshness: null | { total_records: number; newest_record_sync?: string; oldest_record_sync?: string };
+    webhooks: { initialized: boolean; received24h: number; failed24h: number; latestReceivedAt?: string | null; latestStatus?: string | null };
   };
 };
 
@@ -105,7 +106,7 @@ export default function WorkspaceSettingsPage() {
   return (
     <main className={styles.shell}>
       <header className={styles.header}>
-        <div><span>WORKSPACE OPERATIONS</span><h1>HubSpot connection & data health</h1><p>Monitor every company connection, refresh CRM structure, and recover synchronization without admin intervention.</p></div>
+        <div><span>WORKSPACE OPERATIONS</span><h1>HubSpot connection & data health</h1><p>Monitor every company connection, webhook freshness, CRM structure, and synchronization recovery from one place.</p></div>
         <select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)}>{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
       </header>
 
@@ -120,8 +121,8 @@ export default function WorkspaceSettingsPage() {
         <section className={styles.stats}>
           <article><Building2 /><div><strong>{operations.hubspot?.portalId ?? '—'}</strong><span>HubSpot portal</span></div></article>
           <article><Database /><div><strong>{number(totalRecords)}</strong><span>Synchronized records</span></div></article>
+          <article><Radio /><div><strong>{number(operations.sync.webhooks.received24h)}</strong><span>Webhook events · 24h</span></div></article>
           <article><ShieldCheck /><div><strong>{number(operations.approvedMappings)}</strong><span>Approved mappings</span></div></article>
-          <article><HardDriveDownload /><div><strong>{operations.sync.latestRun?.status ? title(operations.sync.latestRun.status) : 'Not started'}</strong><span>Latest sync</span></div></article>
         </section>
 
         <div className={styles.grid}>
@@ -154,6 +155,31 @@ export default function WorkspaceSettingsPage() {
               <button onClick={() => void run('sync', 'full')} disabled={!canOperate || Boolean(busy) || Boolean(operations.sync.activeRun)}><Database className={busy === 'full' ? styles.spin : ''} />Full reconciliation</button>
             </div>
             {!canOperate ? <p className={styles.locked}>Viewer access can monitor health. Admin or owner access is required to run operations.</p> : null}
+          </section>
+        </div>
+
+        <div className={styles.grid}>
+          <section className={styles.panel}>
+            <div className={styles.panelTitle}><div><h2>Webhook delivery</h2><p>Near-real-time HubSpot event ingestion and reconciliation status.</p></div><Radio /></div>
+            <dl>
+              <div><dt>Receiver</dt><dd>{operations.sync.webhooks.initialized ? 'Ready' : 'Initializing'}</dd></div>
+              <div><dt>Events received · 24h</dt><dd>{number(operations.sync.webhooks.received24h)}</dd></div>
+              <div><dt>Failures · 24h</dt><dd>{number(operations.sync.webhooks.failed24h)}</dd></div>
+              <div><dt>Latest delivery</dt><dd>{when(operations.sync.webhooks.latestReceivedAt)}</dd></div>
+              <div><dt>Latest status</dt><dd>{operations.sync.webhooks.latestStatus ? title(operations.sync.webhooks.latestStatus) : 'No events yet'}</dd></div>
+            </dl>
+            <p className={styles.locked}>Webhook events trigger deduplicated synchronization. Deleted records are archived immediately and associations are removed safely.</p>
+          </section>
+
+          <section className={styles.panel}>
+            <div className={styles.panelTitle}><div><h2>Latest data operation</h2><p>Current processing state and latest background result.</p></div><HardDriveDownload /></div>
+            <dl>
+              <div><dt>Latest sync status</dt><dd>{operations.sync.latestRun?.status ? title(operations.sync.latestRun.status) : 'Not started'}</dd></div>
+              <div><dt>Latest sync mode</dt><dd>{operations.sync.latestRun?.mode ? title(operations.sync.latestRun.mode) : '—'}</dd></div>
+              <div><dt>Completed</dt><dd>{when(operations.sync.latestRun?.completed_at)}</dd></div>
+              <div><dt>CRM mirror</dt><dd>{number(totalRecords)} active and archived records</dd></div>
+              <div><dt>Connection</dt><dd>{operations.hubspot?.status ? title(operations.hubspot.status) : 'Disconnected'}</dd></div>
+            </dl>
           </section>
         </div>
 
