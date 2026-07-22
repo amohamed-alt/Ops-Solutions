@@ -570,6 +570,9 @@ export function registerCustomerAuthRoutes(app, { postgres, withTransaction }) {
   return {
     requireCustomer,
     requireWorkspaceRole,
+    requireViewer,
+    requireAdmin,
+    requireOwner,
     loadContext: (token) => loadContext(postgres, token),
     writeAudit: (request, event) => writeAudit(postgres, request, event)
   };

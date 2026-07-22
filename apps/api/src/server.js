@@ -17,6 +17,7 @@ import {
   HubSpotApiError
 } from './hubspot.js';
 import { inferValueMapping } from './semantic.js';
+import { registerSavedViewRoutes } from './saved-views.js';
 import { registerSyncOperationsRoutes } from './sync-operations.js';
 
 assertRuntimeConfiguration();
@@ -144,6 +145,7 @@ app.get('/api/v1/platform', async () => ({
     'owner, admin, and viewer role enforcement',
     'secure workspace invitation lifecycle',
     'workspace audit trail',
+    'user-scoped saved reporting views',
     'self-service HubSpot OAuth onboarding',
     'workspace persistence',
     'encrypted HubSpot OAuth tokens',
@@ -158,6 +160,13 @@ app.get('/api/v1/platform', async () => ({
 }));
 
 const customerAuth = registerCustomerAuthRoutes(app, { postgres, withTransaction });
+
+registerSavedViewRoutes(app, {
+  postgres,
+  withTransaction,
+  requireViewer: customerAuth.requireViewer,
+  writeAudit: customerAuth.writeAudit
+});
 
 app.get('/api/v1/workspaces', { preHandler: requireAdmin }, async () => {
   const result = await postgres.query(`
@@ -497,8 +506,9 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 try {
   await redis.connect();
   await postgres.query('SELECT 1');
-  await runMigrations();
+  await runMigrations({ throughVersion: 1 });
   await ensureCustomerAuthSchema(postgres);
+  await runMigrations();
   await app.listen({ port: config.port, host: config.host });
 } catch (error) {
   app.log.fatal({ error }, 'API failed to start');

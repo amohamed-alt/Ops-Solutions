@@ -10,11 +10,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const response = await fetch(`${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/saved-views/${encodeURIComponent(viewId)}/duplicate`, {
       method: 'POST',
       headers: customerHeaders(request),
-      body: JSON.stringify(await request.json()),
+      body: JSON.stringify(await request.json().catch(() => ({}))),
       cache: 'no-store',
       signal: AbortSignal.timeout(15_000)
     });
-    return NextResponse.json(await response.json(), { status: response.status });
+    return NextResponse.json(await response.json().catch(() => ({})), { status: response.status });
   } catch (error) {
     return NextResponse.json({ error: 'saved_view_duplicate_unavailable', message: error instanceof Error ? error.message : 'Saved view duplication is unavailable.' }, { status: 503 });
   }
