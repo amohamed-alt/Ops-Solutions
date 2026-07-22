@@ -46,15 +46,15 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3001
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      APP_URL: ${APP_URL:-http://localhost:3210}
+      APP_URL: ${APP_URL:-https://ops.dashboardtalentera.tech}
       DATABASE_URL: ${DATABASE_URL:-postgresql://ops_solutions:ops_solutions_bootstrap_only@postgres:5432/ops_solutions}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
       HUBSPOT_CLIENT_ID: ${HUBSPOT_CLIENT_ID:-}
       HUBSPOT_CLIENT_SECRET: ${HUBSPOT_CLIENT_SECRET:-}
-      HUBSPOT_REDIRECT_URI: ${HUBSPOT_REDIRECT_URI:-}
-      HUBSPOT_SUCCESS_REDIRECT_URI: ${HUBSPOT_SUCCESS_REDIRECT_URI:-}
+      HUBSPOT_REDIRECT_URI: ${HUBSPOT_REDIRECT_URI:-https://ops.dashboardtalentera.tech/api/v1/hubspot/oauth/callback}
+      HUBSPOT_SUCCESS_REDIRECT_URI: ${HUBSPOT_SUCCESS_REDIRECT_URI:-https://ops.dashboardtalentera.tech/setup}
       HUBSPOT_SCOPES: ${HUBSPOT_SCOPES:-}
       HUBSPOT_OPTIONAL_SCOPES: ${HUBSPOT_OPTIONAL_SCOPES:-}
     depends_on:
@@ -72,6 +72,17 @@ services:
       - "127.0.0.1:${API_PORT:-3211}:3001"
     networks:
       - app_network
+      - n8n_default
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=n8n_default
+      - traefik.http.routers.ops-solutions-api.rule=Host(`ops.dashboardtalentera.tech`) && PathPrefix(`/api/v1`)
+      - traefik.http.routers.ops-solutions-api.priority=2000
+      - traefik.http.routers.ops-solutions-api.entrypoints=websecure
+      - traefik.http.routers.ops-solutions-api.tls=true
+      - traefik.http.routers.ops-solutions-api.tls.certresolver=mytlschallenge
+      - traefik.http.routers.ops-solutions-api.service=ops-solutions-api
+      - traefik.http.services.ops-solutions-api.loadbalancer.server.port=3001
     mem_limit: 768m
     cpus: 0.5
 
@@ -136,6 +147,17 @@ services:
       - "127.0.0.1:${WEB_PORT:-3210}:3000"
     networks:
       - app_network
+      - n8n_default
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=n8n_default
+      - traefik.http.routers.ops-solutions-web.rule=Host(`ops.dashboardtalentera.tech`)
+      - traefik.http.routers.ops-solutions-web.priority=1000
+      - traefik.http.routers.ops-solutions-web.entrypoints=websecure
+      - traefik.http.routers.ops-solutions-web.tls=true
+      - traefik.http.routers.ops-solutions-web.tls.certresolver=mytlschallenge
+      - traefik.http.routers.ops-solutions-web.service=ops-solutions-web
+      - traefik.http.services.ops-solutions-web.loadbalancer.server.port=3000
     mem_limit: 1024m
     cpus: 0.75
 
@@ -146,3 +168,5 @@ volumes:
 networks:
   app_network:
     driver: bridge
+  n8n_default:
+    external: true
