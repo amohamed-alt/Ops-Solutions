@@ -1,4 +1,5 @@
 import './globals.css';
+import './sdr-dashboard.css';
 
 export const metadata = {
   title: 'Ops Solutions',
