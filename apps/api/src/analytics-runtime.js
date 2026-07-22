@@ -22,6 +22,55 @@ export function serializeMetricRows(rows, grouped = false) {
   }));
 }
 
+function activityTimestampSql(alias = 'r') {
+  return `COALESCE(
+    CASE
+      WHEN ${alias}.properties->>'hs_timestamp' ~ '^\\d{4}-\\d{2}-\\d{2}'
+        THEN (${alias}.properties->>'hs_timestamp')::timestamptz
+      WHEN ${alias}.properties->>'hs_timestamp' ~ '^\\d{10,13}$'
+        THEN to_timestamp(((${alias}.properties->>'hs_timestamp')::numeric) /
+          CASE WHEN length(${alias}.properties->>'hs_timestamp') >= 13 THEN 1000 ELSE 1 END)
+      ELSE NULL
+    END,
+    ${alias}.hubspot_created_at,
+    ${alias}.hubspot_updated_at,
+    ${alias}.synced_at
+  )`;
+}
+
+function activityOwnerSql(alias = 'r') {
+  return `COALESCE(
+    NULLIF(${alias}.properties->>'hubspot_owner_id', ''),
+    NULLIF(${alias}.properties->>'hs_activity_assigned_to_user_id', ''),
+    NULLIF(${alias}.properties->>'hs_created_by_user_id', ''),
+    'Unassigned'
+  )`;
+}
+
+export async function executeActivityWindowMetric(postgres, workspaceId, definition) {
+  const days = Math.max(1, Math.min(3650, Number(definition.activityWindowDays ?? 30)));
+  const grouped = Boolean(definition.groupBy);
+  const timestamp = activityTimestampSql('r');
+  const owner = activityOwnerSql('r');
+  const select = grouped
+    ? `${owner} AS group_key, COUNT(*)::bigint AS value`
+    : 'COUNT(*)::bigint AS value';
+  const groupBy = grouped ? `GROUP BY ${owner} ORDER BY value DESC` : '';
+
+  const result = await postgres.query(
+    `SELECT ${select}
+     FROM crm_records r
+     WHERE r.workspace_id = $1
+       AND r.object_type = $2
+       AND r.archived = FALSE
+       AND ${timestamp} >= NOW() - ($3::int * INTERVAL '1 day')
+     ${groupBy}`,
+    [workspaceId, definition.objectType, days]
+  );
+
+  return serializeMetricRows(result.rows, grouped);
+}
+
 async function loadMappings(postgres, workspaceId, objectType) {
   const result = await postgres.query(
     `SELECT semantic_key, property_name, value_mapping
@@ -67,6 +116,10 @@ async function mappingReadiness(postgres, workspaceId) {
 }
 
 async function executeMetric(postgres, workspaceId, definition) {
+  if (definition.activityWindowDays) {
+    return executeActivityWindowMetric(postgres, workspaceId, definition);
+  }
+
   const mappings = await loadMappings(postgres, workspaceId, definition.objectType);
   const query = compileMetricQuery({
     workspaceId,
@@ -86,7 +139,8 @@ function metricPublicDefinition(metric) {
     objectType: metric.objectType,
     aggregation: metric.aggregation,
     field: metric.field ?? null,
-    groupBy: metric.groupBy ?? null
+    groupBy: metric.groupBy ?? null,
+    activityWindowDays: metric.activityWindowDays ?? null
   };
 }
 
@@ -129,17 +183,26 @@ async function syncFreshness(postgres, workspaceId) {
 
 async function ownersIndex(postgres, workspaceId) {
   const result = await postgres.query(
-    `SELECT owner_id, email, first_name, last_name, archived
+    `SELECT owner_id, user_id, email, first_name, last_name, archived
      FROM crm_owners
      WHERE workspace_id = $1`,
     [workspaceId]
   );
-  return Object.fromEntries(result.rows.map((row) => [String(row.owner_id), {
-    id: String(row.owner_id),
-    name: [row.first_name, row.last_name].filter(Boolean).join(' ') || row.email || `Owner ${row.owner_id}`,
-    email: row.email ?? null,
-    archived: Boolean(row.archived)
-  }]));
+
+  const entries = [];
+  for (const row of result.rows) {
+    const owner = {
+      id: String(row.owner_id),
+      name: [row.first_name, row.last_name].filter(Boolean).join(' ') || row.email || `Owner ${row.owner_id}`,
+      email: row.email ?? null,
+      archived: Boolean(row.archived)
+    };
+    entries.push([String(row.owner_id), owner]);
+    if (row.user_id !== null && row.user_id !== undefined) {
+      entries.push([String(row.user_id), owner]);
+    }
+  }
+  return Object.fromEntries(entries);
 }
 
 export async function buildSdrDashboard(postgres, workspaceId) {
@@ -152,7 +215,8 @@ export async function buildSdrDashboard(postgres, workspaceId) {
     label: 'Calls by Owner',
     objectType: 'calls',
     aggregation: 'count',
-    groupBy: 'hubspot_owner_id'
+    groupBy: 'hubspot_owner_id',
+    activityWindowDays: 30
   };
   const [activityByOwner, mappings, freshness, owners] = await Promise.all([
     executeMetricSafely(postgres, workspaceId, activityByOwnerDefinition),
