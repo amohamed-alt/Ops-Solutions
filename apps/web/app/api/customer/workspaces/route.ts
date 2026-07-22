@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { API_URL, customerSessionHeaders, internalAdminHeaders, getCustomerContext } from '../session';
+import { API_URL, customerHeaders, internalAdminHeaders, getCustomerContext } from '../session';
 
 export async function GET(request: NextRequest) {
   const context = await getCustomerContext(request);
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const response = await fetch(`${API_URL}/api/v1/customer/workspaces/${anchorWorkspace.id}/companies`, {
       method: 'POST',
-      headers: { ...customerSessionHeaders(request), 'content-type': 'application/json' },
+      headers: customerHeaders(request),
       body: JSON.stringify({ name: body?.name ?? body?.companyName }),
       cache: 'no-store',
       signal: AbortSignal.timeout(15_000)
