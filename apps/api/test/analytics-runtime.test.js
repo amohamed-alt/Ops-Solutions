@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  executeActivityTrend,
   executeActivityWindowMetric,
+  executeLeadStatusDistribution,
+  executeOperationalSnapshot,
   getSdrMetric,
   registerAnalyticsRoutes,
   serializeMetricRows
@@ -48,6 +51,69 @@ test('activity metrics use resilient timestamp and owner fallbacks', async () =>
   assert.match(captured.text, /hs_created_by_user_id/);
 });
 
+test('daily execution trend produces a complete date series with numeric values', async () => {
+  let captured;
+  const postgres = {
+    async query(text, values) {
+      captured = { text, values };
+      return { rows: [{ day: '2026-07-22', calls: '9', meetings: '2', tasks: '7' }] };
+    }
+  };
+
+  const result = await executeActivityTrend(postgres, 'workspace-id', 21);
+  assert.deepEqual(result, [{ day: '2026-07-22', calls: 9, meetings: 2, tasks: 7 }]);
+  assert.deepEqual(captured.values, ['workspace-id', 21]);
+  assert.match(captured.text, /generate_series/);
+  assert.match(captured.text, /FILTER \(WHERE r\.object_type = 'calls'\)/);
+});
+
+test('lead status distribution uses HubSpot lead status with lifecycle fallback', async () => {
+  let captured;
+  const postgres = {
+    async query(text) {
+      captured = text;
+      return { rows: [{ group_key: 'NEW', value: '14' }, { group_key: null, value: '3' }] };
+    }
+  };
+
+  const result = await executeLeadStatusDistribution(postgres, 'workspace-id');
+  assert.deepEqual(result, [{ key: 'NEW', value: 14 }, { key: 'Unassigned', value: 3 }]);
+  assert.match(captured, /hs_lead_status/);
+  assert.match(captured, /lifecyclestage/);
+});
+
+test('operational snapshot exposes production task and deal controls as numbers', async () => {
+  const postgres = {
+    async query(text) {
+      assert.match(text, /high_priority_tasks/);
+      assert.match(text, /no_next_activity/);
+      return {
+        rows: [{
+          total_companies: '18',
+          open_tasks: '33',
+          open_deals: '7',
+          missing_owner: '4',
+          tasks_due_today: '5',
+          overdue_tasks: '9',
+          high_priority_tasks: '3',
+          no_next_activity: '2'
+        }]
+      };
+    }
+  };
+
+  assert.deepEqual(await executeOperationalSnapshot(postgres, 'workspace-id'), {
+    totalCompanies: 18,
+    openTasks: 33,
+    openDeals: 7,
+    missingOwner: 4,
+    tasksDueToday: 5,
+    overdueTasks: 9,
+    highPriorityTasks: 3,
+    noNextActivity: 2
+  });
+});
+
 test('stale and untouched cohorts are mutually exclusive', () => {
   const untouched = sdrDashboardTemplate.virtualProperties.find((item) => item.key === 'untouched_contact');
   const stale = sdrDashboardTemplate.virtualProperties.find((item) => item.key === 'stale_contact');
@@ -56,6 +122,7 @@ test('stale and untouched cohorts are mutually exclusive', () => {
   assert.ok(untouched.rule.conditions.some((condition) => condition.operator === 'missing'));
   assert.ok(stale.rule.conditions.some((condition) => condition.operator === 'exists'));
   assert.equal(actionMetric.filters.operator, 'OR');
+  assert.equal(sdrDashboardTemplate.version, 3);
 });
 
 test('rejects unknown dashboard metrics before querying the database', async () => {
