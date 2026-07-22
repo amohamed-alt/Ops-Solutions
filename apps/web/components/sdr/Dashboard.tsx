@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState, useTransition, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Activity,
   AlertTriangle,
@@ -164,7 +165,7 @@ function FocusMetric({
 }
 
 export function Dashboard() {
-  const [accessKey, setAccessKey] = useState('');
+  const router = useRouter();
   const [authorized, setAuthorized] = useState(false);
   const [workspaces, setWorkspaces] = useState<WorkspaceState[]>([]);
   const [selectedId, setSelectedId] = useState('');
@@ -191,12 +192,8 @@ export function Dashboard() {
   const conversionFunnel = dashboard?.conversionFunnel ?? [];
   const leadStatus = dashboard?.leadStatus ?? [];
 
-  function requestHeaders() {
-    return { 'x-operations-key': accessKey };
-  }
-
   async function loadDashboard(workspaceId: string) {
-    const response = await fetch(`/api/dashboard/${workspaceId}`, { headers: requestHeaders(), cache: 'no-store' });
+    const response = await fetch(`/api/dashboard/${workspaceId}`, { cache: 'no-store' });
     const result = await response.json() as DashboardPayload & { message?: string };
     if (!response.ok) throw new Error(result.message ?? 'Unable to load dashboard.');
     setPayload(result);
@@ -204,7 +201,6 @@ export function Dashboard() {
 
   async function loadDrilldown(workspaceId: string, offset = 0) {
     const response = await fetch(`/api/dashboard/${workspaceId}/drilldown?limit=50&offset=${offset}`, {
-      headers: requestHeaders(),
       cache: 'no-store'
     });
     const result = await response.json() as { drilldown?: PriorityDrilldown; message?: string };
@@ -217,25 +213,40 @@ export function Dashboard() {
     await Promise.all([loadDashboard(workspaceId), loadDrilldown(workspaceId, offset)]);
   }
 
-  async function unlock(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMessage('');
+  async function loadCustomerWorkspaces() {
+    const response = await fetch('/api/customer/workspaces', { cache: 'no-store' });
+    if (response.status === 401) {
+      router.replace('/onboarding');
+      return [];
+    }
+    const result = await response.json() as { results?: WorkspaceState[]; message?: string };
+    if (!response.ok) throw new Error(result.message ?? 'Unable to open dashboard.');
+    return result.results ?? [];
+  }
+
+  useEffect(() => {
+    let active = true;
     startTransition(async () => {
       try {
-        const response = await fetch('/api/operations/workspaces', { headers: requestHeaders(), cache: 'no-store' });
-        const result = await response.json() as { results?: WorkspaceState[]; message?: string };
-        if (!response.ok) throw new Error(result.message ?? 'Unable to open dashboard.');
-        const rows = result.results ?? [];
-        const workspaceId = rows[0]?.workspace?.id ?? '';
-        setWorkspaces(rows);
+        const rows = await loadCustomerWorkspaces();
+        if (!active) return;
+        const readyRows = rows.filter((row) => row.workspace?.hubspot_status === 'connected');
+        const workspaceId = readyRows[0]?.workspace?.id ?? '';
+        if (!workspaceId) {
+          router.replace('/onboarding');
+          return;
+        }
+        setWorkspaces(readyRows);
         setSelectedId(workspaceId);
         setAuthorized(true);
-        if (workspaceId) await loadWorkspace(workspaceId);
+        await loadWorkspace(workspaceId);
       } catch (error) {
-        setMessage(error instanceof Error ? error.message : 'Unable to open dashboard.');
+        if (active) setMessage(error instanceof Error ? error.message : 'Unable to open dashboard.');
       }
     });
-  }
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function selectWorkspace(workspaceId: string) {
     setSelectedId(workspaceId);
@@ -250,10 +261,8 @@ export function Dashboard() {
     setMessage('');
     startTransition(async () => {
       try {
-        const response = await fetch('/api/operations/workspaces', { headers: requestHeaders(), cache: 'no-store' });
-        const result = await response.json() as { results?: WorkspaceState[]; message?: string };
-        if (!response.ok) throw new Error(result.message ?? 'Unable to refresh workspace status.');
-        setWorkspaces(result.results ?? []);
+        const rows = await loadCustomerWorkspaces();
+        setWorkspaces(rows.filter((row) => row.workspace?.hubspot_status === 'connected'));
         await loadWorkspace(selectedId, drillOffset);
       } catch (error) {
         setMessage(error instanceof Error ? error.message : 'Unable to refresh dashboard.');
@@ -283,15 +292,11 @@ export function Dashboard() {
       <main className="sdr-access-page">
         <section className="sdr-access-card">
           <div className="sdr-access-brand"><span>OI</span><div><strong>Ops Intelligence</strong><small>HubSpot command center</small></div></div>
-          <span className="sdr-eyebrow">SECURE WORKSPACE ACCESS</span>
-          <h1>Open your live<br />revenue workspace.</h1>
-          <p>Use the protected workspace key to load tenant-isolated HubSpot reporting and operational intelligence.</p>
-          <form onSubmit={unlock}>
-            <input type="password" value={accessKey} onChange={(event) => setAccessKey(event.target.value)} placeholder="Workspace access key" autoComplete="current-password" required />
-            <button disabled={isPending}>{isPending ? 'Opening workspace…' : 'Open dashboard'}</button>
-          </form>
-          <div className="sdr-access-trust"><span>Encrypted access</span><span>Tenant isolated</span><span>Live HubSpot data</span></div>
-          {message ? <div className="sdr-error-banner">{message}</div> : null}
+          <RefreshCw size={30} className="sdr-spin" />
+          <span className="sdr-eyebrow">OPENING YOUR WORKSPACE</span>
+          <h1>Loading live<br />revenue intelligence.</h1>
+          <p>Your secure session is being verified and the latest HubSpot dashboard is being prepared.</p>
+          {message ? <><div className="sdr-error-banner">{message}</div><button onClick={() => router.push('/onboarding')}>Return to setup</button></> : null}
         </section>
       </main>
     );
@@ -300,11 +305,9 @@ export function Dashboard() {
   if (!selectedWorkspace) return <main className="sdr-empty-page">No connected workspaces are available.</main>;
 
   const totalContacts = metricValue(payload, 'total_contacts');
-  const priorityLeads = metricValue(payload, 'high_priority_contacts');
   const calls = metricValue(payload, 'calls_last_30_days');
   const meetings = metricValue(payload, 'meetings_last_30_days');
   const untouched = metricValue(payload, 'untouched_contacts');
-  const stale = metricValue(payload, 'stale_contacts');
   const contactsNeedingAction = metricValue(payload, 'contacts_needing_action');
   const dealsAtRisk = metricValue(payload, 'deals_at_risk');
   const openPipeline = metricValue(payload, 'open_pipeline');
