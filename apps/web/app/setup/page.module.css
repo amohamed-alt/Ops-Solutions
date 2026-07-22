@@ -1,0 +1,195 @@
+.setupShell {
+  padding-top: 34px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 64px;
+}
+
+.topbar a {
+  color: var(--muted);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.topbar a:hover {
+  color: var(--text);
+}
+
+.setupHero {
+  max-width: 920px;
+  margin-bottom: 38px;
+}
+
+.setupHero h1 {
+  max-width: 900px;
+}
+
+.notice {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 18px;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+}
+
+.notice span {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.successNotice {
+  border-color: rgba(69, 227, 143, 0.35);
+  background: rgba(69, 227, 143, 0.09);
+}
+
+.errorNotice {
+  border-color: rgba(255, 143, 143, 0.35);
+  background: rgba(255, 143, 143, 0.08);
+}
+
+.setupGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.checkList {
+  display: grid;
+  gap: 2px;
+  margin-top: 18px;
+}
+
+.checkRow {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 54px;
+  border-bottom: 1px solid var(--border);
+}
+
+.checkRow:last-child {
+  border-bottom: 0;
+}
+
+.checkRow code,
+.scopeList code {
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.8rem;
+}
+
+.checkRow strong {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.checkIcon {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+}
+
+.ready {
+  border-color: rgba(69, 227, 143, 0.4);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.scopeList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 22px;
+}
+
+.scopeList code {
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.optionalScope {
+  color: var(--accent) !important;
+}
+
+.workflowPanel {
+  margin-top: 18px;
+}
+
+.workflowPanel h2 {
+  margin-bottom: 26px;
+}
+
+.workflowSteps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.workflowSteps article {
+  min-height: 190px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.workflowSteps article > span {
+  display: inline-flex;
+  margin-bottom: 32px;
+  color: var(--accent);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.workflowSteps h3 {
+  margin-bottom: 8px;
+  font-size: 0.98rem;
+}
+
+.workflowSteps p {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+@media (max-width: 980px) {
+  .workflowSteps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .setupGrid,
+  .workflowSteps {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    margin-bottom: 42px;
+  }
+
+  .checkRow {
+    grid-template-columns: 30px minmax(0, 1fr);
+  }
+
+  .checkRow strong {
+    grid-column: 2;
+  }
+}
