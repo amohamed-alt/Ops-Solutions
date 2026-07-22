@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { API_URL, customerHeaders, requireCustomerWorkspace } from '../../../../../../session';
+import { API_URL, customerHeaders, requireCustomerWorkspace } from '../../../../../session';
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ workspaceId: string; viewId: string }> }) {
   const { workspaceId, viewId } = await params;
