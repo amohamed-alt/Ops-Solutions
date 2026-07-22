@@ -3,6 +3,7 @@ import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import pg from 'pg';
 
+import { ensureAnalyticsIndexes, runPlannerMaintenance } from './analytics-maintenance.js';
 import { config, assertHubSpotWorkerConfiguration } from './config.js';
 import { ensureSyncSchema, syncWorkspace, workspacesDueForSync } from './sync.js';
 
@@ -174,8 +175,13 @@ async function scheduleDueWorkspaces() {
   return { scheduled, disabled: false };
 }
 
+async function maintainAnalyticsPlanner() {
+  return runPlannerMaintenance(postgres, heartbeatRedis, { log });
+}
+
 let heartbeatTimer;
 let schedulerTimer;
+let maintenanceTimer;
 let shuttingDown = false;
 
 async function shutdown(signal) {
@@ -185,6 +191,7 @@ async function shutdown(signal) {
   log('info', 'worker_shutdown', { signal });
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   if (schedulerTimer) clearInterval(schedulerTimer);
+  if (maintenanceTimer) clearInterval(maintenanceTimer);
 
   await Promise.allSettled([
     queueWorker.close(),
@@ -203,6 +210,8 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 
 try {
   await ensureSyncSchema(postgres);
+  const indexResult = await ensureAnalyticsIndexes(postgres, { log });
+  await maintainAnalyticsPlanner();
   await heartbeat();
   await scheduleDueWorkspaces();
 
@@ -218,10 +227,17 @@ try {
     });
   }, config.sync.schedulerIntervalMs);
 
+  maintenanceTimer = setInterval(() => {
+    void maintainAnalyticsPlanner().catch((error) => {
+      log('error', 'analytics_planner_maintenance_failed', { error: error.message });
+    });
+  }, 60 * 60 * 1000);
+
   log('info', 'worker_started', {
     queue: 'hubspot-sync',
     concurrency: 1,
     schedulerIntervalMs: config.sync.schedulerIntervalMs,
+    analyticsIndexes: indexResult.indexes,
     objectTypes: config.hubspot.objectTypes
   });
 } catch (error) {
