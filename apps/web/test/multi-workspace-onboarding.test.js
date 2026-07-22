@@ -25,6 +25,9 @@ test('HubSpot OAuth preserves the selected workspace through the callback', asyn
   const content = await source('start');
   assert.match(content, /returnTo = `\/onboarding\?workspaceId=/);
   assert.match(content, /encodeURIComponent\(access\.workspace\.id\)/);
+
+  const client = await source('client');
+  assert.match(client, /callbackWorkspaceId !== activeWorkspaceId/);
 });
 
 test('onboarding UI scopes status, build and OAuth calls to the active workspace', async () => {
