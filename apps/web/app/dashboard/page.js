@@ -1,4 +1,4 @@
-import { Dashboard } from '@/components/sdr/Dashboard';
+import { CustomerDashboard } from '@/components/sdr/CustomerDashboard';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,5 +8,5 @@ export const metadata = {
 };
 
 export default function DashboardPage() {
-  return <Dashboard />;
+  return <CustomerDashboard />;
 }
