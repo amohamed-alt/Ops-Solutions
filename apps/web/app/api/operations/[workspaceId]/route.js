@@ -1,18 +1,8 @@
 import { NextResponse } from 'next/server';
 
+import { adminHeaders, requireOperationsAccess } from '../auth';
+
 const API_URL = process.env.API_INTERNAL_URL ?? 'http://api:3001';
-
-function adminHeaders(extra = {}) {
-  const adminKey = process.env.ADMIN_API_KEY;
-  if (!adminKey) {
-    throw new Error('ADMIN_API_KEY is not configured for the web runtime');
-  }
-
-  return {
-    'x-admin-key': adminKey,
-    ...extra
-  };
-}
 
 async function forward(response) {
   const text = await response.text();
@@ -27,7 +17,14 @@ async function forward(response) {
   return NextResponse.json(payload, { status: response.status });
 }
 
-export async function GET(_request, { params }) {
+function unauthorized(access) {
+  return NextResponse.json({ error: 'operations_access_denied', message: access.message }, { status: access.status });
+}
+
+export async function GET(request, { params }) {
+  const access = requireOperationsAccess(request);
+  if (!access.ok) return unauthorized(access);
+
   try {
     const { workspaceId } = await params;
     const response = await fetch(`${API_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/sync`, {
@@ -37,14 +34,14 @@ export async function GET(_request, { params }) {
     });
     return forward(response);
   } catch (error) {
-    return NextResponse.json({
-      error: 'sync_operations_unavailable',
-      message: error.message
-    }, { status: 503 });
+    return NextResponse.json({ error: 'sync_operations_unavailable', message: error.message }, { status: 503 });
   }
 }
 
 export async function POST(request, { params }) {
+  const access = requireOperationsAccess(request);
+  if (!access.ok) return unauthorized(access);
+
   try {
     const { workspaceId } = await params;
     const body = await request.json();
@@ -57,9 +54,6 @@ export async function POST(request, { params }) {
     });
     return forward(response);
   } catch (error) {
-    return NextResponse.json({
-      error: 'sync_operation_failed',
-      message: error.message
-    }, { status: 503 });
+    return NextResponse.json({ error: 'sync_operation_failed', message: error.message }, { status: 503 });
   }
 }
