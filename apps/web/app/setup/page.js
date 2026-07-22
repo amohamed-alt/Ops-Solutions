@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
 import styles from './page.module.css';
 
@@ -22,9 +23,12 @@ async function getPlatformConfiguration() {
 
 export default async function SetupPage({ searchParams }) {
   const params = await searchParams;
+  if (params?.hubspot === 'connected' && params?.workspaceId) {
+    redirect(`/onboarding?connected=1&workspaceId=${encodeURIComponent(params.workspaceId)}`);
+  }
+
   const platform = await getPlatformConfiguration();
   const hubspot = platform.data?.hubspot;
-  const connected = params?.hubspot === 'connected';
   const missing = hubspot?.missing ?? [];
 
   return (
@@ -42,16 +46,6 @@ export default async function SetupPage({ searchParams }) {
           connected and converted into a reusable analytics model.
         </p>
       </section>
-
-      {connected && (
-        <section className={`${styles.notice} ${styles.successNotice}`}>
-          <strong>HubSpot portal connected successfully.</strong>
-          <span>
-            Portal {params?.portalId ?? 'unknown'} is linked to workspace {params?.workspaceId ?? 'unknown'}.
-            The next action is running portal discovery.
-          </span>
-        </section>
-      )}
 
       {!platform.available && (
         <section className={`${styles.notice} ${styles.errorNotice}`}>

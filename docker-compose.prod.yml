@@ -135,6 +135,7 @@ services:
       API_INTERNAL_URL: http://api:3001
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       OPERATIONS_ACCESS_KEY: ${OPERATIONS_ACCESS_KEY:-}
+      ONBOARDING_SESSION_SECRET: ${ONBOARDING_SESSION_SECRET:-}
       NEXT_PUBLIC_APP_NAME: ${APP_NAME:-Ops Solutions}
     depends_on:
       api:
