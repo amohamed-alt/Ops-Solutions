@@ -18,6 +18,7 @@ import {
   CircleDollarSign,
   Copy,
   Database,
+  Download,
   Filter,
   Gauge,
   Globe2,
@@ -562,6 +563,8 @@ export function RevenueCommandCenter() {
   const [editingViewId, setEditingViewId] = useState('');
   const [editingViewName, setEditingViewName] = useState('');
   const [dashboardSection, setDashboardSection] = useState('overview');
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
   const [isPending, startTransition] = useTransition();
 
   const selectedState = useMemo(
@@ -774,6 +777,41 @@ export function RevenueCommandCenter() {
         setMessage(error instanceof Error ? error.message : 'Unable to refresh reports.');
       }
     });
+  }
+
+  async function exportCsv() {
+    if (!selectedId || exporting) return;
+    setExporting(true);
+    setExportError('');
+    try {
+      const activeView = savedViews.find((view) => view.id === activeViewId);
+      const query = new URLSearchParams(queryString(filters));
+      if (activeView?.name) query.set('viewName', activeView.name);
+      const response = await fetch(
+        `/api/dashboard/${selectedId}/export?${query.toString()}`,
+        { cache: 'no-store' }
+      );
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.message || 'Unable to export this report.');
+      }
+
+      const disposition = response.headers.get('content-disposition') ?? '';
+      const fileName = /filename="?([^";]+)"?/i.exec(disposition)?.[1]
+        ?.replace(/[^a-z0-9._-]+/gi, '-') || 'revenue-report.csv';
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : 'Unable to export this report.');
+    } finally {
+      setExporting(false);
+    }
   }
 
   function changeDatePreset(nextPreset: DatePreset) {
@@ -1037,12 +1075,16 @@ export function RevenueCommandCenter() {
           <button className={viewsOpen ? 'active' : ''} onClick={() => { setViewsOpen((value) => !value); setViewError(''); }}>
             <Bookmark size={16} />Views{activeViewId ? <i className="ric-view-dot" /> : null}
           </button>
+          <button onClick={() => void exportCsv()} disabled={exporting}>
+            <Download size={16} />{exporting ? 'Exporting' : 'CSV'}
+          </button>
           <button className={filterOpen ? 'active' : ''} onClick={() => setFilterOpen((value) => !value)}><Filter size={16} />Filters</button>
           <button className="primary" onClick={refresh} disabled={isPending}><RefreshCw size={16} className={isPending ? 'ric-spin' : ''} />{isPending ? 'Refreshing' : 'Refresh'}</button>
         </div>
       </header>
 
       <section className="ric-content">
+        {exportError ? <div className="ric-message" role="alert">{exportError}</div> : null}
         {viewsOpen ? (
           <section className="ric-views-panel" aria-label="Saved reporting views">
             <header>
