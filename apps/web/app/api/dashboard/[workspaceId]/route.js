@@ -1,19 +1,19 @@
 import { NextResponse } from 'next/server';
 
-import { adminHeaders, requireOperationsAccess } from '../../operations/auth';
-
-const API_URL = process.env.API_INTERNAL_URL ?? 'http://api:3001';
+import { requireOperationsAccess, adminHeaders } from '../../operations/auth';
+import { API_URL, internalAdminHeaders, requireCustomerWorkspace } from '../../customer/session';
 
 export async function GET(request, { params }) {
-  const access = requireOperationsAccess(request);
-  if (!access.ok) {
-    return NextResponse.json({ error: 'dashboard_access_denied', message: access.message }, { status: access.status });
+  const { workspaceId } = await params;
+  const operationsAccess = requireOperationsAccess(request);
+  if (!operationsAccess.ok) {
+    const customerAccess = await requireCustomerWorkspace(request, workspaceId);
+    if (!customerAccess.ok) return customerAccess.response;
   }
 
-  const { workspaceId } = await params;
   try {
     const response = await fetch(`${API_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/analytics/sdr`, {
-      headers: adminHeaders(),
+      headers: operationsAccess.ok ? adminHeaders() : internalAdminHeaders(),
       cache: 'no-store',
       signal: AbortSignal.timeout(20_000)
     });
