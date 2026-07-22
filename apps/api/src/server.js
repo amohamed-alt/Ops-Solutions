@@ -17,6 +17,7 @@ import {
   HubSpotApiError
 } from './hubspot.js';
 import { inferValueMapping } from './semantic.js';
+import { registerCustomerReportExportRoutes } from './report-exports.js';
 import { registerSavedViewRoutes } from './saved-views.js';
 import { registerSyncOperationsRoutes } from './sync-operations.js';
 
@@ -165,6 +166,14 @@ registerSavedViewRoutes(app, {
   postgres,
   withTransaction,
   requireViewer: customerAuth.requireViewer,
+  writeAudit: customerAuth.writeAudit
+});
+
+registerCustomerReportExportRoutes(app, {
+  postgres,
+  redis,
+  requireViewer: customerAuth.requireViewer,
+  requireWorkspace,
   writeAudit: customerAuth.writeAudit
 });
 

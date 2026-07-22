@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { API_URL, internalAdminHeaders, requireCustomerWorkspace } from '../../../customer/session';
+import { API_URL, customerHeaders, requireCustomerWorkspace } from '../../../customer/session';
+
+const ALLOWED_FILTERS = new Set([
+  'from', 'to', 'ownerId', 'country', 'leadSource', 'pipelineId', 'stageId', 'viewName'
+]);
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params;
@@ -9,11 +13,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   try {
     const incoming = new URL(request.url);
-    const target = new URL(`${API_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/analytics/revenue/export.csv`);
-    for (const [key, value] of incoming.searchParams.entries()) target.searchParams.set(key, value);
+    const target = new URL(`${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/exports/revenue.csv`);
+    for (const [key, value] of incoming.searchParams.entries()) {
+      if (ALLOWED_FILTERS.has(key)) target.searchParams.set(key, value);
+    }
 
     const response = await fetch(target, {
-      headers: internalAdminHeaders(),
+      headers: customerHeaders(request),
       cache: 'no-store',
       signal: AbortSignal.timeout(60_000)
     });
@@ -33,7 +39,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         'content-type': response.headers.get('content-type') || 'text/csv; charset=utf-8',
         'content-disposition': response.headers.get('content-disposition') || 'attachment; filename="revenue-report.csv"',
         'cache-control': 'private, no-store, max-age=0',
-        'x-content-type-options': 'nosniff'
+        'x-content-type-options': 'nosniff',
+        'x-rate-limit-limit': response.headers.get('x-rate-limit-limit') || '5',
+        'x-rate-limit-remaining': response.headers.get('x-rate-limit-remaining') || '0'
       }
     });
   } catch (error) {
