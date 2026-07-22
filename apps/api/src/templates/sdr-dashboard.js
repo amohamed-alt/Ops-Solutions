@@ -23,16 +23,10 @@ export const sdrDashboardTemplate = Object.freeze({
       label: 'Stale Contact',
       objectType: 'contacts',
       rule: {
-        operator: 'OR',
+        operator: 'AND',
         conditions: [
-          { field: 'notes_last_contacted', operator: 'before_days', value: 21 },
-          {
-            operator: 'AND',
-            conditions: [
-              { field: 'notes_last_contacted', operator: 'missing' },
-              { field: 'createdate', operator: 'before_days', value: 21 }
-            ]
-          }
+          { field: 'notes_last_contacted', operator: 'exists' },
+          { field: 'notes_last_contacted', operator: 'before_days', value: 21 }
         ]
       }
     },
