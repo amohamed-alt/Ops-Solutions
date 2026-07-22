@@ -12,10 +12,6 @@ function validationError(message, category = 'INVALID_EXPORT_REQUEST') {
   return error;
 }
 
-function isUuid(value) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value ?? ''));
-}
-
 function dateString(date) {
   return date.toISOString().slice(0, 10);
 }
@@ -92,12 +88,12 @@ function humanize(value) {
   return String(value ?? '').replaceAll('_', ' ').replaceAll('-', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export function buildRevenueCsv({ workspace, report, sourceView = null }) {
+export function buildRevenueCsv({ workspace, report, viewName = null }) {
   const lines = ['\uFEFF' + csvRow(['Ops Solutions Revenue Intelligence Export'])];
   lines.push(csvRow(['Workspace', workspace.name]));
   lines.push(csvRow(['Generated at', report.generatedAt]));
   lines.push(csvRow(['Reporting period', `${report.filters.from} to ${report.filters.to}`]));
-  lines.push(csvRow(['Saved view', sourceView?.name ?? 'Ad hoc filters']));
+  lines.push(csvRow(['Saved view', viewName || 'Ad hoc filters']));
   lines.push(csvRow(['Owner filter', report.filters.ownerId ?? 'All owners']));
   lines.push(csvRow(['Country filter', report.filters.country ?? 'All countries']));
   lines.push(csvRow(['Lead source filter', report.filters.leadSource ?? 'All sources']));
@@ -125,56 +121,24 @@ function filenamePart(value) {
   return String(value ?? 'workspace').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'workspace';
 }
 
-async function loadSavedView(postgres, workspaceId, userId, viewId) {
-  if (!isUuid(viewId)) throw validationError('Saved view ID is invalid.');
-  const result = await postgres.query(
-    `SELECT id, name, date_preset, filters
-     FROM saved_reporting_views
-     WHERE id = $1 AND workspace_id = $2 AND user_id = $3`,
-    [viewId, workspaceId, userId]
-  );
-  if (result.rowCount === 0) {
-    const error = new Error('Saved reporting view not found.');
-    error.statusCode = 404;
-    error.category = 'SAVED_VIEW_NOT_FOUND';
-    throw error;
-  }
-  return result.rows[0];
+function cleanViewName(value) {
+  const result = String(value ?? '').trim().replace(/\s+/g, ' ');
+  return result ? result.slice(0, 100) : null;
 }
 
-export function registerReportExportRoutes(app, { postgres, requireViewer, writeAudit }) {
-  app.get('/api/v1/customer/workspaces/:workspaceId/exports/revenue.csv', { preHandler: requireViewer }, async (request, reply) => {
-    const workspaceId = request.params.workspaceId;
-    const userId = request.customer.user.id;
-    const sourceView = request.query?.viewId ? await loadSavedView(postgres, workspaceId, userId, request.query.viewId) : null;
-    const filters = sourceView
-      ? resolveDatePreset(sourceView.date_preset, sourceView.filters ?? {})
-      : normalizeReportingFilters(request.query ?? {});
-    const report = await buildRevenueReportingPack(postgres, workspaceId, filters);
-    const workspaceResult = await postgres.query('SELECT id, name FROM workspaces WHERE id = $1', [workspaceId]);
-    const workspace = workspaceResult.rows[0] ?? { id: workspaceId, name: 'Workspace' };
-    const csv = buildRevenueCsv({ workspace, report, sourceView });
+export function registerReportExportRoutes(app, { postgres, requireAdmin, requireWorkspace }) {
+  app.get('/api/v1/workspaces/:workspaceId/analytics/revenue/export.csv', { preHandler: requireAdmin }, async (request, reply) => {
+    const workspace = await requireWorkspace(request.params.workspaceId);
+    const filters = normalizeReportingFilters(request.query ?? {});
+    const report = await buildRevenueReportingPack(postgres, workspace.id, filters);
+    const csv = buildRevenueCsv({ workspace, report, viewName: cleanViewName(request.query?.viewName) });
     const fileName = `${filenamePart(workspace.name)}-revenue-report-${report.filters.from}-to-${report.filters.to}.csv`;
-
-    await writeAudit(request, {
-      workspaceId,
-      actorUserId: userId,
-      action: 'reporting_export.downloaded',
-      targetType: 'revenue_report',
-      targetId: sourceView?.id ?? null,
-      metadata: {
-        format: 'csv',
-        savedViewId: sourceView?.id ?? null,
-        from: report.filters.from,
-        to: report.filters.to,
-        filterCount: ['ownerId', 'country', 'leadSource', 'pipelineId', 'stageId'].filter((key) => Boolean(report.filters[key])).length
-      }
-    });
 
     return reply
       .header('content-type', 'text/csv; charset=utf-8')
       .header('content-disposition', `attachment; filename="${fileName}"`)
       .header('cache-control', 'private, no-store, max-age=0')
+      .header('x-content-type-options', 'nosniff')
       .send(csv);
   });
 }
