@@ -17,6 +17,7 @@ import {
   HubSpotApiError
 } from './hubspot.js';
 import { registerBackgroundExportRoutes } from './background-exports.js';
+import { ensureMappingWizardSchema, registerMappingWizardRoutes } from './mapping-wizard.js';
 import { inferValueMapping } from './semantic.js';
 import { registerCustomerReportExportRoutes } from './report-exports.js';
 import { registerSavedViewRoutes } from './saved-views.js';
@@ -115,7 +116,7 @@ async function checkDependencies() {
 app.get('/', async () => ({
   service: 'ops-solutions-api',
   status: 'running',
-  version: '0.5.0'
+  version: '0.6.0'
 }));
 
 app.get('/health', async (_request, reply) => {
@@ -140,7 +141,7 @@ app.get('/health', async (_request, reply) => {
 
 app.get('/api/v1/platform', async () => ({
   product: 'Ops Solutions',
-  stage: 'multi-tenant-team-management',
+  stage: 'multi-tenant-revenue-intelligence',
   capabilities: [
     'customer accounts and secure sessions',
     'tenant-scoped workspace memberships',
@@ -155,7 +156,8 @@ app.get('/api/v1/platform', async () => ({
     'portal schema discovery',
     'owners and pipelines discovery',
     'semantic property suggestions',
-    'mapping approval workflow',
+    'customer mapping wizard',
+    'mapping version history and rollback',
     'initial and incremental CRM synchronization',
     'sync health and manual recovery controls'
   ],
@@ -163,6 +165,14 @@ app.get('/api/v1/platform', async () => ({
 }));
 
 const customerAuth = registerCustomerAuthRoutes(app, { postgres, withTransaction });
+
+registerMappingWizardRoutes(app, {
+  postgres,
+  withTransaction,
+  requireViewer: customerAuth.requireViewer,
+  requireAdmin: customerAuth.requireAdmin,
+  writeAudit: customerAuth.writeAudit
+});
 
 registerSavedViewRoutes(app, {
   postgres,
@@ -530,6 +540,7 @@ try {
   await runMigrations({ throughVersion: 1 });
   await ensureCustomerAuthSchema(postgres);
   await runMigrations();
+  await ensureMappingWizardSchema(postgres);
   await backgroundExports.start();
   await app.listen({ port: config.port, host: config.host });
 } catch (error) {
