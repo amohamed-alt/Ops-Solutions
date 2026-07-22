@@ -85,6 +85,18 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_URL: ${DATABASE_URL:-postgresql://ops_solutions:ops_solutions_bootstrap_only@postgres:5432/ops_solutions}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      HUBSPOT_CLIENT_ID: ${HUBSPOT_CLIENT_ID:-}
+      HUBSPOT_CLIENT_SECRET: ${HUBSPOT_CLIENT_SECRET:-}
+      HUBSPOT_API_BASE_URL: ${HUBSPOT_API_BASE_URL:-https://api.hubapi.com}
+      HUBSPOT_TOKEN_URL: ${HUBSPOT_TOKEN_URL:-https://api.hubapi.com/oauth/v1/token}
+      HUBSPOT_SYNC_OBJECTS: ${HUBSPOT_SYNC_OBJECTS:-contacts,companies,deals,calls,meetings,tasks}
+      HUBSPOT_SYNC_PAGE_SIZE: ${HUBSPOT_SYNC_PAGE_SIZE:-100}
+      HUBSPOT_REQUEST_DELAY_MS: ${HUBSPOT_REQUEST_DELAY_MS:-240}
+      SYNC_SCHEDULER_INTERVAL_MS: ${SYNC_SCHEDULER_INTERVAL_MS:-300000}
+      SYNC_INCREMENTAL_INTERVAL_MINUTES: ${SYNC_INCREMENTAL_INTERVAL_MINUTES:-15}
+      SYNC_FULL_RECONCILIATION_HOURS: ${SYNC_FULL_RECONCILIATION_HOURS:-24}
+      SYNC_MAX_PAGES_PER_RUN: ${SYNC_MAX_PAGES_PER_RUN:-500}
     depends_on:
       postgres:
         condition: service_healthy
