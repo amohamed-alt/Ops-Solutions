@@ -29,7 +29,7 @@ export const config = Object.freeze({
     clientId: process.env.HUBSPOT_CLIENT_ID ?? '',
     clientSecret: process.env.HUBSPOT_CLIENT_SECRET ?? '',
     apiBaseUrl: process.env.HUBSPOT_API_BASE_URL ?? 'https://api.hubapi.com',
-    tokenUrl: process.env.HUBSPOT_TOKEN_URL ?? 'https://api.hubapi.com/oauth/v1/token',
+    tokenUrl: process.env.HUBSPOT_TOKEN_URL ?? 'https://api.hubspot.com/oauth/2026-03/token',
     objectTypes: list(process.env.HUBSPOT_SYNC_OBJECTS, [
       'contacts',
       'companies',

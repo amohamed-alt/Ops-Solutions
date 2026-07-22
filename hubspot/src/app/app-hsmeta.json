@@ -1,0 +1,40 @@
+{
+  "uid": "ops_solutions_hubspot_intelligence",
+  "type": "app",
+  "config": {
+    "name": "Ops Solutions",
+    "description": "Connect HubSpot accounts to Ops Solutions for read-only CRM discovery, secure synchronization, semantic property mapping, and intelligent revenue operations dashboards.",
+    "distribution": "private",
+    "auth": {
+      "type": "oauth",
+      "redirectUrls": [
+        "https://ops.dashboardtalentera.tech/api/v1/hubspot/oauth/callback"
+      ],
+      "requiredScopes": [
+        "crm.objects.contacts.read",
+        "crm.objects.companies.read",
+        "crm.objects.deals.read",
+        "crm.objects.owners.read",
+        "crm.schemas.contacts.read",
+        "crm.schemas.companies.read",
+        "crm.schemas.deals.read"
+      ],
+      "optionalScopes": [
+        "crm.objects.calls.read",
+        "crm.objects.meetings.read",
+        "crm.objects.tasks.read",
+        "crm.schemas.custom.read"
+      ],
+      "conditionallyRequiredScopes": []
+    },
+    "permittedUrls": {
+      "fetch": [
+        "https://api.hubapi.com",
+        "https://api.hubspot.com",
+        "https://ops.dashboardtalentera.tech"
+      ],
+      "iframe": [],
+      "img": []
+    }
+  }
+}
