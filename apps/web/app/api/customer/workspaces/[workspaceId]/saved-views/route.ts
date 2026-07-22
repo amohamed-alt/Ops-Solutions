@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { API_URL, customerHeaders, requireCustomerWorkspace } from '../../../../session';
+import { API_URL, customerHeaders, requireCustomerWorkspace } from '../../../session';
 
 async function forward(request: NextRequest, workspaceId: string, method: 'GET' | 'POST') {
   const access = await requireCustomerWorkspace(request, workspaceId);
