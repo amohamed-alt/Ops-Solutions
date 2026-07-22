@@ -1,3 +1,5 @@
+import { Suspense } from 'react';
+
 import OnboardingClient from './OnboardingClient';
 
 export const dynamic = 'force-dynamic';
@@ -8,5 +10,5 @@ export const metadata = {
 };
 
 export default function OnboardingPage() {
-  return <OnboardingClient />;
+  return <Suspense fallback={<main className="onboarding-loading">Preparing your workspace…</main>}><OnboardingClient /></Suspense>;
 }
