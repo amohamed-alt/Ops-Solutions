@@ -2,7 +2,9 @@ import { postgres, withTransaction } from './database.js';
 import { getConnectionForWorkspace, getValidAccessToken, hubSpotGet } from './hubspot.js';
 import { buildMappingSuggestions } from './semantic.js';
 
-const STANDARD_OBJECT_TYPES = ['contacts', 'companies', 'deals'];
+const CORE_OBJECT_TYPES = ['contacts', 'companies', 'deals'];
+const ACTIVITY_OBJECT_TYPES = ['calls', 'meetings', 'tasks'];
+const DISCOVERABLE_OBJECT_TYPES = [...CORE_OBJECT_TYPES, ...ACTIVITY_OBJECT_TYPES];
 
 async function fetchProperties(accessToken, objectType) {
   const payload = await hubSpotGet(`/crm/properties/2026-03/${encodeURIComponent(objectType)}`, accessToken);
@@ -18,6 +20,21 @@ async function fetchProperties(accessToken, objectType) {
     options: property.options ?? [],
     raw: property
   }));
+}
+
+async function fetchOptionalActivityProperties(accessToken, objectType, warnings) {
+  try {
+    return await fetchProperties(accessToken, objectType);
+  } catch (error) {
+    if ([401, 403, 404].includes(error.statusCode)) {
+      warnings.push(
+        `${objectType} property discovery was skipped because this portal or token does not expose the activity schema.`
+      );
+      return [];
+    }
+
+    throw error;
+  }
 }
 
 async function fetchOwners(accessToken) {
@@ -269,8 +286,12 @@ export async function discoverWorkspacePortal(workspaceId) {
     const pipelinesByObject = {};
     const warnings = [];
 
-    for (const objectType of STANDARD_OBJECT_TYPES) {
+    for (const objectType of CORE_OBJECT_TYPES) {
       properties.push(...await fetchProperties(accessToken, objectType));
+    }
+
+    for (const objectType of ACTIVITY_OBJECT_TYPES) {
+      properties.push(...await fetchOptionalActivityProperties(accessToken, objectType, warnings));
     }
 
     const owners = await fetchOwners(accessToken);
@@ -291,16 +312,27 @@ export async function discoverWorkspacePortal(workspaceId) {
       }
     }
 
+    const propertiesByObject = Object.fromEntries(
+      DISCOVERABLE_OBJECT_TYPES
+        .filter((objectType) => properties.some((property) => property.object_type === objectType))
+        .map((objectType) => [
+          objectType,
+          properties.filter((property) => property.object_type === objectType).length
+        ])
+    );
+
+    for (const objectType of [...new Set(properties.map((property) => property.object_type))]) {
+      if (!(objectType in propertiesByObject)) {
+        propertiesByObject[objectType] = properties.filter(
+          (property) => property.object_type === objectType
+        ).length;
+      }
+    }
+
     const summary = {
       portalId: Number(connection.portal_id),
       properties: properties.length,
-      propertiesByObject: Object.fromEntries(
-        [...new Set(properties.map((property) => property.object_type))]
-          .map((objectType) => [
-            objectType,
-            properties.filter((property) => property.object_type === objectType).length
-          ])
-      ),
+      propertiesByObject,
       owners: owners.length,
       pipelines: Object.values(pipelinesByObject).reduce((total, items) => total + items.length, 0),
       customObjects: customResult.schemas.length,
