@@ -66,6 +66,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           npm install --no-audit --no-fund
+          node --test test/*.test.js
           npm run build > web-build.log 2>&1
 
       - name: Print web build diagnostics
