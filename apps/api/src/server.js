@@ -3,6 +3,11 @@ import Redis from 'ioredis';
 
 import { config, assertRuntimeConfiguration, getHubSpotConfigurationStatus } from './config.js';
 import { encryptSecret, hashValue, randomToken, secureStringEquals } from './crypto.js';
+import {
+  ensureCustomerAuthSchema,
+  registerCustomerAuthRoutes,
+  sanitizeReturnPath
+} from './customer-auth.js';
 import { postgres, runMigrations, withTransaction } from './database.js';
 import { discoverWorkspacePortal } from './discovery.js';
 import {
@@ -23,6 +28,8 @@ const app = Fastify({
       'req.headers.authorization',
       'req.headers.cookie',
       'req.headers.x-admin-key',
+      'req.headers.x-session-token',
+      'req.body.password',
       'req.query.code',
       'req.query.state',
       'DATABASE_URL',
@@ -105,7 +112,7 @@ async function checkDependencies() {
 app.get('/', async () => ({
   service: 'ops-solutions-api',
   status: 'running',
-  version: '0.3.0'
+  version: '0.4.0'
 }));
 
 app.get('/health', async (_request, reply) => {
@@ -130,8 +137,11 @@ app.get('/health', async (_request, reply) => {
 
 app.get('/api/v1/platform', async () => ({
   product: 'Ops Solutions',
-  stage: 'sync-operations',
+  stage: 'self-service-onboarding',
   capabilities: [
+    'customer accounts and secure sessions',
+    'tenant-scoped workspace memberships',
+    'self-service HubSpot OAuth onboarding',
     'workspace persistence',
     'encrypted HubSpot OAuth tokens',
     'portal schema discovery',
@@ -143,6 +153,8 @@ app.get('/api/v1/platform', async () => ({
   ],
   hubspot: getHubSpotConfigurationStatus()
 }));
+
+registerCustomerAuthRoutes(app, { postgres, withTransaction });
 
 app.get('/api/v1/workspaces', { preHandler: requireAdmin }, async () => {
   const result = await postgres.query(`
@@ -235,11 +247,12 @@ app.get('/api/v1/workspaces/:workspaceId/setup', { preHandler: requireAdmin }, a
 app.get('/api/v1/workspaces/:workspaceId/hubspot/oauth/start', { preHandler: requireAdmin }, async (request) => {
   const workspace = await requireWorkspace(request.params.workspaceId);
   const state = randomToken(32);
+  const redirectPath = sanitizeReturnPath(request.query?.returnTo, '/setup');
   await postgres.query('DELETE FROM oauth_states WHERE expires_at < NOW() OR consumed_at IS NOT NULL');
   await postgres.query(
-    `INSERT INTO oauth_states(state_hash, workspace_id, expires_at)
-     VALUES ($1, $2, NOW() + INTERVAL '10 minutes')`,
-    [hashValue(state), workspace.id]
+    `INSERT INTO oauth_states(state_hash, workspace_id, redirect_path, expires_at)
+     VALUES ($1, $2, $3, NOW() + INTERVAL '10 minutes')`,
+    [hashValue(state), workspace.id, redirectPath]
   );
   return { authorizationUrl: createAuthorizationUrl(state), expiresInSeconds: 600 };
 });
@@ -249,7 +262,9 @@ app.get('/api/v1/hubspot/oauth/callback', async (request, reply) => {
   const state = String(request.query?.state ?? '');
   const oauthError = String(request.query?.error ?? '');
   if (oauthError) {
-    return reply.code(400).send({ error: 'hubspot_authorization_denied', message: oauthError });
+    const redirectUrl = new URL('/onboarding', config.appUrl);
+    redirectUrl.searchParams.set('hubspot', 'denied');
+    return reply.redirect(redirectUrl.toString());
   }
   if (!code || !state) {
     return reply.code(400).send({
@@ -258,12 +273,12 @@ app.get('/api/v1/hubspot/oauth/callback', async (request, reply) => {
     });
   }
 
-  const workspaceId = await withTransaction(async (client) => {
+  const oauthContext = await withTransaction(async (client) => {
     const result = await client.query(
       `UPDATE oauth_states
        SET consumed_at = NOW()
        WHERE state_hash = $1 AND consumed_at IS NULL AND expires_at > NOW()
-       RETURNING workspace_id`,
+       RETURNING workspace_id, redirect_path`,
       [hashValue(state)]
     );
     if (result.rowCount === 0) {
@@ -271,9 +286,10 @@ app.get('/api/v1/hubspot/oauth/callback', async (request, reply) => {
       error.statusCode = 400;
       throw error;
     }
-    return result.rows[0].workspace_id;
+    return result.rows[0];
   });
 
+  const workspaceId = oauthContext.workspace_id;
   const tokenPayload = await exchangeAuthorizationCode(code);
   const portalId = Number(tokenPayload.hub_id);
   if (!Number.isSafeInteger(portalId) || !tokenPayload.access_token || !tokenPayload.refresh_token) {
@@ -309,7 +325,8 @@ app.get('/api/v1/hubspot/oauth/callback', async (request, reply) => {
     ]
   );
 
-  const redirectUrl = new URL(config.hubspot.successRedirectUri || '/setup', config.appUrl);
+  const redirectPath = sanitizeReturnPath(oauthContext.redirect_path, config.hubspot.successRedirectUri || '/setup');
+  const redirectUrl = new URL(redirectPath, config.appUrl);
   redirectUrl.searchParams.set('hubspot', 'connected');
   redirectUrl.searchParams.set('workspaceId', workspaceId);
   redirectUrl.searchParams.set('portalId', String(portalId));
@@ -471,6 +488,7 @@ try {
   await redis.connect();
   await postgres.query('SELECT 1');
   await runMigrations();
+  await ensureCustomerAuthSchema(postgres);
   await app.listen({ port: config.port, host: config.host });
 } catch (error) {
   app.log.fatal({ error }, 'API failed to start');
