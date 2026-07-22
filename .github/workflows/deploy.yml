@@ -17,7 +17,7 @@ jobs:
   deploy:
     name: Deploy production
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout repository
@@ -27,11 +27,11 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-
           if [[ ! -f docker-compose.prod.yml && ! -f docker-compose.yml ]]; then
             echo "Missing docker-compose.prod.yml or docker-compose.yml"
             exit 1
           fi
+          bash -n scripts/verify-production.sh
 
       - name: Configure SSH
         shell: bash
@@ -42,12 +42,10 @@ jobs:
           VPS_SSH_KEY_B64: ${{ secrets.VPS_SSH_KEY_B64 }}
         run: |
           set -Eeuo pipefail
-
           : "${VPS_HOST:?Missing VPS_HOST secret}"
           : "${VPS_PORT:?Missing VPS_PORT secret}"
 
           install -m 700 -d "$HOME/.ssh"
-
           if [[ -n "${VPS_SSH_KEY_B64:-}" ]]; then
             printf '%s' "$VPS_SSH_KEY_B64" | base64 --decode > "$HOME/.ssh/deploy_key"
           elif [[ -n "${VPS_SSH_KEY:-}" ]]; then
@@ -58,7 +56,6 @@ jobs:
           fi
 
           chmod 600 "$HOME/.ssh/deploy_key"
-
           if ! ssh-keygen -y -f "$HOME/.ssh/deploy_key" > /dev/null 2>&1; then
             echo "::error::The deployment SSH private key is invalid. Add VPS_SSH_KEY_B64 using a base64 encoded private key."
             exit 1
@@ -76,15 +73,9 @@ jobs:
           VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
         run: |
           set -Eeuo pipefail
-
           : "${VPS_USER:?Missing VPS_USER secret}"
           : "${VPS_DEPLOY_PATH:?Missing VPS_DEPLOY_PATH secret}"
-
-          ssh \
-            -i "$HOME/.ssh/deploy_key" \
-            -p "$VPS_PORT" \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
+          ssh -i "$HOME/.ssh/deploy_key" -p "$VPS_PORT" -o BatchMode=yes -o IdentitiesOnly=yes \
             "$VPS_USER@$VPS_HOST" \
             "mkdir -p '$VPS_DEPLOY_PATH' '$VPS_DEPLOY_PATH/.deploy-backups'"
 
@@ -97,24 +88,13 @@ jobs:
           VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
         run: |
           set -Eeuo pipefail
-
-          ssh \
-            -i "$HOME/.ssh/deploy_key" \
-            -p "$VPS_PORT" \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
+          ssh -i "$HOME/.ssh/deploy_key" -p "$VPS_PORT" -o BatchMode=yes -o IdentitiesOnly=yes \
             "$VPS_USER@$VPS_HOST" \
             "set -Eeuo pipefail; \
              if [ -f '$VPS_DEPLOY_PATH/docker-compose.yml' ] || [ -f '$VPS_DEPLOY_PATH/docker-compose.prod.yml' ]; then \
                timestamp=\$(date +%Y%m%d-%H%M%S); \
-               tar \
-                 --exclude='.deploy-backups' \
-                 --exclude='.env' \
-                 --exclude='node_modules' \
-                 --exclude='.next' \
-                 --exclude='dist' \
-                 -czf '$VPS_DEPLOY_PATH/.deploy-backups/release-'\"\$timestamp\"'.tar.gz' \
-                 -C '$VPS_DEPLOY_PATH' .; \
+               tar --exclude='.deploy-backups' --exclude='.env' --exclude='node_modules' --exclude='.next' --exclude='dist' \
+                 -czf '$VPS_DEPLOY_PATH/.deploy-backups/release-'\"\$timestamp\"'.tar.gz' -C '$VPS_DEPLOY_PATH' .; \
                find '$VPS_DEPLOY_PATH/.deploy-backups' -type f -name 'release-*.tar.gz' -mtime +7 -delete; \
              fi"
 
@@ -127,7 +107,6 @@ jobs:
           VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
         run: |
           set -Eeuo pipefail
-
           rsync \
             --archive \
             --compress \
@@ -157,35 +136,86 @@ jobs:
           VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
         run: |
           set -Eeuo pipefail
-
-          ssh \
-            -i "$HOME/.ssh/deploy_key" \
-            -p "$VPS_PORT" \
-            -o BatchMode=yes \
-            -o IdentitiesOnly=yes \
+          ssh -i "$HOME/.ssh/deploy_key" -p "$VPS_PORT" -o BatchMode=yes -o IdentitiesOnly=yes \
             "$VPS_USER@$VPS_HOST" \
             "set -Eeuo pipefail; \
              cd '$VPS_DEPLOY_PATH'; \
              docker --version; \
              docker compose version; \
-             if [ -f docker-compose.prod.yml ]; then \
-               compose_file='docker-compose.prod.yml'; \
-             else \
-               compose_file='docker-compose.yml'; \
-             fi; \
+             if [ -f docker-compose.prod.yml ]; then compose_file='docker-compose.prod.yml'; else compose_file='docker-compose.yml'; fi; \
              test -f .env || { echo 'Missing production .env at $VPS_DEPLOY_PATH/.env'; exit 1; }; \
              docker compose -f \"\$compose_file\" config --quiet; \
-             docker compose -f \"\$compose_file\" up \
-               --detach \
-               --build \
-               --remove-orphans \
-               --wait \
-               --wait-timeout 180; \
+             docker compose -f \"\$compose_file\" up --detach --build --remove-orphans --wait --wait-timeout 180; \
              docker compose -f \"\$compose_file\" ps; \
              docker image prune --force"
+
+      - name: Verify services inside the VPS
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+        run: |
+          set -Eeuo pipefail
+          ssh -i "$HOME/.ssh/deploy_key" -p "$VPS_PORT" -o BatchMode=yes -o IdentitiesOnly=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "set -Eeuo pipefail; \
+             cd '$VPS_DEPLOY_PATH'; \
+             chmod +x scripts/verify-production.sh; \
+             if [ -f docker-compose.prod.yml ]; then compose_file='docker-compose.prod.yml'; else compose_file='docker-compose.yml'; fi; \
+             COMPOSE_FILE=\"\$compose_file\" VERIFY_MODE=internal scripts/verify-production.sh"
+
+      - name: Verify public production routes
+        shell: bash
+        env:
+          PUBLIC_BASE_URL: https://ops.dashboardtalentera.tech
+          VERIFY_MODE: public
+          VERIFY_ATTEMPTS: 12
+          VERIFY_DELAY_SECONDS: 5
+        run: |
+          set -Eeuo pipefail
+          chmod +x scripts/verify-production.sh
+          scripts/verify-production.sh
+
+      - name: Capture deployment diagnostics
+        if: failure()
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+        run: |
+          set +e
+          {
+            echo "Deployment diagnostics generated at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "Commit: $GITHUB_SHA"
+            if [[ -f "$HOME/.ssh/deploy_key" && -n "${VPS_HOST:-}" && -n "${VPS_USER:-}" ]]; then
+              ssh -i "$HOME/.ssh/deploy_key" -p "$VPS_PORT" -o BatchMode=yes -o IdentitiesOnly=yes \
+                "$VPS_USER@$VPS_HOST" \
+                "cd '$VPS_DEPLOY_PATH' 2>/dev/null || exit 0; \
+                 if [ -f docker-compose.prod.yml ]; then compose_file='docker-compose.prod.yml'; else compose_file='docker-compose.yml'; fi; \
+                 echo '--- docker compose ps ---'; docker compose -f \"\$compose_file\" ps; \
+                 echo '--- api logs ---'; docker compose -f \"\$compose_file\" logs --tail=120 api; \
+                 echo '--- worker logs ---'; docker compose -f \"\$compose_file\" logs --tail=120 worker; \
+                 echo '--- web logs ---'; docker compose -f \"\$compose_file\" logs --tail=120 web" 2>&1
+            else
+              echo "SSH key or VPS connection values were unavailable."
+            fi
+          } > deployment-diagnostics.txt
+          cat deployment-diagnostics.txt
+
+      - name: Upload deployment diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-deployment-diagnostics-${{ github.run_id }}
+          path: deployment-diagnostics.txt
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Remove temporary SSH key
         if: always()
         shell: bash
-        run: |
-          rm -f "$HOME/.ssh/deploy_key"
+        run: rm -f "$HOME/.ssh/deploy_key"
