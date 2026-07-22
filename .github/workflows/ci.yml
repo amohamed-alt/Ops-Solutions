@@ -66,7 +66,12 @@ jobs:
         run: |
           set -Eeuo pipefail
           npm install --no-audit --no-fund
-          npm run build 2>&1 | tee web-build.log
+          npm run build > web-build.log 2>&1
+
+      - name: Print web build diagnostics
+        if: failure()
+        working-directory: apps/web
+        run: tail -n 160 web-build.log || true
 
       - name: Upload web build diagnostics
         if: always()
