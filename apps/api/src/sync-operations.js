@@ -1,5 +1,7 @@
 import { Queue } from 'bullmq';
 
+import { registerAnalyticsRoutes } from './analytics-runtime.js';
+
 const ALLOWED_MODES = new Set(['initial', 'incremental', 'full']);
 
 export function normalizeSyncMode(value) {
@@ -176,6 +178,12 @@ export function registerSyncOperationsRoutes(app, {
       jobName,
       jobId: String(job.id)
     });
+  });
+
+  registerAnalyticsRoutes(app, {
+    postgres,
+    requireAdmin,
+    requireWorkspace
   });
 
   return {
