@@ -1,3 +1,4 @@
+import { buildWorkspaceSlug, normalizeCompanyName, workspaceLimit } from './customer-workspaces.js';
 import { buildRevenueReportingPack, normalizeReportingFilters } from './revenue-reporting.js';
 
 const DATE_PRESETS = new Set([
@@ -197,6 +198,79 @@ export function registerCustomerReportExportRoutes(app, {
   requireWorkspace,
   writeAudit
 }) {
+  app.post(
+    '/api/v1/customer/workspaces/:workspaceId/companies',
+    { preHandler: requireViewer },
+    async (request, reply) => {
+      const name = normalizeCompanyName(request.body?.name ?? request.body?.companyName);
+      if (name.length < 2) {
+        return reply.code(400).send({
+          error: 'invalid_workspace',
+          message: 'Company name must be between 2 and 120 characters.'
+        });
+      }
+
+      const limit = workspaceLimit();
+      const countResult = await postgres.query(
+        'SELECT COUNT(*)::int AS count FROM workspace_memberships WHERE user_id = $1',
+        [request.customer.user.id]
+      );
+      if (Number(countResult.rows[0]?.count ?? 0) >= limit) {
+        return reply.code(409).send({
+          error: 'workspace_limit_reached',
+          message: `Your account can create up to ${limit} company workspaces.`
+        });
+      }
+
+      let result = null;
+      for (let attempt = 0; attempt < 5 && !result; attempt += 1) {
+        try {
+          result = await postgres.query(
+            `WITH created_workspace AS (
+               INSERT INTO workspaces(name, slug)
+               VALUES ($1, $2)
+               RETURNING id, name, slug, status, created_at, updated_at
+             ), created_membership AS (
+               INSERT INTO workspace_memberships(user_id, workspace_id, role)
+               SELECT $3, id, 'owner' FROM created_workspace
+               RETURNING workspace_id, role
+             )
+             SELECT w.id, w.name, w.slug, w.status, w.created_at, w.updated_at, m.role
+             FROM created_workspace w
+             JOIN created_membership m ON m.workspace_id = w.id`,
+            [name, buildWorkspaceSlug(name), request.customer.user.id]
+          );
+        } catch (error) {
+          if (error.code !== '23505' || attempt === 4) throw error;
+        }
+      }
+
+      const created = result.rows[0];
+      await writeAudit(request, {
+        workspaceId: created.id,
+        actorUserId: request.customer.user.id,
+        action: 'workspace.created',
+        targetType: 'workspace',
+        targetId: created.id,
+        metadata: { companyName: created.name, source: 'customer_self_service' }
+      });
+
+      return reply.code(201).send({
+        workspace: {
+          id: created.id,
+          name: created.name,
+          slug: created.slug,
+          status: created.status,
+          role: created.role,
+          portalId: null,
+          hubspotStatus: null,
+          lastDiscoveredAt: null
+        },
+        nextPath: `/onboarding?workspace=${created.id}`
+      });
+    }
+  );
+
   app.get(
     '/api/v1/customer/workspaces/:workspaceId/exports/revenue.csv',
     { preHandler: requireViewer },

@@ -107,11 +107,14 @@ test('enforces a Redis-backed per-user and workspace export limit', async () => 
   );
 });
 
-test('registers separate admin and customer-session export routes', () => {
+test('registers admin, customer export and self-service workspace routes', () => {
   const routes = [];
   const app = {
     get(path, options, handler) {
-      routes.push({ path, options, handler });
+      routes.push({ method: 'GET', path, options, handler });
+    },
+    post(path, options, handler) {
+      routes.push({ method: 'POST', path, options, handler });
     }
   };
   const requireAdmin = () => undefined;
@@ -127,10 +130,12 @@ test('registers separate admin and customer-session export routes', () => {
     requireViewer,
     writeAudit: async () => undefined
   });
-  assert.deepEqual(routes.map((route) => route.path), [
-    '/api/v1/workspaces/:workspaceId/analytics/revenue/export.csv',
-    '/api/v1/customer/workspaces/:workspaceId/exports/revenue.csv'
+  assert.deepEqual(routes.map((route) => `${route.method} ${route.path}`), [
+    'GET /api/v1/workspaces/:workspaceId/analytics/revenue/export.csv',
+    'POST /api/v1/customer/workspaces/:workspaceId/companies',
+    'GET /api/v1/customer/workspaces/:workspaceId/exports/revenue.csv'
   ]);
   assert.equal(routes[0].options.preHandler, requireAdmin);
   assert.equal(routes[1].options.preHandler, requireViewer);
+  assert.equal(routes[2].options.preHandler, requireViewer);
 });

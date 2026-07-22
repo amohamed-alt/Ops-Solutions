@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { API_URL, internalAdminHeaders, getCustomerContext } from '../session';
+import { API_URL, customerHeaders, internalAdminHeaders, getCustomerContext } from '../session';
 
 export async function GET(request: NextRequest) {
   const context = await getCustomerContext(request);
@@ -38,5 +38,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ user: context.user, results });
   } catch (error) {
     return NextResponse.json({ error: 'workspace_status_unavailable', message: error instanceof Error ? error.message : 'Unable to load workspace.' }, { status: 503 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  const context = await getCustomerContext(request);
+  const anchorWorkspace = context?.workspaces?.[0];
+  if (!context || !anchorWorkspace) {
+    return NextResponse.json({ error: 'session_required', message: 'Sign in to continue.' }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+    const response = await fetch(`${API_URL}/api/v1/customer/workspaces/${anchorWorkspace.id}/companies`, {
+      method: 'POST',
+      headers: customerHeaders(request),
+      body: JSON.stringify({ name: body?.name ?? body?.companyName }),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15_000)
+    });
+    const payload = await response.json();
+    return NextResponse.json(payload, { status: response.status });
+  } catch (error) {
+    return NextResponse.json({
+      error: 'workspace_creation_unavailable',
+      message: error instanceof Error ? error.message : 'Unable to create company workspace.'
+    }, { status: 503 });
   }
 }
