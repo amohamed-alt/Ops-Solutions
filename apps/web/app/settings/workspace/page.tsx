@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, AlertTriangle, Building2, CheckCircle2, Database, HardDriveDownload, LoaderCircle, PlugZap, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react';
-import { useSearchParams } from 'next/navigation';
 
 import styles from './workspace.module.css';
 
@@ -39,9 +38,8 @@ function title(value: string) {
 }
 
 export default function WorkspaceSettingsPage() {
-  const searchParams = useSearchParams();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [workspaceId, setWorkspaceId] = useState(searchParams.get('workspaceId') ?? '');
+  const [workspaceId, setWorkspaceId] = useState('');
   const [operations, setOperations] = useState<Operations | null>(null);
   const [busy, setBusy] = useState('');
   const [message, setMessage] = useState('');
@@ -71,8 +69,9 @@ export default function WorkspaceSettingsPage() {
         if (!response.ok) throw new Error('Sign in to manage workspace operations.');
         const payload = await response.json();
         const rows = (payload.workspaces ?? []) as Workspace[];
+        const requested = new URLSearchParams(window.location.search).get('workspaceId') ?? '';
         setWorkspaces(rows);
-        setWorkspaceId((current) => rows.some((item) => item.id === current) ? current : (rows[0]?.id ?? ''));
+        setWorkspaceId(rows.some((item) => item.id === requested) ? requested : (rows[0]?.id ?? ''));
       })
       .catch((error) => setMessage(error.message));
   }, []);
