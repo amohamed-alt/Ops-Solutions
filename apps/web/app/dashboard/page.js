@@ -1,17 +1,12 @@
-import DashboardClient from './DashboardClient';
-import styles from './page.module.css';
+import { Dashboard } from '@/components/sdr/Dashboard';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
-  title: 'Revenue Command Center · Ops Intelligence',
-  description: 'Live HubSpot revenue intelligence, pipeline health and SDR execution analytics.'
+  title: 'SDR Command Center · Ops Intelligence',
+  description: 'Live HubSpot SDR performance, attribution and operational intelligence.'
 };
 
 export default function DashboardPage() {
-  return (
-    <main className={`page-shell ${styles.shell}`}>
-      <DashboardClient />
-    </main>
-  );
+  return <Dashboard />;
 }
