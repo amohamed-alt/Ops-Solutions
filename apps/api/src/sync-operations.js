@@ -2,7 +2,6 @@ import { Queue } from 'bullmq';
 
 import { registerAnalyticsRoutes } from './analytics-runtime.js';
 import { registerRevenueReportingRoutes } from './revenue-reporting.js';
-import { registerSavedViewRoutes } from './saved-views.js';
 
 const ALLOWED_MODES = new Set(['initial', 'incremental', 'full']);
 
@@ -141,7 +140,6 @@ export function registerSyncOperationsRoutes(app, { postgres, redisUrl, requireA
 
   registerAnalyticsRoutes(app, { postgres, requireAdmin, requireWorkspace });
   registerRevenueReportingRoutes(app, { postgres, requireAdmin, requireWorkspace });
-  registerSavedViewRoutes(app, { postgres });
 
   return { close: () => queue.close() };
 }

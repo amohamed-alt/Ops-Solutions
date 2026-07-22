@@ -166,6 +166,40 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS oauth_states_expiry_idx
         ON oauth_states(expires_at);
     `
+  },
+  {
+    version: 2,
+    name: 'saved_reporting_views',
+    sql: `
+      CREATE TABLE IF NOT EXISTS saved_reporting_views (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        date_preset TEXT NOT NULL DEFAULT 'last_30_days',
+        filters JSONB NOT NULL DEFAULT '{}'::jsonb,
+        section TEXT NOT NULL DEFAULT 'overview',
+        widget_configuration JSONB,
+        is_default BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(workspace_id, user_id, name),
+        CHECK (date_preset IN ('today','yesterday','last_7_days','last_30_days','this_month','previous_month','this_quarter','this_year','custom')),
+        CHECK (section IN ('overview','activity','pipeline','sources','team','quality'))
+      );
+
+      ALTER TABLE saved_reporting_views
+        ADD COLUMN IF NOT EXISTS widget_configuration JSONB;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS saved_reporting_views_one_default_idx
+        ON saved_reporting_views(workspace_id, user_id)
+        WHERE is_default = TRUE;
+      CREATE INDEX IF NOT EXISTS saved_reporting_views_user_workspace_idx
+        ON saved_reporting_views(user_id, workspace_id, updated_at DESC);
+    `,
+    downSql: `
+      DROP TABLE IF EXISTS saved_reporting_views;
+    `
   }
 ];
 
@@ -309,7 +343,7 @@ async function seedSemanticFields(client) {
   }
 }
 
-export async function runMigrations() {
+export async function runMigrations({ throughVersion = Number.POSITIVE_INFINITY } = {}) {
   const client = await postgres.connect();
 
   try {
@@ -323,6 +357,7 @@ export async function runMigrations() {
     `);
 
     for (const migration of migrations) {
+      if (migration.version > throughVersion) continue;
       const existing = await client.query(
         'SELECT 1 FROM schema_migrations WHERE version = $1',
         [migration.version]
@@ -349,4 +384,9 @@ export async function runMigrations() {
     await client.query('SELECT pg_advisory_unlock(812341229)').catch(() => undefined);
     client.release();
   }
+}
+
+export function getMigrationRollbackSql(version) {
+  const migration = migrations.find((item) => item.version === Number(version));
+  return migration?.downSql ?? null;
 }

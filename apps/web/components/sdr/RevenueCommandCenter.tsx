@@ -8,6 +8,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   BarChart3,
+  Bookmark,
   BriefcaseBusiness,
   Building2,
   CalendarDays,
@@ -15,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleDollarSign,
+  Copy,
   Database,
   Filter,
   Gauge,
@@ -22,11 +24,15 @@ import {
   Layers3,
   ListTodo,
   Phone,
+  Pencil,
   RefreshCw,
   RotateCcw,
+  Save,
   Search,
   ShieldCheck,
+  Star,
   Target,
+  Trash2,
   TrendingUp,
   UsersRound,
   X,
@@ -59,6 +65,37 @@ type Filters = {
   pipelineId: string;
   stageId: string;
   leadSource: string;
+};
+
+type DatePreset =
+  | 'today'
+  | 'yesterday'
+  | 'last_7_days'
+  | 'last_30_days'
+  | 'this_month'
+  | 'previous_month'
+  | 'this_quarter'
+  | 'this_year'
+  | 'custom';
+
+type SavedView = {
+  id: string;
+  name: string;
+  datePreset: DatePreset;
+  filters: {
+    from?: string | null;
+    to?: string | null;
+    ownerId?: string | null;
+    country?: string | null;
+    leadSource?: string | null;
+    pipelineId?: string | null;
+    stageId?: string | null;
+  };
+  section: string;
+  widgetConfiguration: Record<string, unknown> | null;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type Comparison = {
@@ -174,15 +211,68 @@ const PIE_COLORS = [
   '#22c55e', '#f97316', '#64748b', '#ef4444', '#06b6d4', '#a855f7'
 ];
 
-function dateInput(daysAgo: number) {
-  const date = new Date();
-  date.setDate(date.getDate() - daysAgo);
-  return date.toISOString().slice(0, 10);
+function formatDateInput(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
+function rangeForPreset(preset: DatePreset, now = new Date()) {
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let start = new Date(end);
+  let to = new Date(end);
+
+  switch (preset) {
+    case 'today':
+      break;
+    case 'yesterday':
+      start.setDate(start.getDate() - 1);
+      to = new Date(start);
+      break;
+    case 'last_7_days':
+      start.setDate(start.getDate() - 6);
+      break;
+    case 'this_month':
+      start = new Date(end.getFullYear(), end.getMonth(), 1);
+      break;
+    case 'previous_month':
+      start = new Date(end.getFullYear(), end.getMonth() - 1, 1);
+      to = new Date(end.getFullYear(), end.getMonth(), 0);
+      break;
+    case 'this_quarter':
+      start = new Date(end.getFullYear(), Math.floor(end.getMonth() / 3) * 3, 1);
+      break;
+    case 'this_year':
+      start = new Date(end.getFullYear(), 0, 1);
+      break;
+    case 'last_30_days':
+    case 'custom':
+    default:
+      start.setDate(start.getDate() - 29);
+      break;
+  }
+  return { from: formatDateInput(start), to: formatDateInput(to) };
+}
+
+const DATE_PRESET_OPTIONS: Array<{ value: DatePreset; label: string }> = [
+  { value: 'today', label: 'Today' },
+  { value: 'yesterday', label: 'Yesterday' },
+  { value: 'last_7_days', label: 'Last 7 days' },
+  { value: 'last_30_days', label: 'Last 30 days' },
+  { value: 'this_month', label: 'This month' },
+  { value: 'previous_month', label: 'Previous month' },
+  { value: 'this_quarter', label: 'This quarter' },
+  { value: 'this_year', label: 'This year' },
+  { value: 'custom', label: 'Custom range' }
+];
+
+const DEFAULT_DATE_PRESET: DatePreset = 'last_30_days';
+const DEFAULT_DATE_RANGE = rangeForPreset(DEFAULT_DATE_PRESET);
+
 const DEFAULT_FILTERS: Filters = {
-  from: dateInput(29),
-  to: dateInput(0),
+  from: DEFAULT_DATE_RANGE.from,
+  to: DEFAULT_DATE_RANGE.to,
   ownerId: '',
   country: '',
   pipelineId: '',
@@ -217,6 +307,44 @@ function queryString(filters: Filters, extra: Record<string, string | number> = 
     if (String(value ?? '').trim()) params.set(key, String(value));
   }
   return params.toString();
+}
+
+function filtersFromSavedView(view: SavedView): Filters {
+  const range = view.datePreset === 'custom' && view.filters.from && view.filters.to
+    ? { from: view.filters.from, to: view.filters.to }
+    : rangeForPreset(view.datePreset);
+  return {
+    ...range,
+    ownerId: view.filters.ownerId ?? '',
+    country: view.filters.country ?? '',
+    pipelineId: view.filters.pipelineId ?? '',
+    stageId: view.filters.stageId ?? '',
+    leadSource: view.filters.leadSource ?? ''
+  };
+}
+
+function savedViewConfiguration(
+  name: string,
+  datePreset: DatePreset,
+  filters: Filters,
+  dashboardSection: string,
+  widgetConfiguration: Record<string, unknown> | null = null
+) {
+  return {
+    name,
+    datePreset,
+    filters: {
+      from: datePreset === 'custom' ? filters.from : '',
+      to: datePreset === 'custom' ? filters.to : '',
+      ownerId: filters.ownerId || null,
+      country: filters.country || null,
+      leadSource: filters.leadSource || null,
+      pipelineId: filters.pipelineId || null,
+      stageId: filters.stageId || null
+    },
+    section: dashboardSection,
+    widgetConfiguration
+  };
 }
 
 function Delta({ comparison }: { comparison?: Comparison }) {
@@ -416,12 +544,24 @@ export function RevenueCommandCenter() {
   const [payload, setPayload] = useState<RevenuePayload | null>(null);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [draft, setDraft] = useState<Filters>(DEFAULT_FILTERS);
+  const [datePreset, setDatePreset] = useState<DatePreset>(DEFAULT_DATE_PRESET);
+  const [appliedDatePreset, setAppliedDatePreset] = useState<DatePreset>(DEFAULT_DATE_PRESET);
   const [filterOpen, setFilterOpen] = useState(true);
   const [message, setMessage] = useState('');
   const [initialized, setInitialized] = useState(false);
   const [drilldown, setDrilldown] = useState<Drilldown | null>(null);
   const [drillTitle, setDrillTitle] = useState('Report details');
   const [drillKey, setDrillKey] = useState('');
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  const [viewsOpen, setViewsOpen] = useState(false);
+  const [viewsLoading, setViewsLoading] = useState(false);
+  const [viewBusyId, setViewBusyId] = useState('');
+  const [viewName, setViewName] = useState('');
+  const [viewError, setViewError] = useState('');
+  const [activeViewId, setActiveViewId] = useState('');
+  const [editingViewId, setEditingViewId] = useState('');
+  const [editingViewName, setEditingViewName] = useState('');
+  const [dashboardSection, setDashboardSection] = useState('overview');
   const [isPending, startTransition] = useTransition();
 
   const selectedState = useMemo(
@@ -459,6 +599,50 @@ export function RevenueCommandCenter() {
     setPayload(result as RevenuePayload);
   }
 
+  async function readSavedViews(workspaceId: string): Promise<SavedView[]> {
+    const response = await fetch(`/api/customer/workspaces/${workspaceId}/saved-views`, { cache: 'no-store' });
+    const result = await response.json();
+    if (response.status === 401) {
+      router.replace('/onboarding');
+      return [];
+    }
+    if (!response.ok) throw new Error(result.message || 'Unable to load saved report views.');
+    return (result.results ?? []) as SavedView[];
+  }
+
+  async function savedViewRequest(path: string, init: RequestInit): Promise<SavedView | null> {
+    const response = await fetch(path, {
+      ...init,
+      headers: { 'content-type': 'application/json', ...(init.headers ?? {}) },
+      cache: 'no-store'
+    });
+    if (response.status === 401) {
+      router.replace('/onboarding');
+      throw new Error('Your session expired. Sign in to continue.');
+    }
+    if (response.status === 204) return null;
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.message || 'Unable to update the saved view.');
+    return result as SavedView;
+  }
+
+  function mergeSavedView(nextView: SavedView) {
+    setSavedViews((current) => [
+      nextView,
+      ...current
+        .filter((view) => view.id !== nextView.id)
+        .map((view) => nextView.isDefault ? { ...view, isDefault: false } : view)
+    ]);
+  }
+
+  function navigateToSection(section: string, behavior: ScrollBehavior = 'smooth') {
+    const safeSection = NAVIGATION.some((item) => item.id === section) ? section : 'overview';
+    setDashboardSection(safeSection);
+    window.setTimeout(() => {
+      document.getElementById(safeSection)?.scrollIntoView({ behavior, block: 'start' });
+    }, 0);
+  }
+
   useEffect(() => {
     let active = true;
     transition(async () => {
@@ -472,11 +656,31 @@ export function RevenueCommandCenter() {
         }
         setWorkspaces(rows);
         setSelectedId(workspaceId);
-        await readReport(workspaceId, DEFAULT_FILTERS);
+        setViewsLoading(true);
+        const views = await readSavedViews(workspaceId).catch((error) => {
+          setViewError(error instanceof Error ? error.message : 'Unable to load saved report views.');
+          return [];
+        });
+        if (!active) return;
+        setSavedViews(views);
+        const defaultView = views.find((view) => view.isDefault);
+        const initialFilters = defaultView ? filtersFromSavedView(defaultView) : DEFAULT_FILTERS;
+        const initialPreset = defaultView?.datePreset ?? DEFAULT_DATE_PRESET;
+        setActiveViewId(defaultView?.id ?? '');
+        setDashboardSection(defaultView?.section ?? 'overview');
+        setDatePreset(initialPreset);
+        setAppliedDatePreset(initialPreset);
+        setFilters(initialFilters);
+        setDraft(initialFilters);
+        await readReport(workspaceId, initialFilters);
+        if (defaultView) navigateToSection(defaultView.section, 'auto');
       } catch (error) {
         if (active) setMessage(error instanceof Error ? error.message : 'Unable to open reports.');
       } finally {
-        if (active) setInitialized(true);
+        if (active) {
+          setViewsLoading(false);
+          setInitialized(true);
+        }
       }
     });
     return () => { active = false; };
@@ -488,23 +692,52 @@ export function RevenueCommandCenter() {
     setPayload(null);
     setDrilldown(null);
     setMessage('');
+    setViewError('');
+    setActiveViewId('');
+    setSavedViews([]);
+    setViewsLoading(true);
     transition(async () => {
       try {
-        await readReport(workspaceId, filters);
+        const views = await readSavedViews(workspaceId).catch((error) => {
+          setViewError(error instanceof Error ? error.message : 'Unable to load saved report views.');
+          return [];
+        });
+        setSavedViews(views);
+        const defaultView = views.find((view) => view.isDefault);
+        const nextFilters = defaultView ? filtersFromSavedView(defaultView) : DEFAULT_FILTERS;
+        setActiveViewId(defaultView?.id ?? '');
+        setDashboardSection(defaultView?.section ?? 'overview');
+        setDatePreset(defaultView?.datePreset ?? DEFAULT_DATE_PRESET);
+        setAppliedDatePreset(defaultView?.datePreset ?? DEFAULT_DATE_PRESET);
+        setFilters(nextFilters);
+        setDraft(nextFilters);
+        await readReport(workspaceId, nextFilters);
+        if (defaultView) navigateToSection(defaultView.section, 'auto');
       } catch (error) {
         setMessage(error instanceof Error ? error.message : 'Unable to load this workspace.');
+      } finally {
+        setViewsLoading(false);
       }
     });
   }
 
   function applyFilters() {
     if (!selectedId) return;
-    setFilters(draft);
+    const nextFilters = datePreset === 'custom'
+      ? draft
+      : { ...draft, ...rangeForPreset(datePreset) };
+    if (!nextFilters.from || !nextFilters.to || nextFilters.from > nextFilters.to) {
+      setMessage('Choose a valid reporting start and end date.');
+      return;
+    }
+    setDraft(nextFilters);
+    setFilters(nextFilters);
+    setAppliedDatePreset(datePreset);
     setDrilldown(null);
     setMessage('');
     transition(async () => {
       try {
-        await readReport(selectedId, draft);
+        await readReport(selectedId, nextFilters);
       } catch (error) {
         setMessage(error instanceof Error ? error.message : 'Unable to apply reporting filters.');
       }
@@ -514,6 +747,10 @@ export function RevenueCommandCenter() {
   function resetFilters() {
     setDraft(DEFAULT_FILTERS);
     setFilters(DEFAULT_FILTERS);
+    setDatePreset(DEFAULT_DATE_PRESET);
+    setAppliedDatePreset(DEFAULT_DATE_PRESET);
+    setActiveViewId('');
+    setDashboardSection('overview');
     setDrilldown(null);
     if (!selectedId) return;
     transition(async () => {
@@ -537,6 +774,155 @@ export function RevenueCommandCenter() {
         setMessage(error instanceof Error ? error.message : 'Unable to refresh reports.');
       }
     });
+  }
+
+  function changeDatePreset(nextPreset: DatePreset) {
+    setDatePreset(nextPreset);
+    if (nextPreset !== 'custom') setDraft((current) => ({ ...current, ...rangeForPreset(nextPreset) }));
+  }
+
+  async function createView() {
+    const name = viewName.trim().replace(/\s+/g, ' ');
+    if (!name || name.length > 80) {
+      setViewError('Enter a view name between 1 and 80 characters.');
+      return;
+    }
+    if (!selectedId) return;
+    setViewBusyId('create');
+    setViewError('');
+    try {
+      const created = await savedViewRequest(`/api/customer/workspaces/${selectedId}/saved-views`, {
+        method: 'POST',
+        body: JSON.stringify(savedViewConfiguration(name, appliedDatePreset, filters, dashboardSection))
+      });
+      if (created) {
+        mergeSavedView(created);
+        setActiveViewId(created.id);
+        setViewName('');
+      }
+    } catch (error) {
+      setViewError(error instanceof Error ? error.message : 'Unable to save this reporting view.');
+    } finally {
+      setViewBusyId('');
+    }
+  }
+
+  async function updateActiveView() {
+    const activeView = savedViews.find((view) => view.id === activeViewId);
+    if (!activeView || !selectedId) return;
+    setViewBusyId(activeView.id);
+    setViewError('');
+    try {
+      const updated = await savedViewRequest(`/api/customer/workspaces/${selectedId}/saved-views/${activeView.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(savedViewConfiguration(
+          activeView.name,
+          appliedDatePreset,
+          filters,
+          dashboardSection,
+          activeView.widgetConfiguration
+        ))
+      });
+      if (updated) mergeSavedView(updated);
+    } catch (error) {
+      setViewError(error instanceof Error ? error.message : 'Unable to update the saved view.');
+    } finally {
+      setViewBusyId('');
+    }
+  }
+
+  async function applySavedView(view: SavedView) {
+    if (!selectedId) return;
+    const nextFilters = filtersFromSavedView(view);
+    setViewBusyId(view.id);
+    setViewError('');
+    setMessage('');
+    try {
+      await readReport(selectedId, nextFilters);
+      setFilters(nextFilters);
+      setDraft(nextFilters);
+      setDatePreset(view.datePreset);
+      setAppliedDatePreset(view.datePreset);
+      setActiveViewId(view.id);
+      setViewsOpen(false);
+      navigateToSection(view.section);
+    } catch (error) {
+      setViewError(error instanceof Error ? error.message : 'Unable to apply the saved view.');
+    } finally {
+      setViewBusyId('');
+    }
+  }
+
+  async function renameView(view: SavedView) {
+    const name = editingViewName.trim().replace(/\s+/g, ' ');
+    if (!name || name.length > 80 || !selectedId) {
+      setViewError('Enter a view name between 1 and 80 characters.');
+      return;
+    }
+    setViewBusyId(view.id);
+    setViewError('');
+    try {
+      const updated = await savedViewRequest(`/api/customer/workspaces/${selectedId}/saved-views/${view.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name })
+      });
+      if (updated) mergeSavedView(updated);
+      setEditingViewId('');
+      setEditingViewName('');
+    } catch (error) {
+      setViewError(error instanceof Error ? error.message : 'Unable to rename the saved view.');
+    } finally {
+      setViewBusyId('');
+    }
+  }
+
+  async function duplicateView(view: SavedView) {
+    if (!selectedId) return;
+    setViewBusyId(view.id);
+    setViewError('');
+    try {
+      const duplicated = await savedViewRequest(
+        `/api/customer/workspaces/${selectedId}/saved-views/${view.id}/duplicate`,
+        { method: 'POST', body: '{}' }
+      );
+      if (duplicated) mergeSavedView(duplicated);
+    } catch (error) {
+      setViewError(error instanceof Error ? error.message : 'Unable to duplicate the saved view.');
+    } finally {
+      setViewBusyId('');
+    }
+  }
+
+  async function toggleDefaultView(view: SavedView) {
+    if (!selectedId) return;
+    setViewBusyId(view.id);
+    setViewError('');
+    try {
+      const updated = await savedViewRequest(`/api/customer/workspaces/${selectedId}/saved-views/${view.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isDefault: !view.isDefault })
+      });
+      if (updated) mergeSavedView(updated);
+    } catch (error) {
+      setViewError(error instanceof Error ? error.message : 'Unable to change the default view.');
+    } finally {
+      setViewBusyId('');
+    }
+  }
+
+  async function removeView(view: SavedView) {
+    if (!selectedId || !window.confirm(`Delete “${view.name}”? This cannot be undone.`)) return;
+    setViewBusyId(view.id);
+    setViewError('');
+    try {
+      await savedViewRequest(`/api/customer/workspaces/${selectedId}/saved-views/${view.id}`, { method: 'DELETE' });
+      setSavedViews((current) => current.filter((item) => item.id !== view.id));
+      if (activeViewId === view.id) setActiveViewId('');
+    } catch (error) {
+      setViewError(error instanceof Error ? error.message : 'Unable to delete the saved view.');
+    } finally {
+      setViewBusyId('');
+    }
   }
 
   function loadDrilldown(key: string, title: string, offset = 0) {
@@ -617,7 +1003,7 @@ export function RevenueCommandCenter() {
         <div className="ric-nav-label">COMMAND CENTER</div>
         <nav>
           {NAVIGATION.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+            <button key={id} className={dashboardSection === id ? 'active' : ''} onClick={() => navigateToSection(id)}>
               <Icon size={16} /><span>{label}</span><ChevronRight size={14} />
             </button>
           ))}
@@ -648,12 +1034,73 @@ export function RevenueCommandCenter() {
         <div><strong>Revenue Command Center</strong><span>{report.filters.from} → {report.filters.to} · {report.filters.days} days</span></div>
         <div>
           <span className="ric-live"><i />LIVE · HUBSPOT</span>
+          <button className={viewsOpen ? 'active' : ''} onClick={() => { setViewsOpen((value) => !value); setViewError(''); }}>
+            <Bookmark size={16} />Views{activeViewId ? <i className="ric-view-dot" /> : null}
+          </button>
           <button className={filterOpen ? 'active' : ''} onClick={() => setFilterOpen((value) => !value)}><Filter size={16} />Filters</button>
           <button className="primary" onClick={refresh} disabled={isPending}><RefreshCw size={16} className={isPending ? 'ric-spin' : ''} />{isPending ? 'Refreshing' : 'Refresh'}</button>
         </div>
       </header>
 
       <section className="ric-content">
+        {viewsOpen ? (
+          <section className="ric-views-panel" aria-label="Saved reporting views">
+            <header>
+              <div><span>SAVED REPORTING VIEWS</span><h2>Return to the exact report you need.</h2><p>Views are private to your account inside {workspace.name}.</p></div>
+              {activeViewId ? (
+                <button onClick={updateActiveView} disabled={Boolean(viewBusyId)}>
+                  <Save size={15} />{viewBusyId === activeViewId ? 'Updating' : 'Update active view'}
+                </button>
+              ) : null}
+            </header>
+            <form onSubmit={(event) => { event.preventDefault(); void createView(); }}>
+              <label htmlFor="saved-view-name">Save current report</label>
+              <div>
+                <input
+                  id="saved-view-name"
+                  value={viewName}
+                  onChange={(event) => setViewName(event.target.value)}
+                  placeholder="e.g. UAE pipeline review"
+                  maxLength={80}
+                  disabled={viewBusyId === 'create'}
+                />
+                <button type="submit" className="primary" disabled={viewBusyId === 'create'}>
+                  <Bookmark size={15} />{viewBusyId === 'create' ? 'Saving' : 'Save view'}
+                </button>
+              </div>
+            </form>
+            {viewError ? <div className="ric-view-error" role="alert">{viewError}</div> : null}
+            <div className="ric-view-list">
+              {viewsLoading ? <div className="ric-view-state"><RefreshCw className="ric-spin" size={18} />Loading saved views…</div> : null}
+              {!viewsLoading && savedViews.length === 0 ? (
+                <div className="ric-view-state"><Bookmark size={19} /><strong>No saved views yet</strong><span>Choose filters, apply them, then save this report.</span></div>
+              ) : null}
+              {!viewsLoading ? savedViews.map((view) => (
+                <article key={view.id} className={activeViewId === view.id ? 'active' : ''}>
+                  {editingViewId === view.id ? (
+                    <form onSubmit={(event) => { event.preventDefault(); void renameView(view); }} className="ric-view-rename">
+                      <input value={editingViewName} onChange={(event) => setEditingViewName(event.target.value)} maxLength={80} autoFocus />
+                      <button type="submit" disabled={viewBusyId === view.id}>Save</button>
+                      <button type="button" onClick={() => { setEditingViewId(''); setEditingViewName(''); }}>Cancel</button>
+                    </form>
+                  ) : (
+                    <button className="ric-view-main" onClick={() => void applySavedView(view)} disabled={Boolean(viewBusyId)}>
+                      <span><strong>{view.name}</strong><small>{DATE_PRESET_OPTIONS.find((item) => item.value === view.datePreset)?.label ?? 'Custom range'} · {titleCase(view.section)}</small></span>
+                      {view.isDefault ? <b><Star size={11} fill="currentColor" />Default</b> : null}
+                    </button>
+                  )}
+                  {editingViewId !== view.id ? <div className="ric-view-actions">
+                    <button onClick={() => void toggleDefaultView(view)} disabled={Boolean(viewBusyId)} title={view.isDefault ? 'Remove default' : 'Set as default'} aria-label={view.isDefault ? 'Remove default view' : 'Set as default view'}><Star size={14} fill={view.isDefault ? 'currentColor' : 'none'} /></button>
+                    <button onClick={() => void duplicateView(view)} disabled={Boolean(viewBusyId)} title="Duplicate view" aria-label="Duplicate view"><Copy size={14} /></button>
+                    <button onClick={() => { setEditingViewId(view.id); setEditingViewName(view.name); setViewError(''); }} disabled={Boolean(viewBusyId)} title="Rename view" aria-label="Rename view"><Pencil size={14} /></button>
+                    <button onClick={() => void removeView(view)} disabled={Boolean(viewBusyId)} title="Delete view" aria-label="Delete view"><Trash2 size={14} /></button>
+                  </div> : null}
+                </article>
+              )) : null}
+            </div>
+          </section>
+        ) : null}
+
         <section className="ric-heading" id="overview">
           <div><span>EXECUTIVE INTELLIGENCE</span><h1>See the whole revenue operation.</h1><p>{executiveInsight}</p></div>
           <div className="ric-score"><ShieldCheck size={20} /><div><strong>{percentage(report.dataQuality.score)}</strong><span>CRM quality score</span></div></div>
@@ -661,8 +1108,9 @@ export function RevenueCommandCenter() {
 
         {filterOpen ? (
           <section className="ric-filterbar">
-            <label><span>From</span><input type="date" value={draft.from} onChange={(event) => setDraft({ ...draft, from: event.target.value })} /></label>
-            <label><span>To</span><input type="date" value={draft.to} onChange={(event) => setDraft({ ...draft, to: event.target.value })} /></label>
+            <label><span>Date window</span><select value={datePreset} onChange={(event) => changeDatePreset(event.target.value as DatePreset)}>{DATE_PRESET_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+            <label><span>From</span><input type="date" value={draft.from} disabled={datePreset !== 'custom'} onChange={(event) => setDraft({ ...draft, from: event.target.value })} /></label>
+            <label><span>To</span><input type="date" value={draft.to} disabled={datePreset !== 'custom'} onChange={(event) => setDraft({ ...draft, to: event.target.value })} /></label>
             <label><span>Owner</span><select value={draft.ownerId} onChange={(event) => setDraft({ ...draft, ownerId: event.target.value })}><option value="">All owners</option>{report.filterOptions.owners.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select></label>
             <label><span>Country</span><select value={draft.country} onChange={(event) => setDraft({ ...draft, country: event.target.value })}><option value="">All countries</option>{report.filterOptions.countries.map((row) => <option key={row.value} value={row.value}>{titleCase(row.value)} · {integer(row.count)}</option>)}</select></label>
             <label><span>Pipeline</span><select value={draft.pipelineId} onChange={(event) => setDraft({ ...draft, pipelineId: event.target.value, stageId: '' })}><option value="">All pipelines</option>{report.filterOptions.pipelines.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select></label>

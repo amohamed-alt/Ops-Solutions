@@ -9,12 +9,12 @@ async function forward(request: NextRequest, workspaceId: string, viewId: string
     const response = await fetch(`${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/saved-views/${encodeURIComponent(viewId)}`, {
       method,
       headers: customerHeaders(request),
-      body: method === 'PATCH' ? JSON.stringify(await request.json()) : undefined,
+      body: method === 'PATCH' ? JSON.stringify(await request.json().catch(() => ({}))) : undefined,
       cache: 'no-store',
       signal: AbortSignal.timeout(15_000)
     });
     if (response.status === 204) return new NextResponse(null, { status: 204 });
-    return NextResponse.json(await response.json(), { status: response.status });
+    return NextResponse.json(await response.json().catch(() => ({})), { status: response.status });
   } catch (error) {
     return NextResponse.json({ error: 'saved_view_unavailable', message: error instanceof Error ? error.message : 'Saved view is unavailable.' }, { status: 503 });
   }
