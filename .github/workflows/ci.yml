@@ -37,7 +37,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           npm install --no-audit --no-fund
-          for file in src/*.js; do node --check "$file"; done
+          for file in src/*.js test/*.js; do node --check "$file"; done
+          npm test
 
       - name: Validate HubSpot developer project
         run: |
