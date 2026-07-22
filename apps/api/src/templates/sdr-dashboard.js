@@ -1,8 +1,8 @@
 export const sdrDashboardTemplate = Object.freeze({
   key: 'sdr-foundation-v1',
   name: 'Smart SDR Dashboard',
-  version: 2,
-  description: 'A mapping-aware SDR dashboard for HubSpot contacts, deals, calls and meetings.',
+  version: 3,
+  description: 'A mapping-aware SDR command center for HubSpot contacts, companies, deals, calls, meetings and tasks.',
   requiredSemanticFields: ['lead_quality'],
   optionalSemanticFields: ['country', 'market', 'lead_source'],
   virtualProperties: [
@@ -159,7 +159,10 @@ export const sdrDashboardTemplate = Object.freeze({
           }
         ]
       },
-      columns: ['firstname', 'lastname', 'email', 'phone', 'hubspot_owner_id', 'notes_last_contacted']
+      columns: [
+        'firstname', 'lastname', 'email', 'phone', 'company', 'country',
+        'hubspot_owner_id', 'hs_lead_status', 'notes_last_contacted'
+      ]
     }
   ]
 });

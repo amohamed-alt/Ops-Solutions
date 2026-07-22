@@ -4,28 +4,6 @@ import { useMemo, useState, useTransition } from 'react';
 
 import styles from './page.module.css';
 
-const KPI_KEYS = [
-  'total_contacts',
-  'high_priority_contacts',
-  'calls_last_30_days',
-  'meetings_last_30_days',
-  'open_pipeline',
-  'deals_at_risk',
-  'untouched_contacts',
-  'stale_contacts'
-];
-
-const KPI_META = {
-  total_contacts: { label: 'Portfolio contacts', eyebrow: 'Reach', icon: '◎', tone: '#7c6cf2' },
-  high_priority_contacts: { label: 'Priority leads', eyebrow: 'Intent', icon: '◆', tone: '#f472b6' },
-  calls_last_30_days: { label: 'Calls', eyebrow: 'Last 30 days', icon: '↗', tone: '#38bdf8' },
-  meetings_last_30_days: { label: 'Meetings', eyebrow: 'Last 30 days', icon: '◇', tone: '#34d399' },
-  open_pipeline: { label: 'Open pipeline', eyebrow: 'Portal currency', icon: '◈', tone: '#a78bfa' },
-  deals_at_risk: { label: 'Deals at risk', eyebrow: 'Needs action', icon: '!', tone: '#fb7185' },
-  untouched_contacts: { label: 'Untouched leads', eyebrow: '2+ days', icon: '○', tone: '#fbbf24' },
-  stale_contacts: { label: 'Stale leads', eyebrow: '21+ days', icon: '⌁', tone: '#fb923c' }
-};
-
 function number(value) {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(Number(value ?? 0));
 }
@@ -40,6 +18,14 @@ function date(value) {
   return Number.isNaN(parsed.getTime())
     ? 'No data yet'
     : new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
+}
+
+function shortDate(value) {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? '—'
+    : new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' }).format(parsed);
 }
 
 function timeAgo(value) {
@@ -64,84 +50,145 @@ function initials(name) {
     .toUpperCase();
 }
 
+function humanize(value) {
+  return String(value || 'Unknown')
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 function metricValue(metrics, key) {
   const metric = metrics?.[key];
   return metric?.status === 'ready' ? Number(metric.value ?? 0) : 0;
 }
 
-function percentage(value) {
+function percent(value) {
   return `${Math.max(0, Math.min(100, Number(value || 0))).toFixed(1)}%`;
 }
 
-function MetricCard({ metricKey, metric }) {
-  const meta = KPI_META[metricKey];
-  const ready = metric?.status === 'ready';
-  const monetary = metricKey === 'open_pipeline';
-  const displayValue = ready ? (monetary ? compact(metric.value) : number(metric.value)) : '—';
-
+function MetricCard({ label, hint, value, icon, tone = 'teal', compactValue = false, footer }) {
   return (
-    <article className={`${styles.metricCard} ${!ready ? styles.metricMuted : ''}`} style={{ '--tone': meta.tone }}>
-      <div className={styles.metricTop}>
-        <span className={styles.metricIcon}>{meta.icon}</span>
-        <span className={styles.metricEyebrow}>{meta.eyebrow}</span>
+    <article className={`${styles.metricCard} ${styles[`tone${tone}`] || ''}`}>
+      <div className={styles.metricHeader}>
+        <span>{label}</span>
+        <i>{icon}</i>
       </div>
-      <strong>{displayValue}</strong>
-      <div className={styles.metricBottom}>
-        <span>{meta.label}</span>
-        <small>{ready ? 'Live CRM data' : 'Mapping required'}</small>
-      </div>
+      <strong>{compactValue ? compact(value) : number(value)}</strong>
+      <small>{footer || hint}</small>
+      <div className={styles.metricCorner} />
     </article>
   );
 }
 
-function RingChart({ value, label, detail }) {
-  const safeValue = Math.max(0, Math.min(100, Number(value || 0)));
+function ExecutionChart({ rows }) {
+  const width = 760;
+  const height = 270;
+  const padX = 44;
+  const padY = 30;
+  const safeRows = rows?.length ? rows : [];
+  const max = Math.max(1, ...safeRows.flatMap((row) => [row.calls, row.meetings, row.tasks]));
+  const point = (value, index) => {
+    const denominator = Math.max(1, safeRows.length - 1);
+    const x = padX + (index / denominator) * (width - padX * 2);
+    const y = height - padY - (Number(value || 0) / max) * (height - padY * 2);
+    return `${x},${y}`;
+  };
+  const series = [
+    { key: 'calls', label: 'Calls', color: '#0f766e' },
+    { key: 'tasks', label: 'Tasks', color: '#f59e0b' },
+    { key: 'meetings', label: 'Meetings', color: '#4f46e5' }
+  ];
+
+  if (!safeRows.length) {
+    return <div className={styles.chartEmpty}>Activity history will appear after the next successful synchronization.</div>;
+  }
+
   return (
-    <div className={styles.ringWrap}>
-      <div className={styles.ring} style={{ '--progress': `${safeValue * 3.6}deg` }}>
-        <div>
-          <strong>{safeValue.toFixed(1)}%</strong>
-          <span>{label}</span>
-        </div>
+    <div className={styles.executionChart}>
+      <div className={styles.chartLegend}>
+        {series.map((item) => <span key={item.key}><i style={{ background: item.color }} />{item.label}</span>)}
       </div>
-      <p>{detail}</p>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Daily SDR execution over the last 21 days">
+        {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+          const y = height - padY - ratio * (height - padY * 2);
+          return <line key={ratio} x1={padX} x2={width - padX} y1={y} y2={y} className={styles.gridLine} />;
+        })}
+        {series.map((item) => (
+          <polyline
+            key={item.key}
+            points={safeRows.map((row, index) => point(row[item.key], index)).join(' ')}
+            fill="none"
+            stroke={item.color}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
+        {safeRows.map((row, index) => index % 4 === 0 || index === safeRows.length - 1 ? (
+          <text key={row.day} x={point(0, index).split(',')[0]} y={height - 6} textAnchor="middle" className={styles.axisLabel}>
+            {String(row.day).slice(5)}
+          </text>
+        ) : null)}
+      </svg>
     </div>
   );
 }
 
-function MiniBars({ values }) {
-  const max = Math.max(1, ...values.map((item) => Number(item.value || 0)));
+function ConversionFunnel({ rows }) {
+  const safeRows = rows?.length ? rows : [];
+  const max = Math.max(1, ...safeRows.map((row) => Number(row.value || 0)));
+  const colors = ['#0f766e', '#16a34a', '#f59e0b', '#2563eb', '#7c3aed'];
+
+  if (!safeRows.length) return <div className={styles.chartEmpty}>Funnel data is not available yet.</div>;
+
   return (
-    <div className={styles.miniBars} aria-label="CRM record volume">
-      {values.map((item) => (
-        <div key={item.label} title={`${item.label}: ${number(item.value)}`}>
-          <i style={{ height: `${Math.max(8, (Number(item.value || 0) / max) * 100)}%` }} />
-          <span>{item.short}</span>
+    <div className={styles.funnelWrap}>
+      <div className={styles.funnelVisual}>
+        {safeRows.map((row, index) => {
+          const width = Math.max(20, (Number(row.value || 0) / max) * 100);
+          return (
+            <div
+              key={row.key}
+              className={styles.funnelStage}
+              style={{ width: `${width}%`, background: colors[index % colors.length] }}
+              title={`${row.label}: ${number(row.value)}`}
+            />
+          );
+        })}
+      </div>
+      <div className={styles.funnelLegend}>
+        {safeRows.map((row, index) => (
+          <div key={row.key}><i style={{ background: colors[index % colors.length] }} /><span>{row.label}</span><strong>{compact(row.value)}</strong></div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LeadStatusChart({ rows }) {
+  const safeRows = rows?.length ? rows : [];
+  const max = Math.max(1, ...safeRows.map((row) => Number(row.value || 0)));
+  if (!safeRows.length) return <div className={styles.chartEmpty}>Lead status values will appear after contact synchronization.</div>;
+
+  return (
+    <div className={styles.statusChart}>
+      {safeRows.map((row) => (
+        <div key={row.key}>
+          <span title={humanize(row.key)}>{humanize(row.key)}</span>
+          <div><i style={{ width: `${Math.max(2, (Number(row.value || 0) / max) * 100)}%` }} /></div>
+          <strong>{number(row.value)}</strong>
         </div>
       ))}
     </div>
   );
 }
 
-function MotionFunnel({ rows }) {
-  const max = Math.max(1, ...rows.map((item) => Number(item.value || 0)));
+function AlertRow({ icon, tone, title, detail, value }) {
   return (
-    <div className={styles.funnel}>
-      {rows.map((item, index) => (
-        <div key={item.label} className={styles.funnelRow}>
-          <span className={styles.funnelIndex}>{String(index + 1).padStart(2, '0')}</span>
-          <div>
-            <div className={styles.funnelLabels}>
-              <strong>{item.label}</strong>
-              <b>{compact(item.value)}</b>
-            </div>
-            <div className={styles.funnelTrack}>
-              <i style={{ width: `${Math.max(4, (Number(item.value || 0) / max) * 100)}%`, '--bar-tone': item.tone }} />
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
+    <article className={styles.alertRow}>
+      <span className={`${styles.alertIcon} ${styles[`alert${tone}`] || ''}`}>{icon}</span>
+      <div><strong>{title}</strong><small>{detail}</small></div>
+      <b>{number(value)}</b>
+    </article>
   );
 }
 
@@ -151,6 +198,7 @@ export default function DashboardClient() {
   const [selectedId, setSelectedId] = useState('');
   const [payload, setPayload] = useState(null);
   const [drilldown, setDrilldown] = useState(null);
+  const [drillOffset, setDrillOffset] = useState(0);
   const [message, setMessage] = useState(null);
   const [authorized, setAuthorized] = useState(false);
   const [isPending, startTransition] = useTransition();
@@ -174,6 +222,21 @@ export default function DashboardClient() {
     setPayload(result);
   }
 
+  async function loadDrilldown(workspaceId, offset = 0) {
+    const response = await fetch(`/api/dashboard/${workspaceId}/drilldown?limit=20&offset=${offset}`, {
+      headers: headers(),
+      cache: 'no-store'
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result?.message ?? 'Unable to load lead details.');
+    setDrilldown(result.drilldown);
+    setDrillOffset(offset);
+  }
+
+  async function loadWorkspace(workspaceId, offset = 0) {
+    await Promise.all([loadDashboard(workspaceId), loadDrilldown(workspaceId, offset)]);
+  }
+
   async function unlock(event) {
     event.preventDefault();
     setMessage(null);
@@ -183,11 +246,11 @@ export default function DashboardClient() {
         const result = await response.json();
         if (!response.ok) throw new Error(result?.message ?? 'Unable to open dashboard.');
         const rows = result.results ?? [];
-        setWorkspaces(rows);
         const workspaceId = rows[0]?.workspace?.id ?? '';
+        setWorkspaces(rows);
         setSelectedId(workspaceId);
         setAuthorized(true);
-        if (workspaceId) await loadDashboard(workspaceId);
+        if (workspaceId) await loadWorkspace(workspaceId);
       } catch (error) {
         setMessage(error.message);
       }
@@ -198,40 +261,42 @@ export default function DashboardClient() {
     setSelectedId(workspaceId);
     setDrilldown(null);
     setMessage(null);
-    startTransition(() => loadDashboard(workspaceId).catch((error) => setMessage(error.message)));
+    startTransition(() => loadWorkspace(workspaceId).catch((error) => setMessage(error.message)));
   }
 
   function refreshDashboard() {
     if (!selectedId) return;
     setMessage(null);
-    startTransition(() => loadDashboard(selectedId).catch((error) => setMessage(error.message)));
-  }
-
-  function openDrilldown() {
-    if (!selectedId) return;
     startTransition(async () => {
       try {
-        const response = await fetch(`/api/dashboard/${selectedId}/drilldown?limit=50&offset=0`, {
-          headers: headers(),
-          cache: 'no-store'
-        });
+        const response = await fetch('/api/operations/workspaces', { headers: headers(), cache: 'no-store' });
         const result = await response.json();
-        if (!response.ok) throw new Error(result?.message ?? 'Unable to load lead details.');
-        setDrilldown(result.drilldown);
+        if (!response.ok) throw new Error(result?.message ?? 'Unable to refresh workspace status.');
+        setWorkspaces(result.results ?? []);
+        await loadWorkspace(selectedId, drillOffset);
       } catch (error) {
         setMessage(error.message);
       }
     });
   }
 
+  function openPriorityQueue() {
+    document.getElementById('priority-leads')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function changeDrillPage(nextOffset) {
+    if (!selectedId || nextOffset < 0) return;
+    setMessage(null);
+    startTransition(() => loadDrilldown(selectedId, nextOffset).catch((error) => setMessage(error.message)));
+  }
+
   if (!authorized) {
     return (
       <section className={styles.gate}>
-        <div className={styles.gateGlow} />
-        <div className={styles.gateMark}><span>O</span></div>
-        <span className="eyebrow">REVENUE INTELLIGENCE CLOUD</span>
-        <h1>One CRM.<br />Every answer.</h1>
-        <p>Connect a company workspace and open a premium, tenant-scoped view of pipeline, activity, team execution and the next best action.</p>
+        <div className={styles.gateBrand}><span>OI</span><div><strong>Ops Intelligence</strong><small>HubSpot command center</small></div></div>
+        <span className={styles.gateEyebrow}>SECURE WORKSPACE ACCESS</span>
+        <h1>Open your live<br />revenue workspace.</h1>
+        <p>Unlock a tenant-isolated view of SDR execution, CRM quality, pipeline exposure and priority records.</p>
         <form onSubmit={unlock}>
           <input
             type="password"
@@ -241,11 +306,9 @@ export default function DashboardClient() {
             autoComplete="current-password"
             required
           />
-          <button disabled={isPending}>{isPending ? 'Opening workspace…' : 'Enter command center'}</button>
+          <button disabled={isPending}>{isPending ? 'Opening workspace…' : 'Open dashboard'}</button>
         </form>
-        <div className={styles.gateTrust}>
-          <span>Encrypted access</span><span>Tenant isolated</span><span>Live HubSpot data</span>
-        </div>
+        <div className={styles.gateTrust}><span>Encrypted access</span><span>Tenant isolated</span><span>Live HubSpot data</span></div>
         {message && <div className={styles.error}>{message}</div>}
       </section>
     );
@@ -253,262 +316,212 @@ export default function DashboardClient() {
 
   if (!selectedWorkspace) return <section className={styles.empty}>No connected workspaces are available.</section>;
 
-  const leaderboard = dashboard?.leaderboards?.activityByOwner?.value ?? [];
-  const maxOwner = Math.max(1, ...leaderboard.map((item) => Number(item.value ?? 0)));
-  const requiredMappings = dashboard?.mappingReadiness?.required ?? [];
-  const optionalMappings = dashboard?.mappingReadiness?.optional ?? [];
-  const allMappings = [...requiredMappings, ...optionalMappings];
-  const mappedCount = allMappings.filter((item) => item.approved).length;
-  const mappingScore = allMappings.length ? (mappedCount / allMappings.length) * 100 : 100;
-  const requiredReady = requiredMappings.every((item) => item.approved);
-
   const totalContacts = metricValue(metrics, 'total_contacts');
   const priorityLeads = metricValue(metrics, 'high_priority_contacts');
   const calls = metricValue(metrics, 'calls_last_30_days');
   const meetings = metricValue(metrics, 'meetings_last_30_days');
   const untouched = metricValue(metrics, 'untouched_contacts');
   const stale = metricValue(metrics, 'stale_contacts');
+  const contactsNeedingAction = metricValue(metrics, 'contacts_needing_action');
   const dealsAtRisk = metricValue(metrics, 'deals_at_risk');
   const openPipeline = metricValue(metrics, 'open_pipeline');
   const meetingRate = calls > 0 ? (meetings / calls) * 100 : 0;
-  const attentionLoad = totalContacts > 0 ? Math.min(100, ((untouched + stale) / totalContacts) * 100) : 0;
-  const executionScore = Math.max(0, 100 - attentionLoad);
 
-  const recordCounts = Object.fromEntries(
-    (selectedWorkspaceState?.recordCounts ?? []).map((item) => [item.object_type, Number(item.count ?? 0)])
-  );
-  const recordBars = [
-    { label: 'Contacts', short: 'CO', value: recordCounts.contacts ?? 0 },
-    { label: 'Companies', short: 'CP', value: recordCounts.companies ?? 0 },
-    { label: 'Deals', short: 'DE', value: recordCounts.deals ?? 0 },
-    { label: 'Calls', short: 'CA', value: recordCounts.calls ?? 0 },
-    { label: 'Meetings', short: 'ME', value: recordCounts.meetings ?? 0 },
-    { label: 'Tasks', short: 'TA', value: recordCounts.tasks ?? 0 }
-  ];
+  const operations = dashboard?.operationalSnapshot ?? {};
+  const leaderboard = dashboard?.leaderboards?.activityByOwner?.value ?? [];
+  const primaryOwner = leaderboard.find((item) => item.key !== 'Unassigned')?.owner ?? leaderboard[0]?.owner ?? null;
+  const activityTrend = dashboard?.activityTrend ?? [];
+  const conversionFunnel = dashboard?.conversionFunnel ?? [];
+  const leadStatus = dashboard?.leadStatus ?? [];
 
-  const motionRows = [
-    { label: 'Portfolio contacts', value: totalContacts, tone: '#7c6cf2' },
-    { label: 'Priority leads', value: priorityLeads, tone: '#f472b6' },
-    { label: 'Calls · 30 days', value: calls, tone: '#38bdf8' },
-    { label: 'Meetings · 30 days', value: meetings, tone: '#34d399' }
-  ];
+  const requiredMappings = dashboard?.mappingReadiness?.required ?? [];
+  const optionalMappings = dashboard?.mappingReadiness?.optional ?? [];
+  const allMappings = [...requiredMappings, ...optionalMappings];
+  const mappedCount = allMappings.filter((item) => item.approved).length;
+  const mappingScore = allMappings.length ? Math.round((mappedCount / allMappings.length) * 100) : 100;
 
   const syncTime = selectedWorkspaceState?.freshness?.newest_record_sync ?? dashboard?.freshness?.latestSync;
   const syncHealthy = Boolean(syncTime) && Date.now() - new Date(syncTime).getTime() < 24 * 60 * 60 * 1000;
-  const insightLead = dealsAtRisk > 0
-    ? `${number(dealsAtRisk)} deals need immediate attention`
-    : 'No at-risk deals are currently detected';
-  const insightDetail = calls > 0
-    ? `Your team converted ${percentage(meetingRate)} of calls into meetings over the last 30 days. ${number(untouched + stale)} contacts still need outreach or re-engagement.`
-    : `Activity data is ready to populate as calls and meetings synchronize from HubSpot. ${number(untouched + stale)} contacts currently need attention.`;
+  const portalId = selectedWorkspace.portal_id;
+
+  const kpis = [
+    { label: 'SDR portfolio', hint: 'Contacts in your workspace', value: totalContacts, icon: '◉', tone: 'Teal' },
+    { label: 'Companies', hint: 'Associated accounts', value: operations.totalCompanies, icon: '▦', tone: 'Blue' },
+    { label: 'Calls', hint: 'Last 30 days', value: calls, icon: '⌕', tone: 'Cyan' },
+    { label: 'Meetings', hint: 'Last 30 days', value: meetings, icon: '□', tone: 'Gold' },
+    { label: 'Open tasks', hint: 'Outstanding activities', value: operations.openTasks, icon: '◌', tone: 'Blue' },
+    { label: 'Meeting rate', hint: 'Meetings per call', value: meetingRate, icon: '%', tone: 'Violet', footer: percent(meetingRate) },
+    { label: 'Open deals', hint: 'Active opportunities', value: operations.openDeals, icon: '▤', tone: 'Teal' },
+    { label: 'Open pipeline', hint: 'Portal currency', value: openPipeline, icon: '◈', tone: 'Gold', compactValue: true }
+  ];
+
+  const focusCards = [
+    { label: 'Untouched over 2 days', value: untouched, detail: 'No recorded contact', tone: 'Rose' },
+    { label: 'No next activity', value: operations.noNextActivity, detail: 'Open deals without a next step', tone: 'Gold' },
+    { label: 'Tasks due today', value: operations.tasksDueToday, detail: 'Open work due now', tone: 'Teal' },
+    { label: 'High-priority tasks', value: operations.highPriorityTasks, detail: 'Priority queue', tone: 'Violet' },
+    { label: 'Meeting conversion', value: percent(meetingRate), detail: 'Calls converted to meetings', tone: 'Blue', formatted: true },
+    { label: 'Missing owner', value: operations.missingOwner, detail: 'Contacts without assignment', tone: 'Cyan' }
+  ];
+
+  const alerts = [
+    { icon: '↗', tone: 'Teal', title: 'Tasks due today', detail: 'Open tasks scheduled for the current day.', value: operations.tasksDueToday },
+    { icon: '!', tone: 'Rose', title: 'High-priority open tasks', detail: 'High-priority activities still waiting for action.', value: operations.highPriorityTasks },
+    { icon: '△', tone: 'Rose', title: 'Overdue tasks', detail: 'Open tasks with a due date in the past.', value: operations.overdueTasks },
+    { icon: '◇', tone: 'Gold', title: 'Deals with no next activity', detail: 'Open opportunities without a planned next step.', value: operations.noNextActivity },
+    { icon: '○', tone: 'Gold', title: 'Untouched contacts', detail: 'Contacts older than two days with no outreach.', value: untouched },
+    { icon: '◎', tone: 'Violet', title: 'Contacts needing attention', detail: 'Unique untouched or stale contacts.', value: contactsNeedingAction }
+  ];
 
   return (
-    <div className={styles.appShell}>
+    <div className={styles.commandCenter}>
       <aside className={styles.sidebar}>
-        <div className={styles.brand}>
-          <div className={styles.brandMark}>O</div>
-          <div><strong>Ops Intelligence</strong><small>Revenue command center</small></div>
+        <div className={styles.brandBlock}>
+          <div className={styles.brandMark}>{initials(selectedWorkspace.name).slice(0, 1)}</div>
+          <div><strong>{selectedWorkspace.name}</strong><small>SDR Intelligence</small></div>
         </div>
 
         <nav className={styles.navigation}>
-          <span>WORKSPACE</span>
-          <a href="#overview" className={styles.navActive}><i>⌂</i>Overview</a>
-          <a href="#team"><i>◎</i>Team performance</a>
-          <a href="#focus"><i>◇</i>Today&apos;s focus</a>
-          <a href="#health"><i>↻</i>Data health</a>
+          <span>MAIN</span>
+          <a href="#overview" className={styles.navActive}><i>⌂</i>Overview<b>›</b></a>
+          <a href="#sources"><i>◎</i>Lead sources</a>
+          <a href="#activities"><i>⌁</i>Activities</a>
+          <a href="#quality"><i>◇</i>Data quality</a>
+          <a href="#companies"><i>▦</i>Companies & ATS</a>
+          <a href="#pipeline"><i>▤</i>Pipeline</a>
         </nav>
 
-        <div className={styles.companySection}>
-          <span>COMPANIES</span>
-          <div className={styles.workspaceList}>
-            {workspaces.map((item) => (
-              <button
-                key={item.workspace.id}
-                className={item.workspace.id === selectedId ? styles.activeWorkspace : ''}
-                onClick={() => changeWorkspace(item.workspace.id)}
-              >
-                <span>{initials(item.workspace.name)}</span>
-                <div><strong>{item.workspace.name}</strong><small>{item.activeRun ? 'Syncing now' : 'Connected'}</small></div>
-                <i />
-              </button>
-            ))}
-          </div>
+        <div className={styles.ownerBlock}>
+          <span>SDR OWNER</span>
+          <article>
+            <div>{initials(primaryOwner?.name || 'Workspace')}</div>
+            <p><small>Reporting view</small><strong>{primaryOwner?.name || 'All SDR owners'}</strong></p>
+            <i>✓</i>
+          </article>
         </div>
 
-        <div className={styles.sidebarHealth}>
-          <div><span className={syncHealthy ? styles.liveDot : styles.warnDot} /><strong>{syncHealthy ? 'Data is live' : 'Review sync'}</strong></div>
-          <small>Last updated {timeAgo(syncTime)}</small>
+        <div className={styles.workspaceSwitcher}>
+          <span>COMPANIES</span>
+          {workspaces.map((item) => (
+            <button key={item.workspace.id} onClick={() => changeWorkspace(item.workspace.id)} className={item.workspace.id === selectedId ? styles.workspaceActive : ''}>
+              <i>{initials(item.workspace.name)}</i><span>{item.workspace.name}</span><b />
+            </button>
+          ))}
+        </div>
+
+        <div className={styles.lastSync}>
+          <i>▤</i><div><strong>Last sync</strong><small>{date(syncTime)}</small></div>
         </div>
       </aside>
 
       <main className={styles.main}>
         <header className={styles.topbar}>
-          <div className={styles.breadcrumb}><span>Companies</span><i>/</i><strong>{selectedWorkspace.name}</strong></div>
+          <div><strong>SDR Command Center</strong><small>Live HubSpot performance & attribution</small></div>
           <div className={styles.topActions}>
+            <span className={syncHealthy ? styles.liveBadge : styles.reviewBadge}><i />{syncHealthy ? 'LIVE · HUBSPOT' : 'SYNC REVIEW'}</span>
             <span className={styles.periodBadge}>Last 30 days</span>
-            <button className={styles.refreshButton} onClick={refreshDashboard} disabled={isPending}>{isPending ? 'Refreshing…' : 'Refresh data'}</button>
-            <div className={styles.userBadge}>AM</div>
+            <button onClick={refreshDashboard} disabled={isPending}>↻ {isPending ? 'Refreshing…' : 'Refresh data'}</button>
           </div>
         </header>
 
-        <section className={styles.hero} id="overview">
-          <div>
-            <span className="eyebrow">EXECUTIVE OVERVIEW</span>
-            <h1>Good decisions,<br /><em>before the next meeting.</em></h1>
-            <p>A live view of pipeline, prospecting execution and the revenue signals that deserve attention right now.</p>
-          </div>
-          <div className={styles.heroMeta}>
-            <span className={`${styles.statusPill} ${requiredReady ? styles.statusReady : styles.statusWarning}`}>
-              <i />{requiredReady ? 'Analytics ready' : 'Mapping required'}
-            </span>
-            <small>Generated {date(dashboard?.generatedAt)}</small>
-          </div>
-        </section>
+        <div className={styles.content}>
+          <section className={styles.pageIntro} id="overview">
+            <span>{selectedWorkspace.name.toUpperCase()} · SDR PERFORMANCE</span>
+            <h1>Overview</h1>
+            <p>{shortDate(activityTrend[0]?.day)} – {shortDate(activityTrend.at(-1)?.day)} · Live workspace intelligence</p>
+            <div className={styles.viewTabs}><button className={styles.activeTab}>↗ Analytics dashboard</button><a href="#priority-leads">◎ Priority workspace</a></div>
+          </section>
 
-        {message && <div className={styles.error}>{message}</div>}
+          {message && <div className={styles.error}>{message}</div>}
 
-        <section className={styles.metricsGrid}>
-          {KPI_KEYS.map((key) => <MetricCard key={key} metricKey={key} metric={metrics[key]} />)}
-        </section>
+          <section className={styles.metricsGrid}>
+            {kpis.map((item) => <MetricCard key={item.label} {...item} />)}
+          </section>
 
-        <section className={styles.executiveGrid}>
-          <article className={`${styles.panel} ${styles.insightPanel}`}>
-            <div className={styles.panelHeader}>
-              <div><span className="section-label">EXECUTIVE SIGNAL</span><h2>{insightLead}</h2></div>
-              <span className={styles.aiBadge}>Live insight</span>
+          <section className={styles.attentionPanel}>
+            <div className={styles.panelTitleRow}>
+              <div><span>TODAY&apos;S EXECUTION FOCUS</span><h2>What needs attention now</h2></div>
+              <button onClick={openPriorityQueue}>Focus & action</button>
             </div>
-            <p>{insightDetail}</p>
-            <div className={styles.insightStats}>
-              <div><strong>{percentage(meetingRate)}</strong><span>Call-to-meeting rate</span></div>
-              <div><strong>{number(untouched + stale)}</strong><span>Contacts needing action</span></div>
-              <div><strong>{compact(openPipeline)}</strong><span>Open pipeline value</span></div>
-            </div>
-          </article>
-
-          <article className={`${styles.panel} ${styles.scorePanel}`}>
-            <div className={styles.panelHeader}><div><span className="section-label">EXECUTION SCORE</span><h2>Team momentum</h2></div></div>
-            <RingChart value={executionScore} label="Healthy" detail={`${number(untouched + stale)} contacts are reducing the score.`} />
-          </article>
-        </section>
-
-        <section className={styles.analysisGrid}>
-          <article className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <div><span className="section-label">REVENUE MOTION</span><h2>From reach to meetings</h2></div>
-              <span className={styles.subtleBadge}>Live totals</span>
-            </div>
-            <MotionFunnel rows={motionRows} />
-          </article>
-
-          <article className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <div><span className="section-label">CRM COVERAGE</span><h2>Record footprint</h2></div>
-              <span className={styles.subtleBadge}>{compact(selectedWorkspaceState?.freshness?.total_records ?? dashboard?.freshness?.totalRecords)} records</span>
-            </div>
-            <MiniBars values={recordBars} />
-            <div className={styles.recordLegend}>
-              {recordBars.map((item) => <div key={item.label}><span>{item.label}</span><strong>{compact(item.value)}</strong></div>)}
-            </div>
-          </article>
-        </section>
-
-        <section className={styles.teamGrid} id="team">
-          <article className={`${styles.panel} ${styles.leaderboardPanel}`}>
-            <div className={styles.panelHeader}>
-              <div><span className="section-label">TEAM EXECUTION</span><h2>Calls by owner</h2></div>
-              <span className={styles.subtleBadge}>Last 30 days</span>
-            </div>
-            <div className={styles.leaderboard}>
-              {leaderboard.slice(0, 8).map((item, index) => (
-                <article key={item.key}>
-                  <span className={styles.rank}>{String(index + 1).padStart(2, '0')}</span>
-                  <div className={styles.avatar}>{initials(item.owner?.name)}</div>
-                  <div className={styles.owner}>
-                    <strong>{item.owner?.name}</strong>
-                    <small>{item.owner?.email ?? 'No email available'}</small>
-                    <div><i style={{ width: `${Math.max(4, (Number(item.value) / maxOwner) * 100)}%` }} /></div>
-                  </div>
-                  <b>{number(item.value)}</b>
+            <div className={styles.focusGrid}>
+              {focusCards.map((item) => (
+                <article key={item.label} className={styles[`focus${item.tone}`]}>
+                  <span>{item.label}</span><strong>{item.formatted ? item.value : number(item.value)}</strong><small>{item.detail}</small>
                 </article>
               ))}
-              {leaderboard.length === 0 && <div className={styles.inlineEmpty}>Team activity will appear after call records synchronize.</div>}
-            </div>
-          </article>
-
-          <article className={`${styles.panel} ${styles.pipelinePanel}`}>
-            <div className={styles.panelHeader}><div><span className="section-label">PIPELINE HEALTH</span><h2>Revenue exposure</h2></div></div>
-            <div className={styles.pipelineValue}><span>Open pipeline</span><strong>{compact(openPipeline)}</strong><small>Portal currency</small></div>
-            <div className={styles.riskCallout}><span>!</span><div><strong>{number(dealsAtRisk)} deals at risk</strong><small>Overdue close date or no next activity</small></div></div>
-            <div className={styles.pipelineFooter}>
-              <div><span>Synced deals</span><strong>{compact(recordCounts.deals ?? 0)}</strong></div>
-              <div><span>Freshness</span><strong>{timeAgo(syncTime)}</strong></div>
-            </div>
-          </article>
-        </section>
-
-        <section className={styles.focusSection} id="focus">
-          <div className={styles.sectionHeading}>
-            <div><span className="section-label">TODAY&apos;S FOCUS</span><h2>Turn insight into action.</h2></div>
-            <button onClick={openDrilldown} disabled={isPending}>{isPending ? 'Loading queue…' : 'Open priority queue →'}</button>
-          </div>
-          <div className={styles.focusGrid}>
-            <article><span style={{ '--focus-tone': '#f472b6' }}>◆</span><div><strong>{number(priorityLeads)}</strong><h3>Priority leads</h3><p>Highest-intent records detected by your CRM mapping.</p></div></article>
-            <article><span style={{ '--focus-tone': '#fbbf24' }}>○</span><div><strong>{number(untouched)}</strong><h3>Untouched</h3><p>Created more than two days ago with no recorded contact.</p></div></article>
-            <article><span style={{ '--focus-tone': '#fb923c' }}>⌁</span><div><strong>{number(stale)}</strong><h3>Stale</h3><p>Contacts that need re-engagement after 21 days.</p></div></article>
-            <article><span style={{ '--focus-tone': '#fb7185' }}>!</span><div><strong>{number(dealsAtRisk)}</strong><h3>Deals at risk</h3><p>Revenue opportunities without a safe next step.</p></div></article>
-          </div>
-        </section>
-
-        <section className={styles.healthGrid} id="health">
-          <article className={styles.panel}>
-            <div className={styles.panelHeader}>
-              <div><span className="section-label">SEMANTIC READINESS</span><h2>CRM intelligence mapping</h2></div>
-              <strong className={styles.mappingScore}>{Math.round(mappingScore)}%</strong>
-            </div>
-            <div className={styles.mappingProgress}><i style={{ width: `${mappingScore}%` }} /></div>
-            <div className={styles.mappingList}>
-              {allMappings.map((item) => (
-                <article key={item.key}>
-                  <span className={item.approved ? styles.dotReady : styles.dotPending} />
-                  <div><strong>{item.key.replaceAll('_', ' ')}</strong><small>{requiredMappings.includes(item) ? 'Required' : 'Optional'}</small></div>
-                  <b>{item.approved ? 'Mapped' : 'Pending'}</b>
-                </article>
-              ))}
-            </div>
-          </article>
-
-          <article className={`${styles.panel} ${styles.healthPanel}`}>
-            <div className={styles.panelHeader}><div><span className="section-label">DATA HEALTH</span><h2>Workspace status</h2></div></div>
-            <div className={styles.healthRows}>
-              <div><span><i className={syncHealthy ? styles.liveDot : styles.warnDot} />CRM synchronization</span><strong>{syncHealthy ? 'Healthy' : 'Needs review'}</strong></div>
-              <div><span>Latest run</span><strong>{selectedWorkspaceState?.latestRun?.status ?? 'Not started'}</strong></div>
-              <div><span>Last record update</span><strong>{timeAgo(syncTime)}</strong></div>
-              <div><span>Analytics mappings</span><strong>{mappedCount}/{allMappings.length}</strong></div>
-            </div>
-            <a href="/operations">Open operations center →</a>
-          </article>
-        </section>
-
-        {drilldown && (
-          <section className={styles.tableCard}>
-            <div className={styles.panelHeader}>
-              <div><span className="section-label">ACTION QUEUE</span><h2>Priority leads needing attention</h2></div>
-              <button className={styles.closeButton} onClick={() => setDrilldown(null)}>Close</button>
-            </div>
-            <div className={styles.table}>
-              <div className={styles.tableHeader}><span>Contact</span><span>Email</span><span>Phone</span><span>Last contacted</span></div>
-              {drilldown.results.map((row) => (
-                <article key={row.id}>
-                  <span><strong>{[row.properties.firstname, row.properties.lastname].filter(Boolean).join(' ') || `Contact ${row.id}`}</strong><small>HubSpot ID {row.id}</small></span>
-                  <span>{row.properties.email || '—'}</span>
-                  <span>{row.properties.phone || '—'}</span>
-                  <span>{date(row.properties.notes_last_contacted)}</span>
-                </article>
-              ))}
-              {drilldown.results.length === 0 && <div className={styles.inlineEmpty}>No priority leads currently require action.</div>}
             </div>
           </section>
-        )}
+
+          <section className={styles.chartGrid} id="activities">
+            <article className={styles.panel}>
+              <div className={styles.panelTitleRow}><div><h2>Daily SDR execution</h2><p>Calls, tasks and meetings across the last 21 days.</p></div><span className={styles.clickableBadge}>Live activity</span></div>
+              <ExecutionChart rows={activityTrend} />
+            </article>
+            <article className={styles.panel}>
+              <div className={styles.panelTitleRow}><div><h2>SDR conversion funnel</h2><p>CRM contacts progressing into revenue outcomes.</p></div><span className={styles.clickableBadge}>Live funnel</span></div>
+              <ConversionFunnel rows={conversionFunnel} />
+            </article>
+          </section>
+
+          <section className={styles.insightGrid}>
+            <article className={styles.panel}>
+              <div className={styles.panelTitleRow}><div><h2>Operational alerts</h2><p>Click the priority workspace to inspect affected records.</p></div></div>
+              <div className={styles.alertList}>{alerts.map((item) => <AlertRow key={item.title} {...item} />)}</div>
+            </article>
+            <article className={styles.panel} id="sources">
+              <div className={styles.panelTitleRow}><div><h2>Lead status</h2><p>HubSpot lifecycle and lead-status distribution.</p></div><span className={styles.clickableBadge}>{compact(totalContacts)} contacts</span></div>
+              <LeadStatusChart rows={leadStatus} />
+            </article>
+          </section>
+
+          <section className={styles.qualityStrip} id="quality">
+            <div><span>CRM intelligence coverage</span><strong>{mappingScore}%</strong><small>{mappedCount} of {allMappings.length} semantic fields configured</small></div>
+            <div className={styles.qualityProgress}><i style={{ width: `${mappingScore}%` }} /></div>
+            <div><span>Data freshness</span><strong>{timeAgo(syncTime)}</strong><small>{selectedWorkspaceState?.latestRun?.status || 'Sync not started'}</small></div>
+            <div id="pipeline"><span>Pipeline exposure</span><strong>{compact(openPipeline)}</strong><small>{number(dealsAtRisk)} deals at risk</small></div>
+          </section>
+
+          <section className={styles.tablePanel} id="priority-leads">
+            <div className={styles.panelTitleRow}>
+              <div><h2>Priority leads</h2><p>{drilldown?.fallback ? 'Attention-first fallback view while lead-quality mapping is being configured.' : 'Highest-priority contacts that need immediate follow-up.'}</p></div>
+              <div className={styles.tableActions}>
+                <button onClick={() => changeDrillPage(Math.max(0, drillOffset - 20))} disabled={isPending || drillOffset === 0}>Previous</button>
+                <span>Rows {drillOffset + 1}–{drillOffset + (drilldown?.results?.length || 0)}</span>
+                <button onClick={() => changeDrillPage(drillOffset + 20)} disabled={isPending || !drilldown?.hasMore}>Next</button>
+              </div>
+            </div>
+            <div className={styles.tableScroll}>
+              <div className={styles.tableHeader}><span>Priority</span><span>Contact</span><span>Company</span><span>Country</span><span>Owner</span><span>Lead status</span><span>Phone</span></div>
+              {(drilldown?.results ?? []).map((row, index) => {
+                const properties = row.properties || {};
+                const contactName = [properties.firstname, properties.lastname].filter(Boolean).join(' ') || `Contact ${row.id}`;
+                const owner = leaderboard.find((item) => String(item.owner?.id) === String(properties.hubspot_owner_id))?.owner;
+                const hubspotUrl = portalId ? `https://app.hubspot.com/contacts/${portalId}/contact/${row.id}` : null;
+                return (
+                  <article key={row.id}>
+                    <span className={styles.priorityNumber}>{String(drillOffset + index + 1).padStart(2, '0')}</span>
+                    <span className={styles.contactCell}>
+                      {hubspotUrl ? <a href={hubspotUrl} target="_blank" rel="noreferrer">{contactName}</a> : <strong>{contactName}</strong>}
+                      <small>{properties.jobtitle || properties.email || `HubSpot ID ${row.id}`}</small>
+                    </span>
+                    <span>{properties.company || '—'}</span>
+                    <span>{properties.country || '—'}</span>
+                    <span>{owner?.name || properties.hubspot_owner_id || 'Unassigned'}</span>
+                    <span><i className={styles.statusBadge}>{humanize(properties.hs_lead_status || properties.lifecyclestage)}</i></span>
+                    <span>{properties.phone || properties.mobilephone || '—'}</span>
+                  </article>
+                );
+              })}
+              {!drilldown?.results?.length && <div className={styles.tableEmpty}>No contacts currently match the priority queue.</div>}
+            </div>
+          </section>
+
+          <section className={styles.companyFooter} id="companies">
+            <span>{operations.totalCompanies ? `${number(operations.totalCompanies)} connected companies` : 'Company intelligence ready'}</span>
+            <strong>{selectedWorkspace.name}</strong>
+            <small>Tenant-isolated HubSpot analytics · Generated {date(dashboard?.generatedAt)}</small>
+          </section>
+        </div>
       </main>
     </div>
   );

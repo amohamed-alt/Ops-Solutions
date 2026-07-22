@@ -38,7 +38,16 @@ export async function GET(request) {
           error: `Sync API returned ${syncResponse.status}`
         };
       }
-      return syncResponse.json();
+      const syncPayload = await syncResponse.json();
+      return {
+        ...syncPayload,
+        workspace: {
+          ...syncPayload.workspace,
+          portal_id: workspace.portal_id,
+          hubspot_status: workspace.hubspot_status,
+          last_discovered_at: workspace.last_discovered_at
+        }
+      };
     }));
 
     return NextResponse.json({ results: workspaces });
