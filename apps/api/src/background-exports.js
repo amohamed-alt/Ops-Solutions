@@ -3,10 +3,16 @@ import Redis from 'ioredis';
 
 import { buildRevenueCsvExport, resolveDatePreset } from './report-exports.js';
 import { normalizeReportingFilters } from './revenue-reporting.js';
+import { buildRevenueXlsxExport } from './xlsx-export.js';
 
 const EXPORT_ATTEMPTS = 3;
 const EXPORTS_PER_HOUR = 10;
 const MAX_LIST_LIMIT = 50;
+
+async function buildRevenueExport(postgres, workspace, query, format) {
+  if (format === 'xlsx') return buildRevenueXlsxExport(postgres, workspace, query);
+  return buildRevenueCsvExport(postgres, workspace, query);
+}
 
 function createRedisConnection(redisUrl, options) {
   return new Redis(redisUrl, options);
@@ -37,8 +43,8 @@ export function normalizeBackgroundExportRequest(input = {}) {
     throw requestError('Export request must be an object.');
   }
   const format = String(input.format ?? 'csv').trim().toLowerCase();
-  if (format !== 'csv') {
-    throw requestError('Background XLSX and PDF exports are not available yet.', 'EXPORT_FORMAT_NOT_AVAILABLE');
+  if (!['csv', 'xlsx'].includes(format)) {
+    throw requestError('Background PDF exports are not available yet.', 'EXPORT_FORMAT_NOT_AVAILABLE');
   }
   const savedViewId = input.savedViewId ? normalizeUuid(input.savedViewId, 'Saved view ID') : null;
   const filters = input.filters ?? {};
@@ -130,7 +136,7 @@ async function expireArtifacts(postgres, workspaceId = null, userId = null) {
 export async function processBackgroundExportJob(
   postgres,
   job,
-  { buildExport = buildRevenueCsvExport } = {}
+  { buildExport = buildRevenueExport } = {}
 ) {
   const exportJobId = normalizeUuid(job.data?.exportJobId, 'Export job ID');
   const workspaceId = normalizeUuid(job.data?.workspaceId, 'Workspace ID');
@@ -162,9 +168,11 @@ export async function processBackgroundExportJob(
     const result = await buildExport(
       postgres,
       { id: workspaceId, name: row.workspace_name },
-      { ...(row.filters ?? {}), viewName: row.view_name }
+      { ...(row.filters ?? {}), viewName: row.view_name },
+      row.format
     );
-    const artifact = Buffer.from(result.csv, 'utf8');
+    const artifact = result.artifact ?? Buffer.from(result.csv, 'utf8');
+    const contentType = result.contentType ?? 'text/csv; charset=utf-8';
     await postgres.query(
       `UPDATE report_export_jobs
        SET status = 'completed', file_name = $2, content_type = $3,
@@ -174,7 +182,7 @@ export async function processBackgroundExportJob(
       [
         exportJobId,
         result.fileName,
-        'text/csv; charset=utf-8',
+        contentType,
         artifact.byteLength,
         artifact,
         workspaceId,
@@ -250,7 +258,7 @@ export function registerBackgroundExportRoutes(app, {
     );
     const exportJob = created.rows[0];
     try {
-      await queue.add('revenue-csv', {
+      await queue.add(`revenue-${selection.format}`, {
         exportJobId: exportJob.id,
         workspaceId: workspace.id,
         userId
@@ -316,7 +324,7 @@ export function registerBackgroundExportRoutes(app, {
     const userId = request.customer.user.id;
     await expireArtifacts(postgres, workspace.id, userId);
     const result = await postgres.query(
-      `SELECT status, file_name, content_type, artifact, expires_at
+      `SELECT format, status, file_name, content_type, artifact, expires_at
        FROM report_export_jobs
        WHERE id = $1 AND workspace_id = $2 AND requested_by_user_id = $3
        LIMIT 1`,
@@ -336,11 +344,11 @@ export function registerBackgroundExportRoutes(app, {
       action: 'report_export.downloaded',
       targetType: 'report_export_job',
       targetId: exportId,
-      metadata: { format: 'csv' }
+      metadata: { format: exportJob.format }
     });
     return reply
-      .header('content-type', exportJob.content_type || 'text/csv; charset=utf-8')
-      .header('content-disposition', `attachment; filename="${exportJob.file_name || 'revenue-report.csv'}"`)
+      .header('content-type', exportJob.content_type || 'application/octet-stream')
+      .header('content-disposition', `attachment; filename="${exportJob.file_name || 'revenue-report'}"`)
       .header('cache-control', 'private, no-store, max-age=0')
       .header('x-content-type-options', 'nosniff')
       .send(exportJob.artifact);
