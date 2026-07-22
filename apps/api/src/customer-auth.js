@@ -5,7 +5,10 @@ import { hashValue, randomToken } from './crypto.js';
 
 const scrypt = promisify(scryptCallback);
 const SESSION_DAYS = 30;
+const INVITATION_DAYS = 7;
 const PASSWORD_KEY_LENGTH = 64;
+const WORKSPACE_ROLES = new Set(['owner', 'admin', 'viewer']);
+const ROLE_WEIGHT = Object.freeze({ viewer: 10, admin: 20, owner: 30 });
 
 export function normalizeEmail(value) {
   return String(value ?? '').trim().toLowerCase();
@@ -29,6 +32,15 @@ export function validatePassword(value) {
   return password.length >= 10 && password.length <= 200;
 }
 
+export function normalizeWorkspaceRole(value, fallback = 'viewer') {
+  const role = String(value ?? '').trim().toLowerCase();
+  return WORKSPACE_ROLES.has(role) ? role : fallback;
+}
+
+export function hasWorkspaceRole(actualRole, minimumRole) {
+  return Number(ROLE_WEIGHT[actualRole] ?? 0) >= Number(ROLE_WEIGHT[minimumRole] ?? Number.MAX_SAFE_INTEGER);
+}
+
 export async function hashPassword(password) {
   if (!validatePassword(password)) throw new TypeError('Password must be between 10 and 200 characters.');
   const salt = randomBytes(16);
@@ -38,9 +50,9 @@ export async function hashPassword(password) {
 
 export async function verifyPassword(password, encoded) {
   try {
-    const [version, saltValue, hashValue] = String(encoded ?? '').split('.');
-    if (version !== 'scrypt-v1' || !saltValue || !hashValue) return false;
-    const expected = Buffer.from(hashValue, 'base64url');
+    const [version, saltValue, encodedHash] = String(encoded ?? '').split('.');
+    if (version !== 'scrypt-v1' || !saltValue || !encodedHash) return false;
+    const expected = Buffer.from(encodedHash, 'base64url');
     const actual = Buffer.from(await scrypt(String(password), Buffer.from(saltValue, 'base64url'), expected.length));
     return expected.length === actual.length && timingSafeEqual(expected, actual);
   } catch {
@@ -70,8 +82,9 @@ export async function ensureCustomerAuthSchema(postgres) {
     CREATE TABLE IF NOT EXISTS workspace_memberships (
       user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
       workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-      role TEXT NOT NULL DEFAULT 'owner',
+      role TEXT NOT NULL DEFAULT 'owner' CHECK (role IN ('owner', 'admin', 'viewer')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (user_id, workspace_id)
     );
 
@@ -85,13 +98,49 @@ export async function ensureCustomerAuthSchema(postgres) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS workspace_invitations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      email TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin', 'viewer')),
+      token_hash CHAR(64) NOT NULL UNIQUE,
+      invited_by UUID REFERENCES app_users(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'revoked', 'expired')),
+      expires_at TIMESTAMPTZ NOT NULL,
+      accepted_by UUID REFERENCES app_users(id) ON DELETE SET NULL,
+      accepted_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_events (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+      actor_user_id UUID REFERENCES app_users(id) ON DELETE SET NULL,
+      action TEXT NOT NULL,
+      target_type TEXT,
+      target_id TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      ip_hash CHAR(64),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE INDEX IF NOT EXISTS workspace_memberships_workspace_idx
       ON workspace_memberships(workspace_id, role);
     CREATE INDEX IF NOT EXISTS user_sessions_user_expiry_idx
       ON user_sessions(user_id, expires_at DESC);
     CREATE INDEX IF NOT EXISTS user_sessions_expiry_idx
       ON user_sessions(expires_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS workspace_invitations_pending_email_idx
+      ON workspace_invitations(workspace_id, email)
+      WHERE status = 'pending';
+    CREATE INDEX IF NOT EXISTS workspace_invitations_expiry_idx
+      ON workspace_invitations(expires_at, status);
+    CREATE INDEX IF NOT EXISTS audit_events_workspace_created_idx
+      ON audit_events(workspace_id, created_at DESC);
 
+    ALTER TABLE workspace_memberships
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
     ALTER TABLE oauth_states
       ADD COLUMN IF NOT EXISTS redirect_path TEXT NOT NULL DEFAULT '/setup';
   `);
@@ -129,6 +178,22 @@ async function createSession(postgres, userId, request) {
   return token;
 }
 
+async function writeAudit(postgres, request, {
+  workspaceId = null,
+  actorUserId = null,
+  action,
+  targetType = null,
+  targetId = null,
+  metadata = {}
+}) {
+  const ipHash = request.ip ? hashValue(request.ip) : null;
+  await postgres.query(
+    `INSERT INTO audit_events(workspace_id, actor_user_id, action, target_type, target_id, metadata, ip_hash)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
+    [workspaceId, actorUserId, action, targetType, targetId, JSON.stringify(metadata), ipHash]
+  );
+}
+
 async function loadContext(postgres, token, { touch = true } = {}) {
   if (!token) return null;
   const result = await postgres.query(
@@ -162,6 +227,25 @@ function sessionTokenFromRequest(request) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+async function ensureLastOwnerIsPreserved(postgres, workspaceId, targetUserId, nextRole = null) {
+  const targetResult = await postgres.query(
+    `SELECT role FROM workspace_memberships WHERE workspace_id = $1 AND user_id = $2 LIMIT 1`,
+    [workspaceId, targetUserId]
+  );
+  if (targetResult.rowCount === 0) return;
+  if (targetResult.rows[0].role !== 'owner' || nextRole === 'owner') return;
+  const ownersResult = await postgres.query(
+    `SELECT COUNT(*)::int AS count FROM workspace_memberships WHERE workspace_id = $1 AND role = 'owner'`,
+    [workspaceId]
+  );
+  if (Number(ownersResult.rows[0].count) <= 1) {
+    const error = new Error('A workspace must always have at least one owner.');
+    error.statusCode = 409;
+    error.category = 'LAST_OWNER_REQUIRED';
+    throw error;
+  }
+}
+
 export function registerCustomerAuthRoutes(app, { postgres, withTransaction }) {
   async function requireCustomer(request, reply) {
     const context = await loadContext(postgres, sessionTokenFromRequest(request));
@@ -173,6 +257,22 @@ export function registerCustomerAuthRoutes(app, { postgres, withTransaction }) {
     }
     request.customer = context;
   }
+
+  async function requireWorkspaceRole(request, reply, minimumRole = 'viewer') {
+    const workspaceId = String(request.params?.workspaceId ?? '');
+    const membership = request.customer?.workspaces?.find((workspace) => workspace.id === workspaceId);
+    if (!membership) {
+      return reply.code(403).send({ error: 'workspace_forbidden', message: 'This workspace is not available to your account.' });
+    }
+    if (!hasWorkspaceRole(membership.role, minimumRole)) {
+      return reply.code(403).send({ error: 'workspace_role_required', message: `${minimumRole} access is required.` });
+    }
+    request.workspaceMembership = membership;
+  }
+
+  const requireViewer = [requireCustomer, (request, reply) => requireWorkspaceRole(request, reply, 'viewer')];
+  const requireAdmin = [requireCustomer, (request, reply) => requireWorkspaceRole(request, reply, 'admin')];
+  const requireOwner = [requireCustomer, (request, reply) => requireWorkspaceRole(request, reply, 'owner')];
 
   app.post('/api/v1/auth/signup', async (request, reply) => {
     const email = normalizeEmail(request.body?.email);
@@ -213,6 +313,14 @@ export function registerCustomerAuthRoutes(app, { postgres, withTransaction }) {
         return { user, workspace };
       });
       const sessionToken = await createSession(postgres, created.user.id, request);
+      await writeAudit(postgres, request, {
+        workspaceId: created.workspace.id,
+        actorUserId: created.user.id,
+        action: 'workspace.created',
+        targetType: 'workspace',
+        targetId: created.workspace.id,
+        metadata: { companyName: created.workspace.name }
+      });
       return reply.code(201).send({
         sessionToken,
         user: { id: created.user.id, email: created.user.email, displayName: created.user.display_name },
@@ -255,8 +363,214 @@ export function registerCustomerAuthRoutes(app, { postgres, withTransaction }) {
     return reply.code(204).send();
   });
 
+  app.post('/api/v1/auth/invitations/:token/accept', { preHandler: requireCustomer }, async (request, reply) => {
+    const invitationToken = String(request.params.token ?? '').trim();
+    const tokenHash = hashValue(invitationToken);
+    const invitationResult = await postgres.query(
+      `SELECT id, workspace_id, email, role, status, expires_at
+       FROM workspace_invitations
+       WHERE token_hash = $1
+       LIMIT 1`,
+      [tokenHash]
+    );
+    const invitation = invitationResult.rows[0];
+    if (!invitation || invitation.status !== 'pending' || new Date(invitation.expires_at).getTime() <= Date.now()) {
+      return reply.code(410).send({ error: 'invitation_unavailable', message: 'This invitation is invalid, expired, or already used.' });
+    }
+    if (normalizeEmail(invitation.email) !== normalizeEmail(request.customer.user.email)) {
+      return reply.code(403).send({ error: 'invitation_email_mismatch', message: 'Sign in with the email address that received this invitation.' });
+    }
+    await withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO workspace_memberships(user_id, workspace_id, role)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, workspace_id) DO UPDATE SET role = EXCLUDED.role, updated_at = NOW()`,
+        [request.customer.user.id, invitation.workspace_id, invitation.role]
+      );
+      await client.query(
+        `UPDATE workspace_invitations
+         SET status = 'accepted', accepted_by = $2, accepted_at = NOW(), updated_at = NOW()
+         WHERE id = $1`,
+        [invitation.id, request.customer.user.id]
+      );
+    });
+    await writeAudit(postgres, request, {
+      workspaceId: invitation.workspace_id,
+      actorUserId: request.customer.user.id,
+      action: 'member.invitation_accepted',
+      targetType: 'user',
+      targetId: request.customer.user.id,
+      metadata: { role: invitation.role }
+    });
+    return { status: 'accepted', workspaceId: invitation.workspace_id, role: invitation.role };
+  });
+
+  app.get('/api/v1/customer/workspaces/:workspaceId/members', { preHandler: requireViewer }, async (request) => {
+    const result = await postgres.query(
+      `SELECT u.id, u.email, u.display_name, u.status, m.role, m.created_at, m.updated_at
+       FROM workspace_memberships m
+       JOIN app_users u ON u.id = m.user_id
+       WHERE m.workspace_id = $1
+       ORDER BY CASE m.role WHEN 'owner' THEN 1 WHEN 'admin' THEN 2 ELSE 3 END, u.display_name`,
+      [request.params.workspaceId]
+    );
+    return { results: result.rows.map((row) => ({
+      id: row.id,
+      email: row.email,
+      displayName: row.display_name,
+      status: row.status,
+      role: row.role,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    })) };
+  });
+
+  app.get('/api/v1/customer/workspaces/:workspaceId/invitations', { preHandler: requireAdmin }, async (request) => {
+    await postgres.query(
+      `UPDATE workspace_invitations SET status = 'expired', updated_at = NOW()
+       WHERE workspace_id = $1 AND status = 'pending' AND expires_at <= NOW()`,
+      [request.params.workspaceId]
+    );
+    const result = await postgres.query(
+      `SELECT id, email, role, status, expires_at, created_at
+       FROM workspace_invitations
+       WHERE workspace_id = $1
+       ORDER BY created_at DESC
+       LIMIT 100`,
+      [request.params.workspaceId]
+    );
+    return { results: result.rows };
+  });
+
+  app.post('/api/v1/customer/workspaces/:workspaceId/invitations', { preHandler: requireAdmin }, async (request, reply) => {
+    const email = normalizeEmail(request.body?.email);
+    const role = normalizeWorkspaceRole(request.body?.role, 'viewer');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !['admin', 'viewer'].includes(role)) {
+      return reply.code(400).send({ error: 'invalid_invitation', message: 'Enter a valid email and choose admin or viewer access.' });
+    }
+    const existingMember = await postgres.query(
+      `SELECT 1 FROM workspace_memberships m JOIN app_users u ON u.id = m.user_id
+       WHERE m.workspace_id = $1 AND u.email = $2 LIMIT 1`,
+      [request.params.workspaceId, email]
+    );
+    if (existingMember.rowCount > 0) {
+      return reply.code(409).send({ error: 'already_member', message: 'This person is already a workspace member.' });
+    }
+    const token = randomToken(32);
+    const result = await postgres.query(
+      `INSERT INTO workspace_invitations(workspace_id, email, role, token_hash, invited_by, expires_at)
+       VALUES ($1, $2, $3, $4, $5, NOW() + ($6::int * INTERVAL '1 day'))
+       ON CONFLICT (workspace_id, email) WHERE status = 'pending'
+       DO UPDATE SET role = EXCLUDED.role, token_hash = EXCLUDED.token_hash,
+                     invited_by = EXCLUDED.invited_by, expires_at = EXCLUDED.expires_at, updated_at = NOW()
+       RETURNING id, email, role, status, expires_at, created_at`,
+      [request.params.workspaceId, email, role, hashValue(token), request.customer.user.id, INVITATION_DAYS]
+    );
+    await writeAudit(postgres, request, {
+      workspaceId: request.params.workspaceId,
+      actorUserId: request.customer.user.id,
+      action: 'member.invited',
+      targetType: 'email',
+      targetId: email,
+      metadata: { role }
+    });
+    return reply.code(201).send({
+      ...result.rows[0],
+      invitationToken: token,
+      acceptPath: `/invite/${token}`
+    });
+  });
+
+  app.delete('/api/v1/customer/workspaces/:workspaceId/invitations/:invitationId', { preHandler: requireAdmin }, async (request, reply) => {
+    const result = await postgres.query(
+      `UPDATE workspace_invitations
+       SET status = 'revoked', updated_at = NOW()
+       WHERE id = $1 AND workspace_id = $2 AND status = 'pending'
+       RETURNING id, email, role`,
+      [request.params.invitationId, request.params.workspaceId]
+    );
+    if (result.rowCount === 0) return reply.code(404).send({ error: 'invitation_not_found', message: 'Pending invitation not found.' });
+    await writeAudit(postgres, request, {
+      workspaceId: request.params.workspaceId,
+      actorUserId: request.customer.user.id,
+      action: 'member.invitation_revoked',
+      targetType: 'email',
+      targetId: result.rows[0].email,
+      metadata: { role: result.rows[0].role }
+    });
+    return reply.code(204).send();
+  });
+
+  app.patch('/api/v1/customer/workspaces/:workspaceId/members/:userId', { preHandler: requireOwner }, async (request, reply) => {
+    const role = normalizeWorkspaceRole(request.body?.role, '');
+    if (!WORKSPACE_ROLES.has(role)) {
+      return reply.code(400).send({ error: 'invalid_role', message: 'Role must be owner, admin, or viewer.' });
+    }
+    await ensureLastOwnerIsPreserved(postgres, request.params.workspaceId, request.params.userId, role);
+    const result = await postgres.query(
+      `UPDATE workspace_memberships SET role = $3, updated_at = NOW()
+       WHERE workspace_id = $1 AND user_id = $2
+       RETURNING user_id, role, updated_at`,
+      [request.params.workspaceId, request.params.userId, role]
+    );
+    if (result.rowCount === 0) return reply.code(404).send({ error: 'member_not_found', message: 'Workspace member not found.' });
+    await writeAudit(postgres, request, {
+      workspaceId: request.params.workspaceId,
+      actorUserId: request.customer.user.id,
+      action: 'member.role_changed',
+      targetType: 'user',
+      targetId: request.params.userId,
+      metadata: { role }
+    });
+    return result.rows[0];
+  });
+
+  app.delete('/api/v1/customer/workspaces/:workspaceId/members/:userId', { preHandler: requireOwner }, async (request, reply) => {
+    await ensureLastOwnerIsPreserved(postgres, request.params.workspaceId, request.params.userId, null);
+    const result = await postgres.query(
+      `DELETE FROM workspace_memberships
+       WHERE workspace_id = $1 AND user_id = $2
+       RETURNING user_id, role`,
+      [request.params.workspaceId, request.params.userId]
+    );
+    if (result.rowCount === 0) return reply.code(404).send({ error: 'member_not_found', message: 'Workspace member not found.' });
+    await writeAudit(postgres, request, {
+      workspaceId: request.params.workspaceId,
+      actorUserId: request.customer.user.id,
+      action: 'member.removed',
+      targetType: 'user',
+      targetId: request.params.userId,
+      metadata: { previousRole: result.rows[0].role }
+    });
+    return reply.code(204).send();
+  });
+
+  app.get('/api/v1/customer/workspaces/:workspaceId/audit', { preHandler: requireAdmin }, async (request) => {
+    const limit = Math.min(Math.max(Number(request.query?.limit ?? 50), 1), 200);
+    const before = String(request.query?.before ?? '').trim();
+    const values = [request.params.workspaceId, limit];
+    const cursorFilter = before ? 'AND e.created_at < $3::timestamptz' : '';
+    if (before) values.push(before);
+    const result = await postgres.query(
+      `SELECT e.id, e.action, e.target_type, e.target_id, e.metadata, e.created_at,
+              u.email AS actor_email, u.display_name AS actor_name
+       FROM audit_events e
+       LEFT JOIN app_users u ON u.id = e.actor_user_id
+       WHERE e.workspace_id = $1 ${cursorFilter}
+       ORDER BY e.created_at DESC
+       LIMIT $2`,
+      values
+    );
+    return {
+      results: result.rows,
+      nextCursor: result.rows.length === limit ? result.rows.at(-1)?.created_at ?? null : null
+    };
+  });
+
   return {
     requireCustomer,
-    loadContext: (token) => loadContext(postgres, token)
+    requireWorkspaceRole,
+    loadContext: (token) => loadContext(postgres, token),
+    writeAudit: (request, event) => writeAudit(postgres, request, event)
   };
 }
