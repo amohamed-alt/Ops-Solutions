@@ -2,6 +2,7 @@ import { Queue } from 'bullmq';
 
 import { registerAnalyticsRoutes } from './analytics-runtime.js';
 import { registerRevenueReportingRoutes } from './revenue-reporting.js';
+import { registerSavedViewRoutes } from './saved-views.js';
 
 const ALLOWED_MODES = new Set(['initial', 'incremental', 'full']);
 
@@ -17,11 +18,7 @@ export function normalizeSyncMode(value) {
 }
 
 export function jobNameForMode(mode) {
-  return mode === 'initial'
-    ? 'initial-sync'
-    : mode === 'full'
-      ? 'full-sync'
-      : 'incremental-sync';
+  return mode === 'initial' ? 'initial-sync' : mode === 'full' ? 'full-sync' : 'incremental-sync';
 }
 
 async function syncSchemaReady(postgres) {
@@ -37,56 +34,38 @@ async function syncSchemaReady(postgres) {
 
 async function currentSyncState(postgres, workspaceId) {
   if (!await syncSchemaReady(postgres)) {
-    return {
-      initialized: false,
-      activeRun: null,
-      latestRun: null,
-      cursors: [],
-      recordCounts: [],
-      freshness: null
-    };
+    return { initialized: false, activeRun: null, latestRun: null, cursors: [], recordCounts: [], freshness: null };
   }
 
   const [activeResult, latestResult, cursorsResult, countsResult, freshnessResult] = await Promise.all([
     postgres.query(
       `SELECT id, mode, status, object_types, summary, error, started_at, completed_at
-       FROM sync_runs
-       WHERE workspace_id = $1 AND status = 'running'
-       ORDER BY started_at DESC
-       LIMIT 1`,
+       FROM sync_runs WHERE workspace_id = $1 AND status = 'running'
+       ORDER BY started_at DESC LIMIT 1`,
       [workspaceId]
     ),
     postgres.query(
       `SELECT id, mode, status, object_types, summary, error, started_at, completed_at
-       FROM sync_runs
-       WHERE workspace_id = $1
-       ORDER BY started_at DESC
-       LIMIT 1`,
+       FROM sync_runs WHERE workspace_id = $1 ORDER BY started_at DESC LIMIT 1`,
       [workspaceId]
     ),
     postgres.query(
       `SELECT object_type, last_modified_at, last_success_at,
               last_full_sync_at, last_incremental_sync_at, updated_at
-       FROM sync_cursors
-       WHERE workspace_id = $1
-       ORDER BY object_type`,
+       FROM sync_cursors WHERE workspace_id = $1 ORDER BY object_type`,
       [workspaceId]
     ),
     postgres.query(
       `SELECT object_type, COUNT(*)::int AS count,
               COUNT(*) FILTER (WHERE archived = TRUE)::int AS archived_count
-       FROM crm_records
-       WHERE workspace_id = $1
-       GROUP BY object_type
-       ORDER BY object_type`,
+       FROM crm_records WHERE workspace_id = $1 GROUP BY object_type ORDER BY object_type`,
       [workspaceId]
     ),
     postgres.query(
       `SELECT MAX(synced_at) AS newest_record_sync,
               MIN(synced_at) AS oldest_record_sync,
               COUNT(*)::bigint AS total_records
-       FROM crm_records
-       WHERE workspace_id = $1`,
+       FROM crm_records WHERE workspace_id = $1`,
       [workspaceId]
     )
   ]);
@@ -101,18 +80,9 @@ async function currentSyncState(postgres, workspaceId) {
   };
 }
 
-export function registerSyncOperationsRoutes(app, {
-  postgres,
-  redisUrl,
-  requireAdmin,
-  requireWorkspace
-}) {
+export function registerSyncOperationsRoutes(app, { postgres, redisUrl, requireAdmin, requireWorkspace }) {
   const queue = new Queue('hubspot-sync', {
-    connection: {
-      url: redisUrl,
-      maxRetriesPerRequest: 3,
-      enableReadyCheck: true
-    },
+    connection: { url: redisUrl, maxRetriesPerRequest: 3, enableReadyCheck: true },
     defaultJobOptions: {
       attempts: 4,
       backoff: { type: 'exponential', delay: 30_000 },
@@ -123,16 +93,12 @@ export function registerSyncOperationsRoutes(app, {
 
   app.get('/api/v1/workspaces/:workspaceId/sync', { preHandler: requireAdmin }, async (request) => {
     const workspace = await requireWorkspace(request.params.workspaceId);
-    return {
-      workspace,
-      ...(await currentSyncState(postgres, workspace.id))
-    };
+    return { workspace, ...(await currentSyncState(postgres, workspace.id)) };
   });
 
   app.post('/api/v1/workspaces/:workspaceId/sync', { preHandler: requireAdmin }, async (request, reply) => {
     const workspace = await requireWorkspace(request.params.workspaceId);
     const mode = normalizeSyncMode(request.body?.mode);
-
     const connectionResult = await postgres.query(
       `SELECT status FROM hubspot_connections WHERE workspace_id = $1 LIMIT 1`,
       [workspace.id]
@@ -146,11 +112,9 @@ export function registerSyncOperationsRoutes(app, {
 
     if (await syncSchemaReady(postgres)) {
       const runningResult = await postgres.query(
-        `SELECT id, mode, started_at
-         FROM sync_runs
+        `SELECT id, mode, started_at FROM sync_runs
          WHERE workspace_id = $1 AND status = 'running'
-         ORDER BY started_at DESC
-         LIMIT 1`,
+         ORDER BY started_at DESC LIMIT 1`,
         [workspace.id]
       );
       if (runningResult.rowCount > 0) {
@@ -172,28 +136,12 @@ export function registerSyncOperationsRoutes(app, {
       source: 'sync_operations_api'
     }, { jobId });
 
-    return reply.code(202).send({
-      status: 'queued',
-      workspaceId: workspace.id,
-      mode,
-      jobName,
-      jobId: String(job.id)
-    });
+    return reply.code(202).send({ status: 'queued', workspaceId: workspace.id, mode, jobName, jobId: String(job.id) });
   });
 
-  registerAnalyticsRoutes(app, {
-    postgres,
-    requireAdmin,
-    requireWorkspace
-  });
+  registerAnalyticsRoutes(app, { postgres, requireAdmin, requireWorkspace });
+  registerRevenueReportingRoutes(app, { postgres, requireAdmin, requireWorkspace });
+  registerSavedViewRoutes(app, { postgres });
 
-  registerRevenueReportingRoutes(app, {
-    postgres,
-    requireAdmin,
-    requireWorkspace
-  });
-
-  return {
-    close: () => queue.close()
-  };
+  return { close: () => queue.close() };
 }
