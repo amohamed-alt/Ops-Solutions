@@ -112,7 +112,7 @@ async function checkDependencies() {
 app.get('/', async () => ({
   service: 'ops-solutions-api',
   status: 'running',
-  version: '0.4.0'
+  version: '0.5.0'
 }));
 
 app.get('/health', async (_request, reply) => {
@@ -137,10 +137,13 @@ app.get('/health', async (_request, reply) => {
 
 app.get('/api/v1/platform', async () => ({
   product: 'Ops Solutions',
-  stage: 'self-service-onboarding',
+  stage: 'multi-tenant-team-management',
   capabilities: [
     'customer accounts and secure sessions',
     'tenant-scoped workspace memberships',
+    'owner, admin, and viewer role enforcement',
+    'secure workspace invitation lifecycle',
+    'workspace audit trail',
     'self-service HubSpot OAuth onboarding',
     'workspace persistence',
     'encrypted HubSpot OAuth tokens',
@@ -154,7 +157,7 @@ app.get('/api/v1/platform', async () => ({
   hubspot: getHubSpotConfigurationStatus()
 }));
 
-registerCustomerAuthRoutes(app, { postgres, withTransaction });
+const customerAuth = registerCustomerAuthRoutes(app, { postgres, withTransaction });
 
 app.get('/api/v1/workspaces', { preHandler: requireAdmin }, async () => {
   const result = await postgres.query(`
@@ -324,6 +327,13 @@ app.get('/api/v1/hubspot/oauth/callback', async (request, reply) => {
       JSON.stringify(tokenPayload.scopes ?? [])
     ]
   );
+  await customerAuth.writeAudit(request, {
+    workspaceId,
+    action: 'hubspot.connected',
+    targetType: 'portal',
+    targetId: String(portalId),
+    metadata: { scopes: tokenPayload.scopes ?? [] }
+  });
 
   const redirectPath = sanitizeReturnPath(oauthContext.redirect_path, config.hubspot.successRedirectUri || '/setup');
   const redirectUrl = new URL(redirectPath, config.appUrl);
