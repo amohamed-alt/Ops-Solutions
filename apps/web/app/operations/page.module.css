@@ -2,6 +2,14 @@
 .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:32px; }
 .topbar a { color:var(--muted); text-decoration:none; font-weight:700; }
 .topbar div { display:flex; gap:14px; align-items:center; }
+.accessGate { width:min(680px,100%); margin:9vh auto 0; padding:42px; border:1px solid var(--border); border-radius:24px; background:linear-gradient(145deg,rgba(69,227,143,.1),transparent 58%),var(--panel); box-shadow:0 32px 90px rgba(0,0,0,.28); backdrop-filter:blur(20px); }
+.accessGate h1 { margin:12px 0 16px; font-size:clamp(2.5rem,6vw,5.2rem); letter-spacing:-.06em; line-height:.96; }
+.accessGate p { color:var(--muted); line-height:1.7; }
+.accessGate form { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; margin-top:24px; }
+.accessGate input,.accessGate button { min-height:50px; border-radius:13px; }
+.accessGate input { min-width:0; padding:0 15px; border:1px solid var(--border); color:var(--text); background:rgba(255,255,255,.035); outline:none; }
+.accessGate input:focus { border-color:rgba(69,227,143,.48); box-shadow:0 0 0 4px var(--accent-soft); }
+.accessGate button { padding:0 20px; border:1px solid rgba(69,227,143,.4); color:#07110d; background:var(--accent); font-weight:900; cursor:pointer; }
 .dashboardGrid { display:grid; grid-template-columns:260px minmax(0,1fr); gap:18px; }
 .workspaceRail,.operationsPanel,.tableCard,.actionsCard,.runCard,.fatalState,.emptyState { border:1px solid var(--border); background:var(--panel); box-shadow:0 24px 70px rgba(0,0,0,.2); backdrop-filter:blur(18px); }
 .workspaceRail { padding:22px; border-radius:22px; height:max-content; position:sticky; top:20px; }
@@ -49,4 +57,4 @@
 .errorBlock { margin:16px 0 0; padding:15px; border:1px solid rgba(255,143,143,.3); border-radius:12px; overflow:auto; color:var(--danger); background:rgba(255,143,143,.06); white-space:pre-wrap; }
 .inlineEmpty,.emptyState,.fatalState { padding:36px; border-radius:20px; color:var(--muted); }.fatalState { min-height:420px; display:flex; flex-direction:column; justify-content:center; }
 @media (max-width:1080px){.dashboardGrid{grid-template-columns:1fr}.workspaceRail{position:static}.workspaceList{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}.kpiGrid,.runSummary{grid-template-columns:repeat(2,1fr)}.contentGrid{grid-template-columns:1fr}}
-@media (max-width:640px){.operationsPanel{padding:20px}.operationsHeader,.cardHeader,.objectTable article{align-items:flex-start;flex-direction:column}.healthBadge{align-self:flex-start}.kpiGrid,.runSummary{grid-template-columns:1fr}.objectTable article>div:last-child{text-align:left}.topbar{align-items:flex-start;gap:16px}.topbar div{align-items:flex-end;flex-direction:column}.operationsHeader h1{font-size:2.8rem}}
+@media (max-width:640px){.accessGate{padding:26px}.accessGate form{grid-template-columns:1fr}.operationsPanel{padding:20px}.operationsHeader,.cardHeader,.objectTable article{align-items:flex-start;flex-direction:column}.healthBadge{align-self:flex-start}.kpiGrid,.runSummary{grid-template-columns:1fr}.objectTable article>div:last-child{text-align:left}.topbar{align-items:flex-start;gap:16px}.topbar div{align-items:flex-end;flex-direction:column}.operationsHeader h1{font-size:2.8rem}}
