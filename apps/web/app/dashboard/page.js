@@ -1,12 +1,12 @@
-import { CustomerDashboard } from '@/components/sdr/CustomerDashboard';
+import { RevenueCommandCenter } from '@/components/sdr/RevenueCommandCenter';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
-  title: 'SDR Command Center · Ops Intelligence',
-  description: 'Live HubSpot SDR performance, attribution and operational intelligence.'
+  title: 'Revenue Command Center · Ops Intelligence',
+  description: 'Filtered HubSpot revenue, SDR, pipeline, source, team and data-quality intelligence.'
 };
 
 export default function DashboardPage() {
-  return <CustomerDashboard />;
+  return <RevenueCommandCenter />;
 }

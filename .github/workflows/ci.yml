@@ -66,7 +66,21 @@ jobs:
         run: |
           set -Eeuo pipefail
           npm install --no-audit --no-fund
-          npm run build
+          npm run build > web-build.log 2>&1
+
+      - name: Print web build diagnostics
+        if: failure()
+        working-directory: apps/web
+        run: tail -n 160 web-build.log || true
+
+      - name: Upload web build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build-log-${{ github.run_id }}
+          path: apps/web/web-build.log
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Validate Docker Compose
         run: |
