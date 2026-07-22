@@ -14,8 +14,10 @@ import {
   LoaderCircle,
   LockKeyhole,
   PlugZap,
+  Plus,
   ScanSearch,
-  Sparkles
+  Sparkles,
+  X
 } from 'lucide-react';
 
 import './onboarding.css';
@@ -73,6 +75,8 @@ export default function OnboardingClient() {
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [signup, setSignup] = useState({ name: '', companyName: '', email: '', password: '' });
   const [login, setLogin] = useState({ email: '', password: '' });
+  const [newCompanyName, setNewCompanyName] = useState('');
+  const [creatingCompany, setCreatingCompany] = useState(false);
   const [message, setMessage] = useState('');
   const [isPending, startTransition] = useTransition();
   const buildStarted = useRef(false);
@@ -84,7 +88,7 @@ export default function OnboardingClient() {
   const activeWorkspaceId = workspace?.id ?? '';
   const connected = Boolean(status?.connected || workspace?.hubspotStatus === 'connected');
 
-  const loadSession = useCallback(async () => {
+  const loadSession = useCallback(async (preferredWorkspaceId = selectedWorkspaceId) => {
     const response = await fetch('/api/customer/auth/session', { cache: 'no-store' });
     if (!response.ok) {
       const empty = { authenticated: false };
@@ -94,7 +98,7 @@ export default function OnboardingClient() {
     const payload = await response.json() as SessionPayload;
     setSession(payload);
     const rows = payload.workspaces ?? [];
-    const preferred = rows.find((item) => item.id === selectedWorkspaceId) ?? rows[0];
+    const preferred = rows.find((item) => item.id === preferredWorkspaceId) ?? rows[0];
     if (preferred && preferred.id !== selectedWorkspaceId) setSelectedWorkspaceId(preferred.id);
     return payload;
   }, [selectedWorkspaceId]);
@@ -196,6 +200,37 @@ export default function OnboardingClient() {
     });
   }
 
+  async function createCompany(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = newCompanyName.trim();
+    if (name.length < 2) {
+      setMessage('Enter a company name of at least two characters.');
+      return;
+    }
+    setMessage('');
+    startTransition(async () => {
+      try {
+        const response = await fetch('/api/customer/workspaces', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.workspace?.id) throw new Error(payload.message || 'Unable to create company workspace.');
+        const workspaceId = String(payload.workspace.id);
+        buildStarted.current = false;
+        setStatus(null);
+        setNewCompanyName('');
+        setCreatingCompany(false);
+        setSelectedWorkspaceId(workspaceId);
+        await loadSession(workspaceId);
+        window.history.replaceState({}, '', `/onboarding${workspaceQuery(workspaceId)}`);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Unable to create company workspace.');
+      }
+    });
+  }
+
   function selectWorkspace(workspaceId: string) {
     if (!workspaceId || workspaceId === activeWorkspaceId) return;
     buildStarted.current = false;
@@ -281,11 +316,18 @@ export default function OnboardingClient() {
           </>
         ) : (
           <>
-            {(session.workspaces?.length ?? 0) > 1 ? (
+            <div className="onboarding-workspace-actions">
               <label className="onboarding-workspace-picker">
                 <span>Company workspace</span>
                 <div><Building2 size={17} /><select value={activeWorkspaceId} onChange={(event) => selectWorkspace(event.target.value)} disabled={isPending}>{session.workspaces?.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.role}</option>)}</select></div>
               </label>
+              <button type="button" className="onboarding-add-company" onClick={() => setCreatingCompany((value) => !value)} disabled={isPending}>{creatingCompany ? <X size={16} /> : <Plus size={16} />}{creatingCompany ? 'Cancel' : 'Add company'}</button>
+            </div>
+            {creatingCompany ? (
+              <form className="onboarding-new-company" onSubmit={createCompany}>
+                <label><span>New company name</span><div><Building2 size={17} /><input value={newCompanyName} onChange={(event) => setNewCompanyName(event.target.value)} placeholder="Another company" minLength={2} maxLength={120} autoFocus required /></div></label>
+                <button disabled={isPending}>{isPending ? <><LoaderCircle className="spin" size={18} />Creating…</> : <>Create workspace <ArrowRight size={18} /></>}</button>
+              </form>
             ) : null}
             {!connected ? (
               <>
