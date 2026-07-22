@@ -1,0 +1,52 @@
+.operationsShell { padding-top: 28px; }
+.topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:32px; }
+.topbar a { color:var(--muted); text-decoration:none; font-weight:700; }
+.topbar div { display:flex; gap:14px; align-items:center; }
+.dashboardGrid { display:grid; grid-template-columns:260px minmax(0,1fr); gap:18px; }
+.workspaceRail,.operationsPanel,.tableCard,.actionsCard,.runCard,.fatalState,.emptyState { border:1px solid var(--border); background:var(--panel); box-shadow:0 24px 70px rgba(0,0,0,.2); backdrop-filter:blur(18px); }
+.workspaceRail { padding:22px; border-radius:22px; height:max-content; position:sticky; top:20px; }
+.workspaceList { display:grid; gap:10px; margin-top:18px; }
+.workspaceButton { width:100%; padding:14px; text-align:left; border:1px solid transparent; border-radius:14px; background:rgba(255,255,255,.025); color:var(--text); cursor:pointer; transition:transform .18s ease,border-color .18s ease,background .18s ease; }
+.workspaceButton:hover { transform:translateY(-2px); border-color:var(--border); }
+.workspaceButton span,.workspaceButton small { display:block; }
+.workspaceButton span { font-weight:800; }
+.workspaceButton small { margin-top:5px; color:var(--muted); }
+.workspaceButtonActive { border-color:rgba(69,227,143,.38); background:var(--accent-soft); }
+.operationsPanel { padding:28px; border-radius:24px; overflow:hidden; }
+.operationsHeader { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; }
+.operationsHeader h1,.fatalState h1 { margin:10px 0 12px; font-size:clamp(2.4rem,5vw,5rem); letter-spacing:-.055em; }
+.operationsHeader p,.fatalState p,.actionsCard p { margin:0; color:var(--muted); line-height:1.65; }
+.healthBadge { display:inline-flex; gap:9px; align-items:center; padding:10px 13px; border:1px solid var(--border); border-radius:999px; color:var(--muted); background:rgba(255,255,255,.025); font-size:.78rem; font-weight:800; white-space:nowrap; }
+.healthBadge span { width:9px; height:9px; border-radius:99px; background:currentColor; box-shadow:0 0 0 6px rgba(255,255,255,.04); }
+.healthy { color:var(--accent); }.warning { color:#ffd27d; }.danger { color:var(--danger); }.neutral { color:var(--muted); }
+.notice { margin:22px 0 0; padding:14px 16px; border:1px solid rgba(69,227,143,.3); border-radius:14px; background:var(--accent-soft); color:var(--accent); }
+.noticeError { border-color:rgba(255,143,143,.35); background:rgba(255,143,143,.08); color:var(--danger); }
+.kpiGrid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin:28px 0 18px; }
+.kpiGrid article { padding:20px; border:1px solid var(--border); border-radius:18px; background:rgba(255,255,255,.025); transition:transform .18s ease,border-color .18s ease; }
+.kpiGrid article:hover { transform:translateY(-3px); border-color:rgba(69,227,143,.28); }
+.kpiGrid span,.kpiGrid small { display:block; color:var(--muted); }
+.kpiGrid span { font-size:.8rem; }.kpiGrid strong { display:block; margin:15px 0 6px; font-size:1.45rem; text-transform:capitalize; }.kpiGrid small { font-size:.76rem; line-height:1.45; }
+.contentGrid { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(320px,.75fr); gap:18px; }
+.tableCard,.actionsCard,.runCard { padding:24px; border-radius:20px; }
+.cardHeader { display:flex; justify-content:space-between; gap:16px; align-items:flex-start; padding-bottom:18px; border-bottom:1px solid var(--border); }
+.cardHeader h2,.actionsCard h2 { margin:7px 0 0; font-size:1.35rem; }
+.cardHeader button { padding:9px 12px; border:1px solid var(--border); border-radius:10px; color:var(--text); background:rgba(255,255,255,.035); cursor:pointer; }
+.objectTable { display:grid; }
+.objectTable article { display:flex; justify-content:space-between; gap:20px; align-items:center; padding:17px 0; border-bottom:1px solid var(--border); }
+.objectTable article:last-child { border-bottom:0; padding-bottom:0; }
+.objectTable strong,.objectTable small,.objectTable span { display:block; }
+.objectTable strong { text-transform:capitalize; }.objectTable small { margin-top:4px; color:var(--muted); font-size:.75rem; }.objectTable article>div:last-child { text-align:right; }.objectTable span { font-size:1.2rem; font-weight:800; }
+.actionsCard { background:linear-gradient(145deg,rgba(69,227,143,.09),transparent 58%),var(--panel-strong); }
+.actionsCard p { margin:14px 0 20px; }
+.actionList { display:grid; gap:10px; }
+.actionList button { display:flex; justify-content:space-between; gap:14px; align-items:center; width:100%; padding:15px; border:1px solid var(--border); border-radius:14px; color:var(--text); background:rgba(255,255,255,.028); text-align:left; cursor:pointer; transition:transform .18s ease,border-color .18s ease; }
+.actionList button:hover:not(:disabled) { transform:translateX(4px); border-color:rgba(69,227,143,.34); }.actionList button:disabled { opacity:.45; cursor:not-allowed; }
+.actionList span,.actionList strong,.actionList small { display:block; }.actionList small { margin-top:5px; color:var(--muted); line-height:1.4; }.actionList b { color:var(--accent); font-size:1.15rem; }
+.runCard { margin-top:18px; }
+.runSummary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-top:18px; }
+.runSummary div { padding:16px; border:1px solid var(--border); border-radius:14px; background:rgba(255,255,255,.02); }
+.runSummary span,.runSummary strong { display:block; }.runSummary span { color:var(--muted); font-size:.76rem; }.runSummary strong { margin-top:9px; font-size:.92rem; }
+.errorBlock { margin:16px 0 0; padding:15px; border:1px solid rgba(255,143,143,.3); border-radius:12px; overflow:auto; color:var(--danger); background:rgba(255,143,143,.06); white-space:pre-wrap; }
+.inlineEmpty,.emptyState,.fatalState { padding:36px; border-radius:20px; color:var(--muted); }.fatalState { min-height:420px; display:flex; flex-direction:column; justify-content:center; }
+@media (max-width:1080px){.dashboardGrid{grid-template-columns:1fr}.workspaceRail{position:static}.workspaceList{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}.kpiGrid,.runSummary{grid-template-columns:repeat(2,1fr)}.contentGrid{grid-template-columns:1fr}}
+@media (max-width:640px){.operationsPanel{padding:20px}.operationsHeader,.cardHeader,.objectTable article{align-items:flex-start;flex-direction:column}.healthBadge{align-self:flex-start}.kpiGrid,.runSummary{grid-template-columns:1fr}.objectTable article>div:last-child{text-align:left}.topbar{align-items:flex-start;gap:16px}.topbar div{align-items:flex-end;flex-direction:column}.operationsHeader h1{font-size:2.8rem}}
