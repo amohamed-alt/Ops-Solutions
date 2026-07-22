@@ -3,7 +3,9 @@ import test from 'node:test';
 
 import {
   hashPassword,
+  hasWorkspaceRole,
   normalizeEmail,
+  normalizeWorkspaceRole,
   sanitizeReturnPath,
   slugifyWorkspace,
   validatePassword,
@@ -33,4 +35,19 @@ test('allows only same-origin OAuth return paths', () => {
   assert.equal(sanitizeReturnPath('https://evil.example/path'), '/onboarding');
   assert.equal(sanitizeReturnPath('//evil.example/path'), '/onboarding');
   assert.equal(sanitizeReturnPath('/\\evil'), '/onboarding');
+});
+
+test('normalizes supported workspace roles and applies least privilege', () => {
+  assert.equal(normalizeWorkspaceRole(' ADMIN '), 'admin');
+  assert.equal(normalizeWorkspaceRole('unsupported'), 'viewer');
+  assert.equal(normalizeWorkspaceRole('unsupported', ''), '');
+});
+
+test('enforces the owner, admin, viewer role hierarchy', () => {
+  assert.equal(hasWorkspaceRole('owner', 'owner'), true);
+  assert.equal(hasWorkspaceRole('owner', 'admin'), true);
+  assert.equal(hasWorkspaceRole('admin', 'viewer'), true);
+  assert.equal(hasWorkspaceRole('admin', 'owner'), false);
+  assert.equal(hasWorkspaceRole('viewer', 'admin'), false);
+  assert.equal(hasWorkspaceRole('unknown', 'viewer'), false);
 });
