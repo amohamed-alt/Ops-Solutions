@@ -66,6 +66,7 @@ export default function OnboardingClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const connectedCallback = searchParams.get('hubspot') === 'connected' || searchParams.get('connected') === '1';
+  const callbackWorkspaceId = searchParams.get('workspaceId') ?? '';
   const [mode, setMode] = useState<'signup' | 'login'>('signup');
   const [session, setSession] = useState<SessionPayload | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(searchParams.get('workspaceId') ?? '');
@@ -118,7 +119,7 @@ export default function OnboardingClient() {
   }, [session?.authenticated, activeWorkspaceId, refreshStatus]);
 
   useEffect(() => {
-    if (!session?.authenticated || !activeWorkspaceId || !connectedCallback || buildStarted.current) return;
+    if (!session?.authenticated || !activeWorkspaceId || !connectedCallback || callbackWorkspaceId !== activeWorkspaceId || buildStarted.current) return;
     buildStarted.current = true;
     startTransition(async () => {
       try {
@@ -131,7 +132,7 @@ export default function OnboardingClient() {
         setMessage(error instanceof Error ? error.message : 'Unable to complete onboarding.');
       }
     });
-  }, [session?.authenticated, activeWorkspaceId, connectedCallback, refreshStatus]);
+  }, [session?.authenticated, activeWorkspaceId, connectedCallback, callbackWorkspaceId, refreshStatus]);
 
   useEffect(() => {
     if (!session?.authenticated || !activeWorkspaceId || !connected || status?.ready) return;
