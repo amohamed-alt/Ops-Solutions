@@ -15,7 +15,7 @@ const WORKSPACE_ID = '5839ad18-0d29-4e1b-aa51-47a0b9756aad';
 const USER_ID = '9f665079-6a78-4d4c-89dd-8b24bd39e431';
 const VIEW_ID = 'c12f156c-a0fd-4a5c-a793-c7f43acd847d';
 
-test('normalizes CSV background export requests and rejects unavailable formats', () => {
+test('normalizes CSV and XLSX background export requests and rejects unavailable formats', () => {
   assert.deepEqual(normalizeBackgroundExportRequest({
     format: ' CSV ',
     savedViewId: VIEW_ID,
@@ -26,8 +26,9 @@ test('normalizes CSV background export requests and rejects unavailable formats'
     filters: {},
     viewName: 'GCC review'
   });
+  assert.equal(normalizeBackgroundExportRequest({ format: 'xlsx' }).format, 'xlsx');
   assert.throws(
-    () => normalizeBackgroundExportRequest({ format: 'xlsx' }),
+    () => normalizeBackgroundExportRequest({ format: 'pdf' }),
     (error) => error.statusCode === 400 && error.category === 'EXPORT_FORMAT_NOT_AVAILABLE'
   );
   assert.throws(() => normalizeBackgroundExportRequest({ savedViewId: 'unsafe' }), /Saved view ID is invalid/);
@@ -90,6 +91,7 @@ test('processes an export idempotently and persists only the scoped artifact', a
             id: EXPORT_ID,
             workspace_id: WORKSPACE_ID,
             requested_by_user_id: USER_ID,
+            format: 'xlsx',
             status: 'queued',
             artifact: null,
             filters: { from: '2026-07-01', to: '2026-07-22' },
@@ -105,19 +107,25 @@ test('processes an export idempotently and persists only the scoped artifact', a
     data: { exportJobId: EXPORT_ID, workspaceId: WORKSPACE_ID, userId: USER_ID },
     attemptsMade: 0
   }, {
-    async buildExport(_postgres, workspace, filters) {
+    async buildExport(_postgres, workspace, filters, format) {
       assert.deepEqual(workspace, { id: WORKSPACE_ID, name: 'Acme' });
       assert.equal(filters.viewName, 'Leadership review');
-      return { csv: '\uFEFFsafe export', fileName: 'acme.csv' };
+      assert.equal(format, 'xlsx');
+      return {
+        artifact: Buffer.from('safe workbook'),
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        fileName: 'acme.xlsx'
+      };
     }
   });
   assert.equal(result.status, 'completed');
-  assert.equal(result.fileSizeBytes, Buffer.byteLength('\uFEFFsafe export'));
+  assert.equal(result.fileSizeBytes, Buffer.byteLength('safe workbook'));
   const processingUpdate = queries.find((query) => query.text.includes("SET status = 'processing'"));
   assert.match(processingUpdate.text, /workspace_id = \$3 AND requested_by_user_id = \$4/);
   assert.deepEqual(processingUpdate.values, [EXPORT_ID, 1, WORKSPACE_ID, USER_ID]);
   const finalUpdate = queries.find((query) => query.text.includes("SET status = 'completed'"));
   assert.ok(Buffer.isBuffer(finalUpdate.values[4]));
+  assert.equal(finalUpdate.values[2], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   assert.equal(finalUpdate.values[5], WORKSPACE_ID);
   assert.equal(finalUpdate.values[6], USER_ID);
 });
