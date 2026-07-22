@@ -11,6 +11,7 @@
         "https://ops.dashboardtalentera.tech/api/v1/hubspot/oauth/callback"
       ],
       "requiredScopes": [
+        "oauth",
         "crm.objects.contacts.read",
         "crm.objects.companies.read",
         "crm.objects.deals.read",
@@ -22,7 +23,6 @@
       "optionalScopes": [
         "crm.objects.calls.read",
         "crm.objects.meetings.read",
-        "crm.objects.tasks.read",
         "crm.schemas.custom.read"
       ],
       "conditionallyRequiredScopes": []
