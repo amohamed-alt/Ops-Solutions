@@ -12,6 +12,7 @@ import {
   HubSpotApiError
 } from './hubspot.js';
 import { inferValueMapping } from './semantic.js';
+import { registerSyncOperationsRoutes } from './sync-operations.js';
 
 assertRuntimeConfiguration();
 
@@ -54,7 +55,6 @@ function isUuid(value) {
 async function requireAdmin(request, reply) {
   if (!config.adminApiKey) {
     if (config.nodeEnv !== 'production') return;
-
     return reply.code(503).send({
       error: 'admin_api_key_not_configured',
       message: 'ADMIN_API_KEY must be configured before using administrative endpoints.'
@@ -81,13 +81,11 @@ async function requireWorkspace(workspaceId) {
     'SELECT id, name, slug, status, created_at, updated_at FROM workspaces WHERE id = $1',
     [workspaceId]
   );
-
   if (result.rowCount === 0) {
     const error = new Error('Workspace not found');
     error.statusCode = 404;
     throw error;
   }
-
   return result.rows[0];
 }
 
@@ -97,7 +95,6 @@ async function checkDependencies() {
     postgres.query('SELECT 1 AS healthy'),
     redis.ping()
   ]);
-
   return {
     database: databaseResult.rows[0]?.healthy === 1 ? 'healthy' : 'unhealthy',
     redis: redisResult === 'PONG' ? 'healthy' : 'unhealthy',
@@ -108,13 +105,12 @@ async function checkDependencies() {
 app.get('/', async () => ({
   service: 'ops-solutions-api',
   status: 'running',
-  version: '0.2.0'
+  version: '0.3.0'
 }));
 
 app.get('/health', async (_request, reply) => {
   try {
     const dependencies = await checkDependencies();
-
     return {
       status: 'healthy',
       service: 'api',
@@ -124,7 +120,6 @@ app.get('/health', async (_request, reply) => {
     };
   } catch (error) {
     app.log.error({ error }, 'Health check failed');
-
     return reply.code(503).send({
       status: 'unhealthy',
       service: 'api',
@@ -135,14 +130,16 @@ app.get('/health', async (_request, reply) => {
 
 app.get('/api/v1/platform', async () => ({
   product: 'Ops Solutions',
-  stage: 'hubspot-oauth-discovery',
+  stage: 'sync-operations',
   capabilities: [
     'workspace persistence',
     'encrypted HubSpot OAuth tokens',
     'portal schema discovery',
     'owners and pipelines discovery',
     'semantic property suggestions',
-    'mapping approval workflow'
+    'mapping approval workflow',
+    'initial and incremental CRM synchronization',
+    'sync health and manual recovery controls'
   ],
   hubspot: getHubSpotConfigurationStatus()
 }));
@@ -150,26 +147,18 @@ app.get('/api/v1/platform', async () => ({
 app.get('/api/v1/workspaces', { preHandler: requireAdmin }, async () => {
   const result = await postgres.query(`
     SELECT
-      w.id,
-      w.name,
-      w.slug,
-      w.status,
-      w.created_at,
-      c.portal_id,
-      c.status AS hubspot_status,
-      c.last_discovered_at
+      w.id, w.name, w.slug, w.status, w.created_at,
+      c.portal_id, c.status AS hubspot_status, c.last_discovered_at
     FROM workspaces w
     LEFT JOIN hubspot_connections c ON c.workspace_id = w.id
     ORDER BY w.created_at DESC
   `);
-
   return { results: result.rows };
 });
 
 app.post('/api/v1/workspaces', { preHandler: requireAdmin }, async (request, reply) => {
   const name = String(request.body?.name ?? '').trim();
   const slug = slugify(request.body?.slug || name);
-
   if (name.length < 2 || name.length > 120 || !slug) {
     return reply.code(400).send({
       error: 'invalid_workspace',
@@ -179,14 +168,11 @@ app.post('/api/v1/workspaces', { preHandler: requireAdmin }, async (request, rep
 
   try {
     const result = await postgres.query(
-      `
-        INSERT INTO workspaces(name, slug)
-        VALUES ($1, $2)
-        RETURNING id, name, slug, status, created_at, updated_at
-      `,
+      `INSERT INTO workspaces(name, slug)
+       VALUES ($1, $2)
+       RETURNING id, name, slug, status, created_at, updated_at`,
       [name, slug]
     );
-
     return reply.code(201).send(result.rows[0]);
   } catch (error) {
     if (error.code === '23505') {
@@ -204,31 +190,26 @@ app.get('/api/v1/workspaces/:workspaceId/setup', { preHandler: requireAdmin }, a
   const [connection, countsResult, mappingsResult, suggestionsResult, latestDiscoveryResult] = await Promise.all([
     getConnectionForWorkspace(workspace.id),
     postgres.query(
-      `
-        SELECT object_type, COUNT(*)::int AS count
-        FROM crm_properties
-        WHERE workspace_id = $1
-        GROUP BY object_type
-        ORDER BY object_type
-      `,
+      `SELECT object_type, COUNT(*)::int AS count
+       FROM crm_properties
+       WHERE workspace_id = $1
+       GROUP BY object_type
+       ORDER BY object_type`,
+      [workspace.id]
+    ),
+    postgres.query('SELECT COUNT(*)::int AS count FROM property_mappings WHERE workspace_id = $1', [workspace.id]),
+    postgres.query(
+      `SELECT COUNT(*)::int AS count
+       FROM property_mapping_suggestions
+       WHERE workspace_id = $1 AND status = 'suggested'`,
       [workspace.id]
     ),
     postgres.query(
-      'SELECT COUNT(*)::int AS count FROM property_mappings WHERE workspace_id = $1',
-      [workspace.id]
-    ),
-    postgres.query(
-      `SELECT COUNT(*)::int AS count FROM property_mapping_suggestions WHERE workspace_id = $1 AND status = 'suggested'`,
-      [workspace.id]
-    ),
-    postgres.query(
-      `
-        SELECT status, summary, error, started_at, completed_at
-        FROM discovery_runs
-        WHERE workspace_id = $1
-        ORDER BY started_at DESC
-        LIMIT 1
-      `,
+      `SELECT status, summary, error, started_at, completed_at
+       FROM discovery_runs
+       WHERE workspace_id = $1
+       ORDER BY started_at DESC
+       LIMIT 1`,
       [workspace.id]
     )
   ]);
@@ -254,35 +235,22 @@ app.get('/api/v1/workspaces/:workspaceId/setup', { preHandler: requireAdmin }, a
 app.get('/api/v1/workspaces/:workspaceId/hubspot/oauth/start', { preHandler: requireAdmin }, async (request) => {
   const workspace = await requireWorkspace(request.params.workspaceId);
   const state = randomToken(32);
-  const stateHash = hashValue(state);
-
   await postgres.query('DELETE FROM oauth_states WHERE expires_at < NOW() OR consumed_at IS NOT NULL');
   await postgres.query(
-    `
-      INSERT INTO oauth_states(state_hash, workspace_id, expires_at)
-      VALUES ($1, $2, NOW() + INTERVAL '10 minutes')
-    `,
-    [stateHash, workspace.id]
+    `INSERT INTO oauth_states(state_hash, workspace_id, expires_at)
+     VALUES ($1, $2, NOW() + INTERVAL '10 minutes')`,
+    [hashValue(state), workspace.id]
   );
-
-  return {
-    authorizationUrl: createAuthorizationUrl(state),
-    expiresInSeconds: 600
-  };
+  return { authorizationUrl: createAuthorizationUrl(state), expiresInSeconds: 600 };
 });
 
 app.get('/api/v1/hubspot/oauth/callback', async (request, reply) => {
   const code = String(request.query?.code ?? '');
   const state = String(request.query?.state ?? '');
   const oauthError = String(request.query?.error ?? '');
-
   if (oauthError) {
-    return reply.code(400).send({
-      error: 'hubspot_authorization_denied',
-      message: oauthError
-    });
+    return reply.code(400).send({ error: 'hubspot_authorization_denied', message: oauthError });
   }
-
   if (!code || !state) {
     return reply.code(400).send({
       error: 'invalid_oauth_callback',
@@ -292,29 +260,22 @@ app.get('/api/v1/hubspot/oauth/callback', async (request, reply) => {
 
   const workspaceId = await withTransaction(async (client) => {
     const result = await client.query(
-      `
-        UPDATE oauth_states
-        SET consumed_at = NOW()
-        WHERE state_hash = $1
-          AND consumed_at IS NULL
-          AND expires_at > NOW()
-        RETURNING workspace_id
-      `,
+      `UPDATE oauth_states
+       SET consumed_at = NOW()
+       WHERE state_hash = $1 AND consumed_at IS NULL AND expires_at > NOW()
+       RETURNING workspace_id`,
       [hashValue(state)]
     );
-
     if (result.rowCount === 0) {
       const error = new Error('OAuth state is invalid, expired, or already used');
       error.statusCode = 400;
       throw error;
     }
-
     return result.rows[0].workspace_id;
   });
 
   const tokenPayload = await exchangeAuthorizationCode(code);
   const portalId = Number(tokenPayload.hub_id);
-
   if (!Number.isSafeInteger(portalId) || !tokenPayload.access_token || !tokenPayload.refresh_token) {
     throw new HubSpotApiError('HubSpot returned an incomplete OAuth token response', {
       statusCode: 502,
@@ -323,24 +284,21 @@ app.get('/api/v1/hubspot/oauth/callback', async (request, reply) => {
   }
 
   const expiresAt = new Date(Date.now() + Number(tokenPayload.expires_in ?? 1800) * 1000);
-
   await postgres.query(
-    `
-      INSERT INTO hubspot_connections (
-        workspace_id, portal_id, access_token_encrypted, refresh_token_encrypted,
-        token_expires_at, scopes, status, connected_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, 'connected', NOW(), NOW())
-      ON CONFLICT (workspace_id) DO UPDATE SET
-        portal_id = EXCLUDED.portal_id,
-        access_token_encrypted = EXCLUDED.access_token_encrypted,
-        refresh_token_encrypted = EXCLUDED.refresh_token_encrypted,
-        token_expires_at = EXCLUDED.token_expires_at,
-        scopes = EXCLUDED.scopes,
-        status = 'connected',
-        last_error = NULL,
-        connected_at = NOW(),
-        updated_at = NOW()
-    `,
+    `INSERT INTO hubspot_connections (
+       workspace_id, portal_id, access_token_encrypted, refresh_token_encrypted,
+       token_expires_at, scopes, status, connected_at, updated_at
+     ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, 'connected', NOW(), NOW())
+     ON CONFLICT (workspace_id) DO UPDATE SET
+       portal_id = EXCLUDED.portal_id,
+       access_token_encrypted = EXCLUDED.access_token_encrypted,
+       refresh_token_encrypted = EXCLUDED.refresh_token_encrypted,
+       token_expires_at = EXCLUDED.token_expires_at,
+       scopes = EXCLUDED.scopes,
+       status = 'connected',
+       last_error = NULL,
+       connected_at = NOW(),
+       updated_at = NOW()`,
     [
       workspaceId,
       portalId,
@@ -351,14 +309,10 @@ app.get('/api/v1/hubspot/oauth/callback', async (request, reply) => {
     ]
   );
 
-  const redirectUrl = new URL(
-    config.hubspot.successRedirectUri || '/setup',
-    config.appUrl
-  );
+  const redirectUrl = new URL(config.hubspot.successRedirectUri || '/setup', config.appUrl);
   redirectUrl.searchParams.set('hubspot', 'connected');
   redirectUrl.searchParams.set('workspaceId', workspaceId);
   redirectUrl.searchParams.set('portalId', String(portalId));
-
   return reply.redirect(redirectUrl.toString());
 });
 
@@ -372,79 +326,55 @@ app.get('/api/v1/workspaces/:workspaceId/properties', { preHandler: requireAdmin
   const workspace = await requireWorkspace(request.params.workspaceId);
   const objectType = String(request.query?.objectType ?? '').trim();
   const values = [workspace.id];
-  let filter = '';
-
-  if (objectType) {
-    values.push(objectType);
-    filter = 'AND object_type = $2';
-  }
-
+  const filter = objectType ? 'AND object_type = $2' : '';
+  if (objectType) values.push(objectType);
   const result = await postgres.query(
-    `
-      SELECT object_type, property_name, label, description, group_name,
-             field_type, data_type, hubspot_defined, options, discovered_at
-      FROM crm_properties
-      WHERE workspace_id = $1 ${filter}
-      ORDER BY object_type, hubspot_defined, label
-      LIMIT 5000
-    `,
+    `SELECT object_type, property_name, label, description, group_name,
+            field_type, data_type, hubspot_defined, options, discovered_at
+     FROM crm_properties
+     WHERE workspace_id = $1 ${filter}
+     ORDER BY object_type, hubspot_defined, label
+     LIMIT 5000`,
     values
   );
-
   return { results: result.rows };
 });
 
 app.get('/api/v1/workspaces/:workspaceId/mapping-suggestions', { preHandler: requireAdmin }, async (request) => {
   const workspace = await requireWorkspace(request.params.workspaceId);
   const result = await postgres.query(
-    `
-      SELECT
-        s.id,
-        s.semantic_key,
-        f.label AS semantic_label,
-        f.description AS semantic_description,
-        s.object_type,
-        s.property_name,
-        p.label AS property_label,
-        p.description AS property_description,
-        p.field_type,
-        p.data_type,
-        p.options,
-        s.confidence,
-        s.reasons,
-        s.status
-      FROM property_mapping_suggestions s
-      JOIN semantic_fields f ON f.semantic_key = s.semantic_key
-      JOIN crm_properties p
-        ON p.workspace_id = s.workspace_id
-       AND p.object_type = s.object_type
-       AND p.property_name = s.property_name
-      WHERE s.workspace_id = $1
-      ORDER BY s.semantic_key, s.object_type, s.confidence DESC
-    `,
+    `SELECT
+       s.id, s.semantic_key, f.label AS semantic_label,
+       f.description AS semantic_description, s.object_type, s.property_name,
+       p.label AS property_label, p.description AS property_description,
+       p.field_type, p.data_type, p.options, s.confidence, s.reasons, s.status
+     FROM property_mapping_suggestions s
+     JOIN semantic_fields f ON f.semantic_key = s.semantic_key
+     JOIN crm_properties p
+       ON p.workspace_id = s.workspace_id
+      AND p.object_type = s.object_type
+      AND p.property_name = s.property_name
+     WHERE s.workspace_id = $1
+     ORDER BY s.semantic_key, s.object_type, s.confidence DESC`,
     [workspace.id]
   );
-
   return { results: result.rows };
 });
 
 app.get('/api/v1/workspaces/:workspaceId/mappings', { preHandler: requireAdmin }, async (request) => {
   const workspace = await requireWorkspace(request.params.workspaceId);
   const result = await postgres.query(
-    `
-      SELECT m.*, f.label AS semantic_label, p.label AS property_label
-      FROM property_mappings m
-      JOIN semantic_fields f ON f.semantic_key = m.semantic_key
-      JOIN crm_properties p
-        ON p.workspace_id = m.workspace_id
-       AND p.object_type = m.object_type
-       AND p.property_name = m.property_name
-      WHERE m.workspace_id = $1
-      ORDER BY f.label, m.object_type
-    `,
+    `SELECT m.*, f.label AS semantic_label, p.label AS property_label
+     FROM property_mappings m
+     JOIN semantic_fields f ON f.semantic_key = m.semantic_key
+     JOIN crm_properties p
+       ON p.workspace_id = m.workspace_id
+      AND p.object_type = m.object_type
+      AND p.property_name = m.property_name
+     WHERE m.workspace_id = $1
+     ORDER BY f.label, m.object_type`,
     [workspace.id]
   );
-
   return { results: result.rows };
 });
 
@@ -454,7 +384,6 @@ app.post('/api/v1/workspaces/:workspaceId/mappings/:semanticKey/approve', { preH
   const objectType = String(request.body?.objectType ?? '').trim();
   const propertyName = String(request.body?.propertyName ?? '').trim();
   const suppliedValueMapping = request.body?.valueMapping;
-
   if (!semanticKey || !objectType || !propertyName) {
     return reply.code(400).send({
       error: 'invalid_mapping',
@@ -463,14 +392,10 @@ app.post('/api/v1/workspaces/:workspaceId/mappings/:semanticKey/approve', { preH
   }
 
   const propertyResult = await postgres.query(
-    `
-      SELECT options
-      FROM crm_properties
-      WHERE workspace_id = $1 AND object_type = $2 AND property_name = $3
-    `,
+    `SELECT options FROM crm_properties
+     WHERE workspace_id = $1 AND object_type = $2 AND property_name = $3`,
     [workspace.id, objectType, propertyName]
   );
-
   if (propertyResult.rowCount === 0) {
     return reply.code(404).send({
       error: 'property_not_found',
@@ -482,45 +407,43 @@ app.post('/api/v1/workspaces/:workspaceId/mappings/:semanticKey/approve', { preH
     ? suppliedValueMapping
     : inferValueMapping(semanticKey, propertyResult.rows[0].options);
 
-  const result = await withTransaction(async (client) => {
+  return withTransaction(async (client) => {
     const mappingResult = await client.query(
-      `
-        INSERT INTO property_mappings (
-          workspace_id, semantic_key, object_type, property_name,
-          value_mapping, source, approved_by, updated_at
-        ) VALUES ($1, $2, $3, $4, $5::jsonb, 'user_approved', 'bootstrap_admin', NOW())
-        ON CONFLICT (workspace_id, semantic_key, object_type)
-        DO UPDATE SET
-          property_name = EXCLUDED.property_name,
-          value_mapping = EXCLUDED.value_mapping,
-          source = EXCLUDED.source,
-          approved_by = EXCLUDED.approved_by,
-          updated_at = NOW()
-        RETURNING *
-      `,
+      `INSERT INTO property_mappings (
+         workspace_id, semantic_key, object_type, property_name,
+         value_mapping, source, approved_by, updated_at
+       ) VALUES ($1, $2, $3, $4, $5::jsonb, 'user_approved', 'bootstrap_admin', NOW())
+       ON CONFLICT (workspace_id, semantic_key, object_type)
+       DO UPDATE SET
+         property_name = EXCLUDED.property_name,
+         value_mapping = EXCLUDED.value_mapping,
+         source = EXCLUDED.source,
+         approved_by = EXCLUDED.approved_by,
+         updated_at = NOW()
+       RETURNING *`,
       [workspace.id, semanticKey, objectType, propertyName, JSON.stringify(valueMapping)]
     );
-
     await client.query(
-      `
-        UPDATE property_mapping_suggestions
-        SET status = CASE WHEN property_name = $4 THEN 'approved' ELSE 'rejected' END,
-            updated_at = NOW()
-        WHERE workspace_id = $1 AND semantic_key = $2 AND object_type = $3
-      `,
+      `UPDATE property_mapping_suggestions
+       SET status = CASE WHEN property_name = $4 THEN 'approved' ELSE 'rejected' END,
+           updated_at = NOW()
+       WHERE workspace_id = $1 AND semantic_key = $2 AND object_type = $3`,
       [workspace.id, semanticKey, objectType, propertyName]
     );
-
     return mappingResult.rows[0];
   });
+});
 
-  return result;
+const syncOperations = registerSyncOperationsRoutes(app, {
+  postgres,
+  redisUrl: config.redisUrl,
+  requireAdmin,
+  requireWorkspace
 });
 
 app.setErrorHandler((error, request, reply) => {
   const statusCode = Number(error.statusCode) >= 400 ? Number(error.statusCode) : 500;
   request.log.error({ error, statusCode }, 'Request failed');
-
   reply.code(statusCode).send({
     error: error.category ?? (statusCode >= 500 ? 'internal_server_error' : 'request_error'),
     message: statusCode >= 500 && !(error instanceof HubSpotApiError)
@@ -532,13 +455,12 @@ app.setErrorHandler((error, request, reply) => {
 
 async function shutdown(signal) {
   app.log.info({ signal }, 'Shutting down');
-
   await app.close();
   await Promise.allSettled([
+    syncOperations.close(),
     postgres.end(),
     redis.quit()
   ]);
-
   process.exit(0);
 }
 
@@ -553,6 +475,7 @@ try {
 } catch (error) {
   app.log.fatal({ error }, 'API failed to start');
   await Promise.allSettled([
+    syncOperations.close(),
     postgres.end(),
     redis.quit()
   ]);
