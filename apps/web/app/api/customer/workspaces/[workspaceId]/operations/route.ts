@@ -39,9 +39,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const connected = setup?.hubspot?.status === 'connected';
     const activeRun = sync?.activeRun ?? null;
     const latestRun = sync?.latestRun ?? null;
+    const webhookFailures = Number(sync?.webhooks?.failed24h ?? 0);
     let health = { status: 'healthy', severity: 'success', message: 'HubSpot and synchronized CRM data are healthy.' };
     if (!connected) health = { status: 'disconnected', severity: 'critical', message: 'HubSpot is not connected to this company.' };
     else if (activeRun) health = { status: 'syncing', severity: 'info', message: `A ${activeRun.mode || 'CRM'} synchronization is running.` };
+    else if (webhookFailures > 0) health = { status: 'degraded', severity: 'warning', message: `${webhookFailures} HubSpot webhook event${webhookFailures === 1 ? '' : 's'} failed during the last 24 hours.` };
     else if (setup?.hubspot?.lastError || latestRun?.status === 'failed') health = { status: 'degraded', severity: 'warning', message: setup?.hubspot?.lastError || latestRun?.error || 'The latest synchronization failed.' };
     else if (!totalRecords) health = { status: 'initializing', severity: 'warning', message: 'HubSpot is connected but no CRM records have been synchronized yet.' };
     else if (!Number.isFinite(ageMs) || ageMs > 24 * 60 * 60 * 1000) health = { status: 'stale', severity: 'warning', message: 'CRM data has not refreshed during the last 24 hours.' };
@@ -60,7 +62,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         latestRun,
         cursors: sync?.cursors ?? [],
         recordCounts: sync?.recordCounts ?? [],
-        freshness: sync?.freshness ?? null
+        freshness: sync?.freshness ?? null,
+        webhooks: sync?.webhooks ?? {
+          initialized: false,
+          received24h: 0,
+          failed24h: 0,
+          latestReceivedAt: null,
+          latestStatus: null
+        }
       }
     }, { headers: { 'cache-control': 'no-store' } });
   } catch (error) {
