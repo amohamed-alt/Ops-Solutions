@@ -3,10 +3,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireOperationsAccess, adminHeaders } from '../../../operations/auth';
 import { API_URL, internalAdminHeaders, requireCustomerWorkspace } from '../../../customer/session';
 
+const CORE_REPORT_TIMEOUT_MS = 60_000;
+const OPERATING_REPORT_TIMEOUT_MS = 180_000;
+const REPORT_TIMEOUT_MS = 90_000;
+
 function reportTimeoutMs(scope: string | null) {
-  if (scope === 'core') return 60_000;
-  if (scope === 'operating') return 180_000;
-  return 90_000;
+  if (scope === 'core') return CORE_REPORT_TIMEOUT_MS;
+  if (scope === 'operating') return OPERATING_REPORT_TIMEOUT_MS;
+  return REPORT_TIMEOUT_MS;
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ workspaceId: string }> }) {
