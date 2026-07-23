@@ -1,0 +1,221 @@
+.dashboard-workspace-experience {
+  --workspace-accent: #0f766e;
+  --workspace-accent-soft: rgba(15, 118, 110, 0.1);
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 0%, var(--workspace-accent-soft), transparent 30rem),
+    var(--ric-page, #f7f9fc);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.dashboard-workspace-brand {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin: 0 auto;
+  padding: 14px clamp(18px, 3vw, 42px);
+  border-bottom: 1px solid color-mix(in srgb, var(--workspace-accent) 18%, #d9e2ec);
+  background: color-mix(in srgb, #ffffff 94%, var(--workspace-accent));
+  box-shadow: 0 12px 35px rgba(15, 23, 42, 0.07);
+  backdrop-filter: blur(18px);
+}
+
+.dashboard-workspace-logo {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 14px;
+  color: #fff;
+  background: linear-gradient(145deg, var(--workspace-accent), color-mix(in srgb, var(--workspace-accent) 72%, #0f172a));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--workspace-accent) 24%, transparent);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.dashboard-workspace-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+
+.dashboard-workspace-copy {
+  min-width: 0;
+}
+
+.dashboard-workspace-copy small,
+.dashboard-workspace-clock small {
+  display: block;
+  color: var(--workspace-accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+}
+
+.dashboard-workspace-copy h1 {
+  margin: 2px 0 4px;
+  overflow: hidden;
+  color: #0f172a;
+  font-size: clamp(18px, 2vw, 23px);
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-workspace-copy p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+
+.dashboard-workspace-copy p span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--workspace-accent) 18%, #dbe3ee);
+  border-radius: 999px;
+  color: #526070;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: capitalize;
+}
+
+.dashboard-workspace-clock {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 180px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--workspace-accent) 16%, #dce5ef);
+  border-radius: 14px;
+  color: var(--workspace-accent);
+  background: #fff;
+}
+
+.dashboard-workspace-clock strong {
+  display: block;
+  margin-top: 2px;
+  color: #27364a;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.dashboard-workspace-notice {
+  margin: 14px clamp(18px, 3vw, 42px) 0;
+  padding: 10px 13px;
+  border: 1px solid #f2cf7a;
+  border-radius: 12px;
+  color: #7c4d00;
+  background: #fff9e8;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.dashboard-workspace-spin {
+  animation: dashboard-workspace-spin 800ms linear infinite;
+}
+
+.dashboard-workspace-experience .ric-sidebar a[aria-current='page'],
+.dashboard-workspace-experience .ric-sidebar button:hover,
+.dashboard-workspace-experience .ric-filter-actions button:first-child,
+.dashboard-workspace-experience .ric-primary,
+.dashboard-workspace-experience .ric-kpi-top > span {
+  border-color: var(--workspace-accent) !important;
+  background: var(--workspace-accent) !important;
+}
+
+.dashboard-workspace-experience .ric-panel > header h2,
+.dashboard-workspace-experience .ric-brand strong,
+.dashboard-workspace-experience .ric-filter-label svg,
+.dashboard-workspace-experience .ric-link,
+.dashboard-workspace-experience .ric-delta.up {
+  color: var(--workspace-accent) !important;
+}
+
+.dashboard-workspace-experience .ric-panel,
+.dashboard-workspace-experience .ric-kpi,
+.dashboard-workspace-experience .ric-filter-bar {
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.dashboard-workspace-experience .ric-panel:hover,
+.dashboard-workspace-experience .ric-kpi:hover {
+  border-color: color-mix(in srgb, var(--workspace-accent) 28%, #d8e1eb);
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--workspace-accent) 8%, rgba(15, 23, 42, 0.08));
+}
+
+html[data-workspace-appearance='dark'] .dashboard-workspace-experience {
+  --ric-page: #0b1120;
+  color: #dbe7f5;
+}
+
+html[data-workspace-appearance='dark'] .dashboard-workspace-brand {
+  border-bottom-color: color-mix(in srgb, var(--workspace-accent) 28%, #243349);
+  background: color-mix(in srgb, #101827 94%, var(--workspace-accent));
+}
+
+html[data-workspace-appearance='dark'] .dashboard-workspace-copy h1,
+html[data-workspace-appearance='dark'] .dashboard-workspace-clock strong {
+  color: #f4f8fc;
+}
+
+html[data-workspace-appearance='dark'] .dashboard-workspace-copy p span,
+html[data-workspace-appearance='dark'] .dashboard-workspace-clock {
+  border-color: #2b3a50;
+  color: #b8c7d9;
+  background: #111b2b;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-workspace-appearance='system'] .dashboard-workspace-experience {
+    --ric-page: #0b1120;
+  }
+
+  html[data-workspace-appearance='system'] .dashboard-workspace-brand {
+    border-bottom-color: #26364c;
+    background: rgba(16, 24, 39, 0.95);
+  }
+
+  html[data-workspace-appearance='system'] .dashboard-workspace-copy h1,
+  html[data-workspace-appearance='system'] .dashboard-workspace-clock strong {
+    color: #f4f8fc;
+  }
+
+  html[data-workspace-appearance='system'] .dashboard-workspace-copy p span,
+  html[data-workspace-appearance='system'] .dashboard-workspace-clock {
+    border-color: #2b3a50;
+    color: #b8c7d9;
+    background: #111b2b;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-workspace-brand {
+    position: relative;
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 12px 16px;
+  }
+
+  .dashboard-workspace-clock {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .dashboard-workspace-copy p span:nth-child(4) {
+    display: none;
+  }
+}
+
+@keyframes dashboard-workspace-spin {
+  to { transform: rotate(360deg); }
+}
