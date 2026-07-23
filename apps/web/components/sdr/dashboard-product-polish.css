@@ -1,0 +1,302 @@
+/* Final product-quality layer for the revenue command center. */
+.dashboard-workspace-experience {
+  --ric-premium-shadow: 0 18px 48px rgba(15, 31, 51, 0.09);
+  --ric-premium-shadow-hover: 0 24px 60px rgba(15, 31, 51, 0.14);
+  --ric-premium-ring: 0 0 0 3px color-mix(in srgb, var(--workspace-accent) 18%, transparent);
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  text-rendering: optimizeLegibility;
+}
+
+.dashboard-workspace-experience .ric-content {
+  width: min(100%, 1680px);
+  margin-inline: auto;
+}
+
+.dashboard-workspace-experience .ric-topbar {
+  border-bottom-color: color-mix(in srgb, var(--enterprise-border) 82%, transparent);
+  background: color-mix(in srgb, #fff 91%, transparent);
+  box-shadow: 0 10px 32px rgba(15, 31, 51, 0.045);
+  backdrop-filter: blur(18px) saturate(135%);
+}
+
+.dashboard-workspace-experience .ric-heading {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--workspace-accent) 16%, var(--enterprise-border));
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 90% 12%, color-mix(in srgb, var(--workspace-accent) 16%, transparent), transparent 25rem),
+    linear-gradient(135deg, #ffffff 0%, #f8faff 100%);
+  box-shadow: var(--ric-premium-shadow);
+}
+
+.dashboard-workspace-experience .ric-heading::after {
+  content: '';
+  position: absolute;
+  inset: auto -10% -70% 42%;
+  height: 190px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--workspace-accent) 8%, transparent);
+  filter: blur(12px);
+  pointer-events: none;
+}
+
+.dashboard-workspace-experience .ric-heading > * {
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-workspace-experience .ric-kpi,
+.dashboard-workspace-experience .ric-panel,
+.dashboard-workspace-experience .ric-attention,
+.dashboard-workspace-experience .ric-filterbar,
+.dashboard-workspace-experience .ric-views-panel {
+  border-color: color-mix(in srgb, var(--enterprise-border) 88%, transparent);
+  box-shadow: var(--ric-premium-shadow);
+}
+
+.dashboard-workspace-experience button.ric-kpi,
+.dashboard-workspace-experience .ric-attention button {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.dashboard-workspace-experience button.ric-kpi::after,
+.dashboard-workspace-experience .ric-attention button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  opacity: 0;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--workspace-accent) 6%, transparent), transparent 60%);
+  transition: opacity 180ms ease;
+}
+
+.dashboard-workspace-experience button.ric-kpi:hover,
+.dashboard-workspace-experience .ric-attention button:hover,
+.dashboard-workspace-experience .ric-panel:hover {
+  border-color: color-mix(in srgb, var(--workspace-accent) 23%, var(--enterprise-border));
+  box-shadow: var(--ric-premium-shadow-hover);
+  transform: translateY(-2px);
+}
+
+.dashboard-workspace-experience button.ric-kpi:hover::after,
+.dashboard-workspace-experience .ric-attention button:hover::after {
+  opacity: 1;
+}
+
+.dashboard-workspace-experience button.ric-kpi:focus-visible,
+.dashboard-workspace-experience .ric-attention button:focus-visible,
+.dashboard-workspace-experience .ric-chart-interactive:focus-visible,
+.dashboard-workspace-experience .ric-chart-drill-button:focus-visible,
+.dashboard-workspace-experience .ric-hubspot-record-link:focus-visible {
+  outline: none;
+  box-shadow: var(--ric-premium-ring);
+}
+
+.dashboard-workspace-experience .ric-panel {
+  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.dashboard-workspace-experience .ric-panel > header {
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  min-height: 76px;
+  border-bottom: 1px solid #edf1f7;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+}
+
+.dashboard-workspace-experience .ric-panel > header > div:first-child {
+  min-width: min(100%, 280px);
+  flex: 1 1 280px;
+}
+
+.dashboard-workspace-experience .ric-panel-drill-actions {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.dashboard-workspace-experience .ric-chart-drill-button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--workspace-accent) 18%, var(--enterprise-border));
+  border-radius: 999px;
+  color: #334155;
+  background: color-mix(in srgb, var(--workspace-accent) 5%, #fff);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.dashboard-workspace-experience .ric-chart-drill-button:hover {
+  border-color: var(--workspace-accent);
+  color: #fff;
+  background: var(--workspace-accent);
+  transform: translateY(-1px);
+}
+
+.dashboard-workspace-experience .ric-chart {
+  position: relative;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 255, 0.8), rgba(255, 255, 255, 0.2)),
+    repeating-linear-gradient(90deg, transparent 0, transparent 79px, rgba(148, 163, 184, 0.045) 80px);
+}
+
+.dashboard-workspace-experience .ric-chart-interactive {
+  cursor: pointer;
+  transition: background 180ms ease, box-shadow 180ms ease;
+}
+
+.dashboard-workspace-experience .ric-chart-interactive::after {
+  content: 'Click chart to inspect records';
+  position: absolute;
+  right: 12px;
+  bottom: 9px;
+  z-index: 4;
+  padding: 5px 8px;
+  border: 1px solid rgba(203, 213, 225, 0.85);
+  border-radius: 999px;
+  color: #64748b;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 6px 18px rgba(15, 31, 51, 0.06);
+  font-size: 9px;
+  font-weight: 750;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+}
+
+.dashboard-workspace-experience .ric-chart-interactive:hover {
+  background-color: color-mix(in srgb, var(--workspace-accent) 3%, #fff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--workspace-accent) 13%, transparent);
+}
+
+.dashboard-workspace-experience .recharts-cartesian-axis-tick-value,
+.dashboard-workspace-experience .recharts-legend-item-text {
+  font-weight: 650;
+}
+
+.dashboard-workspace-experience .recharts-rectangle,
+.dashboard-workspace-experience .recharts-sector,
+.dashboard-workspace-experience .recharts-layer path {
+  transition: opacity 150ms ease, filter 150ms ease;
+}
+
+.dashboard-workspace-experience .recharts-rectangle:hover,
+.dashboard-workspace-experience .recharts-sector:hover {
+  filter: brightness(1.04) saturate(1.08);
+}
+
+.dashboard-workspace-experience .ric-owner-head,
+.dashboard-workspace-experience .ric-drawer-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: rgba(248, 250, 252, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+.dashboard-workspace-experience .ric-owner-table article,
+.dashboard-workspace-experience .ric-drawer-table article {
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+
+.dashboard-workspace-experience .ric-owner-table article:hover,
+.dashboard-workspace-experience .ric-drawer-table article:hover {
+  background: color-mix(in srgb, var(--workspace-accent) 4%, #fff);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--workspace-accent) 70%, transparent);
+}
+
+.dashboard-workspace-experience .ric-record-main {
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.dashboard-workspace-experience .ric-hubspot-record-link {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 5px;
+  margin-top: 7px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, #ff7a59 25%, var(--enterprise-border));
+  border-radius: 8px;
+  color: #b4532f;
+  background: color-mix(in srgb, #ff7a59 7%, #fff);
+  font-size: 9px;
+  font-weight: 850;
+  line-height: 1;
+  text-decoration: none;
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.dashboard-workspace-experience .ric-hubspot-record-link:hover {
+  border-color: #ff7a59;
+  color: #fff;
+  background: #ff7a59;
+  transform: translateY(-1px);
+}
+
+.dashboard-workspace-experience .ric-hubspot-record-link b {
+  font-size: 11px;
+}
+
+.dashboard-workspace-experience .ric-drawer[data-hubspot-links-ready='true'] > header::after {
+  content: 'Every row opens the original HubSpot record';
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, #ff7a59 22%, var(--enterprise-border));
+  border-radius: 999px;
+  color: #a84a2c;
+  background: color-mix(in srgb, #ff7a59 6%, #fff);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-workspace-experience .ric-panel-drill-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-workspace-experience .ric-heading {
+    border-radius: 18px;
+  }
+
+  .dashboard-workspace-experience .ric-panel > header {
+    min-height: auto;
+  }
+
+  .dashboard-workspace-experience .ric-chart-interactive::after {
+    display: none;
+  }
+
+  .dashboard-workspace-experience .ric-chart-drill-button {
+    min-height: 34px;
+    padding-inline: 12px;
+  }
+
+  .dashboard-workspace-experience .ric-hubspot-record-link {
+    min-height: 30px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-workspace-experience *,
+  .dashboard-workspace-experience *::before,
+  .dashboard-workspace-experience *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
