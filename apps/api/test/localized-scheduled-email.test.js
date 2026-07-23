@@ -43,7 +43,7 @@ test('resolves safe tenant branding and localization with defensive fallbacks', 
     company_name: '',
     locale: 'invalid_locale_@@',
     timezone: 'Mars/Olympus',
-    currency: 'unsafe',
+    currency: '12',
     accent_color: 'red',
     logo_url: 'http://user:password@example.com/logo.png'
   })), {
