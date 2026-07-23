@@ -6,6 +6,7 @@ import pg from 'pg';
 import { ensureAnalyticsIndexes, runPlannerMaintenance } from './analytics-maintenance.js';
 import { config, assertHubSpotWorkerConfiguration } from './config.js';
 import { ensureSyncSchema, syncWorkspace, workspacesDueForSync } from './sync.js';
+import { syncWebhookEvents } from './targeted-sync.js';
 
 const { Pool } = pg;
 
@@ -79,8 +80,18 @@ const queueWorker = new Worker(
     }
 
     const workspaceId = requireWorkspaceId(job);
-    let mode;
+    if (job.data?.source === 'hubspot_webhook') {
+      const result = await syncWebhookEvents(postgres, workspaceId);
+      return {
+        ...result,
+        workspaceId,
+        jobName: job.name,
+        source: 'hubspot_webhook',
+        durationMs: Date.now() - startedAt
+      };
+    }
 
+    let mode;
     switch (job.name) {
       case 'initial-sync':
         mode = 'initial';
@@ -238,6 +249,7 @@ try {
     concurrency: 1,
     schedulerIntervalMs: config.sync.schedulerIntervalMs,
     analyticsIndexes: indexResult.indexes,
+    targetedWebhookSync: true,
     objectTypes: config.hubspot.objectTypes
   });
 } catch (error) {
