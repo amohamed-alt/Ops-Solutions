@@ -5,6 +5,7 @@ import {
   buildRevenueReportingPack as buildFullRevenueReportingPack,
   getRevenueDrilldown
 } from './agreed-reporting.js';
+import { registerObjectReportingRoutes } from './object-reporting.js';
 
 const REPORT_SCOPES = new Set(['core', 'operating', 'full']);
 
@@ -54,4 +55,6 @@ export function registerRevenueReportingRoutes(app, { postgres, requireAdmin, re
       )
     };
   });
+
+  registerObjectReportingRoutes(app, { postgres, requireAdmin, requireWorkspace });
 }
