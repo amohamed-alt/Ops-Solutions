@@ -18,6 +18,7 @@ import {
 } from './hubspot.js';
 import { registerBackgroundExportRoutes } from './background-exports.js';
 import { ensureMappingWizardSchema, registerMappingWizardRoutes } from './mapping-wizard.js';
+import { ensureScheduledReportSchema, registerScheduledReportRoutes } from './scheduled-reports.js';
 import { inferValueMapping } from './semantic.js';
 import { registerCustomerReportExportRoutes } from './report-exports.js';
 import { registerSavedViewRoutes } from './saved-views.js';
@@ -195,6 +196,14 @@ const backgroundExports = registerBackgroundExportRoutes(app, {
   redisUrl: config.redisUrl,
   requireViewer: customerAuth.requireViewer,
   requireWorkspace,
+  writeAudit: customerAuth.writeAudit
+});
+
+const scheduledReports = registerScheduledReportRoutes(app, {
+  postgres,
+  redisUrl: config.redisUrl,
+  requireViewer: customerAuth.requireViewer,
+  requireAdmin: customerAuth.requireAdmin,
   writeAudit: customerAuth.writeAudit
 });
 
@@ -523,6 +532,7 @@ async function shutdown(signal) {
   app.log.info({ signal }, 'Shutting down');
   await app.close();
   await Promise.allSettled([
+    scheduledReports.close(),
     backgroundExports.close(),
     syncOperations.close(),
     postgres.end(),
@@ -541,11 +551,14 @@ try {
   await ensureCustomerAuthSchema(postgres);
   await runMigrations();
   await ensureMappingWizardSchema(postgres);
+  await ensureScheduledReportSchema(postgres);
   await backgroundExports.start();
+  await scheduledReports.start();
   await app.listen({ port: config.port, host: config.host });
 } catch (error) {
   app.log.fatal({ error }, 'API failed to start');
   await Promise.allSettled([
+    scheduledReports.close(),
     backgroundExports.close(),
     syncOperations.close(),
     postgres.end(),
