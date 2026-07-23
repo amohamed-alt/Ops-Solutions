@@ -1,5 +1,11 @@
 import { buildWorkspaceSlug, normalizeCompanyName, workspaceLimit } from './customer-workspaces.js';
 import { buildRevenueReportingPack, normalizeReportingFilters } from './revenue-reporting.js';
+import {
+  formatReportCurrency,
+  formatReportDateTime,
+  loadWorkspaceReportPreferences,
+  serializeReportPreferences
+} from './workspace-report-formatting.js';
 
 const DATE_PRESETS = new Set([
   'today', 'yesterday', 'last_7_days', 'last_30_days', 'this_month',
@@ -91,12 +97,34 @@ function humanize(value) {
   return String(value ?? '').replaceAll('_', ' ').replaceAll('-', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export function buildRevenueCsv({ workspace, report, viewName = null, dataFreshnessAt = null }) {
-  const freshness = dataFreshnessAt instanceof Date ? dataFreshnessAt.toISOString() : dataFreshnessAt;
+const CURRENCY_OVERVIEW_KEYS = new Set([
+  'openPipeline', 'wonRevenue', 'revenue', 'pipelineValue', 'closedWonRevenue'
+]);
+
+function localizedOverview(report, preferences) {
+  return Object.entries(report.overview).map(([key, value]) => [
+    humanize(key),
+    CURRENCY_OVERVIEW_KEYS.has(key) ? formatReportCurrency(value, preferences) : value
+  ]);
+}
+
+export function buildRevenueCsv({
+  workspace,
+  report,
+  viewName = null,
+  dataFreshnessAt = null,
+  preferences = {}
+}) {
+  const resolvedPreferences = serializeReportPreferences(preferences);
+  const freshness = formatReportDateTime(dataFreshnessAt, resolvedPreferences);
+  const generatedAt = formatReportDateTime(report.generatedAt, resolvedPreferences) || report.generatedAt;
   const lines = ['\uFEFF' + csvRow(['Ops Solutions Revenue Intelligence Export'])];
   lines.push(csvRow(['Workspace', workspace.name]));
-  lines.push(csvRow(['Generated at', report.generatedAt]));
+  lines.push(csvRow(['Generated at', generatedAt]));
   lines.push(csvRow(['Data freshness', freshness || 'No synchronized records']));
+  lines.push(csvRow(['Currency', resolvedPreferences.currency]));
+  lines.push(csvRow(['Timezone', resolvedPreferences.timezone]));
+  lines.push(csvRow(['Locale', resolvedPreferences.locale]));
   lines.push(csvRow(['Reporting period', `${report.filters.from} to ${report.filters.to}`]));
   lines.push(csvRow(['Saved view', viewName || 'Ad hoc filters']));
   lines.push(csvRow(['Owner filter', report.filters.ownerId ?? 'All owners']));
@@ -106,13 +134,13 @@ export function buildRevenueCsv({ workspace, report, viewName = null, dataFreshn
   lines.push(csvRow(['Stage filter', report.filters.stageId ?? 'All stages']));
   lines.push('');
 
-  section(lines, 'Executive overview', ['Metric', 'Value'], Object.entries(report.overview).map(([key, value]) => [humanize(key), value]));
+  section(lines, 'Executive overview', ['Metric', 'Value'], localizedOverview(report, resolvedPreferences));
   section(lines, 'Period comparisons', ['Metric', 'Current', 'Previous', 'Delta percent'], Object.entries(report.comparisons).map(([key, value]) => [humanize(key), value.current, value.previous, value.deltaPercent]));
   section(lines, 'Activity trend', ['Date', 'Calls', 'Meetings', 'Tasks'], report.activityTrend.map((row) => [row.day, row.calls, row.meetings, row.tasks]));
-  section(lines, 'Pipeline by stage', ['Pipeline', 'Stage', 'Deals', 'Amount'], report.pipelineByStage.map((row) => [row.pipelineLabel, row.stageLabel, row.deals, row.amount]));
+  section(lines, 'Pipeline by stage', ['Pipeline', 'Stage', 'Deals', `Amount (${resolvedPreferences.currency})`], report.pipelineByStage.map((row) => [row.pipelineLabel, row.stageLabel, row.deals, formatReportCurrency(row.amount, resolvedPreferences)]));
   section(lines, 'Lead source performance', ['Lead source', 'Contacts', 'Contacted', 'Opportunities', 'Won', 'Win rate'], report.leadSourcePerformance.map((row) => [row.key, row.contacts, row.contacted, row.opportunities, row.won, row.winRate]));
   section(lines, 'Market distribution', ['Country or market', 'Contacts'], report.countryDistribution.map((row) => [row.key, row.value]));
-  section(lines, 'Owner performance', ['Owner', 'Email', 'Calls', 'Meetings', 'Tasks', 'Meeting rate', 'Open deals', 'Open pipeline', 'Won revenue'], report.ownerPerformance.map((row) => [row.ownerName, row.email, row.calls, row.meetings, row.tasks, row.meetingRate, row.openDeals, row.openPipeline, row.wonRevenue]));
+  section(lines, 'Owner performance', ['Owner', 'Email', 'Calls', 'Meetings', 'Tasks', 'Meeting rate', 'Open deals', `Open pipeline (${resolvedPreferences.currency})`, `Won revenue (${resolvedPreferences.currency})`], report.ownerPerformance.map((row) => [row.ownerName, row.email, row.calls, row.meetings, row.tasks, row.meetingRate, row.openDeals, formatReportCurrency(row.openPipeline, resolvedPreferences), formatReportCurrency(row.wonRevenue, resolvedPreferences)]));
   section(lines, 'Call outcomes', ['Outcome', 'Count'], report.outcomes.calls.map((row) => [humanize(row.key), row.value]));
   section(lines, 'Meeting outcomes', ['Outcome', 'Count'], report.outcomes.meetings.map((row) => [humanize(row.key), row.value]));
   section(lines, 'Task outcomes', ['Status', 'Count'], report.outcomes.tasks.map((row) => [humanize(row.key), row.value]));
@@ -132,12 +160,13 @@ async function dataFreshness(postgres, workspaceId) {
 
 export async function buildRevenueCsvExport(postgres, workspace, query) {
   const filters = normalizeReportingFilters(query ?? {});
-  const [report, dataFreshnessAt] = await Promise.all([
+  const [report, dataFreshnessAt, preferences] = await Promise.all([
     buildRevenueReportingPack(postgres, workspace.id, filters),
-    dataFreshness(postgres, workspace.id)
+    dataFreshness(postgres, workspace.id),
+    loadWorkspaceReportPreferences(postgres, workspace.id)
   ]);
   const viewName = cleanViewName(query?.viewName);
-  const csv = buildRevenueCsv({ workspace, report, viewName, dataFreshnessAt });
+  const csv = buildRevenueCsv({ workspace, report, viewName, dataFreshnessAt, preferences });
   if (Buffer.byteLength(csv, 'utf8') > MAX_CSV_BYTES) {
     const error = new Error('This export is too large. Narrow the reporting filters and try again.');
     error.statusCode = 413;
@@ -148,6 +177,7 @@ export async function buildRevenueCsvExport(postgres, workspace, query) {
     csv,
     report,
     viewName,
+    preferences,
     fileName: `${filenamePart(workspace.name)}-revenue-report-${report.filters.from}-to-${report.filters.to}.csv`
   };
 }
@@ -291,7 +321,10 @@ export function registerCustomerReportExportRoutes(app, {
           format: 'csv',
           from: result.report.filters.from,
           to: result.report.filters.to,
-          viewName: result.viewName
+          viewName: result.viewName,
+          currency: result.preferences.currency,
+          timezone: result.preferences.timezone,
+          locale: result.preferences.locale
         }
       });
       reply

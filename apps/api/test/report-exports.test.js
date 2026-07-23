@@ -66,17 +66,22 @@ test('escapes CSV content and neutralizes spreadsheet formulas', () => {
   assert.equal(csvRow(['\t=1+1']), "'\t=1+1");
 });
 
-test('builds a metadata-rich revenue CSV without internal database IDs', () => {
+test('builds a metadata-rich localized revenue CSV without internal database IDs', () => {
   const csv = buildRevenueCsv({
     workspace: { id: 'internal-workspace-id', name: 'Acme GCC' },
     report,
     viewName: 'UAE review',
-    dataFreshnessAt: new Date('2026-07-22T11:58:00.000Z')
+    dataFreshnessAt: new Date('2026-07-22T11:58:00.000Z'),
+    preferences: { currency: 'AED', timezone: 'Asia/Dubai', locale: 'en-AE' }
   });
   assert.ok(csv.startsWith('\uFEFFOps Solutions Revenue Intelligence Export'));
   assert.match(csv, /Workspace,Acme GCC/);
-  assert.match(csv, /Data freshness,2026-07-22T11:58:00.000Z/);
+  assert.match(csv, /Data freshness,/);
+  assert.match(csv, /Currency,AED/);
+  assert.match(csv, /Timezone,Asia\/Dubai/);
+  assert.match(csv, /Locale,en-AE/);
   assert.match(csv, /Saved view,UAE review/);
+  assert.match(csv, /Amount \(AED\)/);
   for (const section of [
     'Executive overview', 'Activity trend', 'Pipeline by stage',
     'Lead source performance', 'Owner performance', 'Action queue', 'CRM data quality'
