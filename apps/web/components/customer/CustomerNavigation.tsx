@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BarChart3, Building2, FileSpreadsheet, LogOut, Settings, ShieldCheck, Waypoints } from 'lucide-react';
+import { BarChart3, Building2, FileSpreadsheet, LogOut, Network, Settings, ShieldCheck, Waypoints } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import styles from './CustomerNavigation.module.css';
@@ -60,6 +60,9 @@ export function CustomerNavigation() {
         </Link>
         <Link href="/exports" className={pathname.startsWith('/exports') ? styles.active : ''}>
           <FileSpreadsheet size={16} /> Exports
+        </Link>
+        <Link href="/settings/fleet" className={pathname.startsWith('/settings/fleet') ? styles.active : ''}>
+          <Network size={16} /> Fleet health
         </Link>
         <Link href="/settings/workspace" className={pathname.startsWith('/settings/workspace') ? styles.active : ''}>
           <Building2 size={16} /> Workspace
