@@ -20,7 +20,10 @@ export function CustomerNavigation() {
   const [session, setSession] = useState<Session | null>(null);
   const [signingOut, setSigningOut] = useState(false);
 
-  const visible = CUSTOMER_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+  const dashboardOwnsNavigation = pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+  const visible = !dashboardOwnsNavigation && CUSTOMER_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
 
   useEffect(() => {
     if (!visible) return;
