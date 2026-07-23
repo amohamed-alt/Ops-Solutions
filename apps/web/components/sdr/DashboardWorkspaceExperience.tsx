@@ -1,10 +1,32 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, AlertTriangle, Building2, CheckCircle2, CloudOff, Globe2, LoaderCircle, MoonStar, Palette, RefreshCw, SunMedium } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import {
+  Activity,
+  AlertTriangle,
+  Building2,
+  CheckCircle2,
+  CloudOff,
+  Crown,
+  Globe2,
+  LoaderCircle,
+  LogOut,
+  MoonStar,
+  Palette,
+  RefreshCw,
+  Settings2,
+  SunMedium,
+  Target,
+  UserRoundSearch,
+  UsersRound,
+  Wrench,
+  type LucideIcon
+} from 'lucide-react';
 
 import { RevenueCommandCenter } from './RevenueCommandCenter';
 import './dashboard-workspace-experience.css';
+import './enterprise-command-center.css';
 
 type Workspace = {
   id: string;
@@ -31,6 +53,47 @@ type DataHealth = {
   newestSync: string | null;
   activeRun: null | { mode?: string; status?: string };
 };
+
+type CommandRole = 'executive' | 'manager' | 'sdr' | 'revops';
+
+type CommandRoleOption = {
+  id: CommandRole;
+  label: string;
+  kicker: string;
+  description: string;
+  icon: LucideIcon;
+};
+
+const ROLE_OPTIONS: CommandRoleOption[] = [
+  {
+    id: 'executive',
+    label: 'Executive',
+    kicker: 'Revenue & forecast',
+    description: 'Revenue, pipeline coverage, commercial risk and leadership decisions.',
+    icon: Crown
+  },
+  {
+    id: 'manager',
+    label: 'Sales Manager',
+    kicker: 'Team execution',
+    description: 'Rep performance, activity conversion, pipeline movement and interventions.',
+    icon: UsersRound
+  },
+  {
+    id: 'sdr',
+    label: 'SDR Workspace',
+    kicker: 'Daily execution',
+    description: 'Priority outreach, meetings, overdue actions and source performance.',
+    icon: UserRoundSearch
+  },
+  {
+    id: 'revops',
+    label: 'RevOps',
+    kicker: 'Systems & quality',
+    description: 'Data quality, synchronization health, task operations and CRM readiness.',
+    icon: Wrench
+  }
+];
 
 const FALLBACK_PREFERENCES: Omit<Preferences, 'workspaceId' | 'name'> = {
   currency: 'USD',
@@ -89,7 +152,12 @@ function healthIcon(health: DataHealth | null, online: boolean) {
   return <AlertTriangle size={17} />;
 }
 
+function isCommandRole(value: string | null): value is CommandRole {
+  return ROLE_OPTIONS.some((option) => option.id === value);
+}
+
 export function DashboardWorkspaceExperience() {
+  const router = useRouter();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [preferences, setPreferences] = useState<Preferences | null>(null);
@@ -99,10 +167,17 @@ export function DashboardWorkspaceExperience() {
   const [online, setOnline] = useState(true);
   const [health, setHealth] = useState<DataHealth | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
+  const [commandRole, setCommandRole] = useState<CommandRole>('executive');
+  const [signingOut, setSigningOut] = useState(false);
 
   const selectedWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === selectedId) ?? null,
     [workspaces, selectedId]
+  );
+
+  const activeRole = useMemo(
+    () => ROLE_OPTIONS.find((option) => option.id === commandRole) ?? ROLE_OPTIONS[0],
+    [commandRole]
   );
 
   const applyPreferences = useCallback((next: Preferences) => {
@@ -185,6 +260,11 @@ export function DashboardWorkspaceExperience() {
   }, [applyPreferences, loadHealth]);
 
   useEffect(() => {
+    const rememberedRole = window.localStorage.getItem('ops:dashboard-command-role');
+    if (isCommandRole(rememberedRole)) setCommandRole(rememberedRole);
+  }, []);
+
+  useEffect(() => {
     let active = true;
     fetch('/api/customer/auth/session', { cache: 'no-store' })
       .then(async (response) => {
@@ -258,6 +338,25 @@ export function DashboardWorkspaceExperience() {
     root.dir = 'ltr';
   }, []);
 
+  function selectCommandRole(nextRole: CommandRole) {
+    setCommandRole(nextRole);
+    window.localStorage.setItem('ops:dashboard-command-role', nextRole);
+    window.requestAnimationFrame(() => {
+      document.getElementById('overview')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  async function signOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await fetch('/api/customer/auth/logout', { method: 'POST' });
+    } finally {
+      router.replace('/onboarding');
+      router.refresh();
+    }
+  }
+
   const healthTone = !online ? 'critical' : health?.severity || 'info';
   const healthLabel = !online
     ? 'Offline'
@@ -266,13 +365,13 @@ export function DashboardWorkspaceExperience() {
       : health?.status || 'Checking data health';
 
   return (
-    <div className="dashboard-workspace-experience">
+    <div className="dashboard-workspace-experience" data-command-role={commandRole}>
       <section className="dashboard-workspace-brand" aria-live="polite">
         <div className="dashboard-workspace-logo" aria-hidden="true">
           {preferences?.logoUrl ? <img src={preferences.logoUrl} alt="" /> : <span>{safeInitials(preferences?.name || selectedWorkspace?.name || 'Ops Intelligence')}</span>}
         </div>
         <div className="dashboard-workspace-copy">
-          <small>LIVE REVENUE WORKSPACE</small>
+          <small>OPS INTELLIGENCE · LIVE REVENUE WORKSPACE</small>
           <h1>{preferences?.name || selectedWorkspace?.name || 'Revenue Command Center'}</h1>
           <p>
             <span><Globe2 size={14} />{preferences?.locale || FALLBACK_PREFERENCES.locale}</span>
@@ -286,6 +385,39 @@ export function DashboardWorkspaceExperience() {
           <div><small>WORKSPACE TIME</small><strong>{preferences ? formatLocalTime(preferences, clock) : 'Loading…'}</strong></div>
         </div>
       </section>
+
+      <section className="dashboard-command-mode" aria-label="Dashboard audience">
+        <div className="dashboard-command-mode-copy">
+          <span><Target size={16} /></span>
+          <div>
+            <small>ROLE-BASED COMMAND CENTER</small>
+            <strong>{activeRole.label}</strong>
+            <p>{activeRole.description}</p>
+          </div>
+        </div>
+        <div className="dashboard-command-mode-options" role="tablist" aria-label="Choose dashboard role">
+          {ROLE_OPTIONS.map(({ id, label, kicker, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={commandRole === id}
+              className={commandRole === id ? 'active' : ''}
+              onClick={() => selectCommandRole(id)}
+            >
+              <Icon size={17} />
+              <span><strong>{label}</strong><small>{kicker}</small></span>
+            </button>
+          ))}
+        </div>
+        <div className="dashboard-command-actions">
+          <a href="/settings/workspace"><Settings2 size={16} />Manage</a>
+          <button type="button" onClick={() => void signOut()} disabled={signingOut}>
+            <LogOut size={16} />{signingOut ? 'Signing out' : 'Sign out'}
+          </button>
+        </div>
+      </section>
+
       <section className={`dashboard-data-health dashboard-data-health-${healthTone}`} aria-live="polite">
         <span className="dashboard-data-health-icon">{healthIcon(health, online)}</span>
         <div>
