@@ -11,6 +11,7 @@ export const metadata = {
 };
 
 export default function DashboardPage() {
+  // DashboardProductShell keeps DashboardWorkspaceExperience as the production command-center foundation.
   return (
     <>
       <DashboardProductShell />
