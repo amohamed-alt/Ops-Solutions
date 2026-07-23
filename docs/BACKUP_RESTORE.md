@@ -66,7 +66,7 @@ The monitor validates all of the following before reporting a healthy result:
 - PostgreSQL can parse the archive catalog with `pg_restore --list`;
 - the verified backup is no older than the configured threshold.
 
-Exit codes are designed for cron, systemd, uptime agents and external monitoring:
+Exit codes are designed for cron, systemd, uptime agents and external monitoring. Exit code 2 means a valid backup exists but is stale; exit code 3 means the newest set is missing, incomplete or corrupt.
 
 - `0`: healthy and fresh;
 - `2`: valid backup, but stale;
