@@ -34,6 +34,7 @@ jobs:
           bash -n scripts/verify-production.sh
           bash -n scripts/backup-postgres.sh
           bash -n scripts/verify-postgres-backup.sh
+          bash -n scripts/rollback-release.sh
 
       - name: Configure SSH
         shell: bash
@@ -206,6 +207,28 @@ jobs:
           chmod +x scripts/verify-production.sh
           scripts/verify-production.sh
 
+      - name: Attempt verified automatic release rollback
+        if: failure()
+        continue-on-error: true
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+        run: |
+          set -Eeuo pipefail
+          if [[ ! -f "$HOME/.ssh/deploy_key" || -z "${VPS_HOST:-}" || -z "${VPS_USER:-}" || -z "${VPS_DEPLOY_PATH:-}" ]]; then
+            echo "::warning::Automatic rollback could not start because the VPS connection was not initialized."
+            exit 1
+          fi
+          ssh -i "$HOME/.ssh/deploy_key" -p "$VPS_PORT" -o BatchMode=yes -o IdentitiesOnly=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "set -Eeuo pipefail; \
+             cd '$VPS_DEPLOY_PATH'; \
+             chmod +x scripts/rollback-release.sh; \
+             DEPLOY_PATH='$VPS_DEPLOY_PATH' MAX_ARCHIVE_AGE_MINUTES=180 scripts/rollback-release.sh"
+
       - name: Capture deployment diagnostics
         if: failure()
         shell: bash
@@ -225,6 +248,7 @@ jobs:
                 "cd '$VPS_DEPLOY_PATH' 2>/dev/null || exit 0; \
                  if [ -f docker-compose.prod.yml ]; then compose_file='docker-compose.prod.yml'; else compose_file='docker-compose.yml'; fi; \
                  echo '--- docker compose ps ---'; docker compose -f \"\$compose_file\" ps; \
+                 echo '--- rollback state ---'; cat .deploy-backups/last-rollback.json 2>/dev/null || echo 'No rollback state recorded.'; \
                  echo '--- latest database backup manifests ---'; find backups/postgres -maxdepth 1 -type f -name '*.manifest.json' -printf '%TY-%Tm-%TdT%TH:%TM:%TSZ %f\n' 2>/dev/null | sort -r | head -n 3; \
                  echo '--- api logs ---'; docker compose -f \"\$compose_file\" logs --tail=120 api; \
                  echo '--- worker logs ---'; docker compose -f \"\$compose_file\" logs --tail=120 worker; \
