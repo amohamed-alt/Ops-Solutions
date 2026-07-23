@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building2, Globe2, LoaderCircle, MoonStar, Palette, SunMedium } from 'lucide-react';
+import { Activity, AlertTriangle, Building2, CheckCircle2, CloudOff, Globe2, LoaderCircle, MoonStar, Palette, RefreshCw, SunMedium } from 'lucide-react';
 
 import { RevenueCommandCenter } from './RevenueCommandCenter';
 import './dashboard-workspace-experience.css';
@@ -23,6 +23,15 @@ type Preferences = {
   logoUrl: string | null;
 };
 
+type DataHealth = {
+  status: string;
+  severity: 'success' | 'info' | 'warning' | 'critical';
+  message: string;
+  totalRecords: number;
+  newestSync: string | null;
+  activeRun: null | { mode?: string; status?: string };
+};
+
 const FALLBACK_PREFERENCES: Omit<Preferences, 'workspaceId' | 'name'> = {
   currency: 'USD',
   timezone: 'UTC',
@@ -41,16 +50,29 @@ function safeInitials(value: string) {
     .join('') || 'OI';
 }
 
-function formatLocalTime(preferences: Preferences) {
+function formatLocalTime(preferences: Preferences, date = new Date()) {
   try {
     return new Intl.DateTimeFormat(preferences.locale, {
       dateStyle: 'medium',
       timeStyle: 'short',
       timeZone: preferences.timezone
-    }).format(new Date());
+    }).format(date);
   } catch {
-    return new Date().toISOString();
+    return date.toISOString();
   }
+}
+
+function formatRelativeTime(value: string | null, preferences: Preferences | null) {
+  if (!value) return 'No synchronized data yet';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Sync time unavailable';
+  const elapsed = Date.now() - date.getTime();
+  const minutes = Math.max(0, Math.floor(elapsed / 60_000));
+  if (minutes < 1) return 'Updated just now';
+  if (minutes < 60) return `Updated ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Updated ${hours}h ago`;
+  return `Updated ${preferences ? formatLocalTime(preferences, date) : date.toLocaleString()}`;
 }
 
 function appearanceIcon(appearance: Preferences['appearance']) {
@@ -59,12 +81,24 @@ function appearanceIcon(appearance: Preferences['appearance']) {
   return <Palette size={15} />;
 }
 
+function healthIcon(health: DataHealth | null, online: boolean) {
+  if (!online) return <CloudOff size={17} />;
+  if (!health) return <LoaderCircle className="dashboard-workspace-spin" size={17} />;
+  if (health.severity === 'success') return <CheckCircle2 size={17} />;
+  if (health.severity === 'info') return <Activity size={17} />;
+  return <AlertTriangle size={17} />;
+}
+
 export function DashboardWorkspaceExperience() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [preferences, setPreferences] = useState<Preferences | null>(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
+  const [clock, setClock] = useState(() => new Date());
+  const [online, setOnline] = useState(true);
+  const [health, setHealth] = useState<DataHealth | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
 
   const selectedWorkspace = useMemo(
     () => workspaces.find((workspace) => workspace.id === selectedId) ?? null,
@@ -80,9 +114,42 @@ export function DashboardWorkspaceExperience() {
     root.dir = next.locale?.toLowerCase().startsWith('ar') ? 'rtl' : 'ltr';
   }, []);
 
+  const loadHealth = useCallback(async (workspaceId: string, silent = false) => {
+    if (!workspaceId || !navigator.onLine) return;
+    if (!silent) setHealthLoading(true);
+    try {
+      const response = await fetch(`/api/customer/workspaces/${encodeURIComponent(workspaceId)}/operations`, {
+        cache: 'no-store',
+        signal: AbortSignal.timeout(15_000)
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || 'Unable to read data health.');
+      setHealth({
+        status: payload.health?.status || 'unknown',
+        severity: payload.health?.severity || 'warning',
+        message: payload.health?.message || 'Data health status is unavailable.',
+        totalRecords: Number(payload.sync?.freshness?.total_records || 0),
+        newestSync: payload.sync?.freshness?.newest_record_sync || null,
+        activeRun: payload.sync?.activeRun || null
+      });
+    } catch {
+      setHealth((current) => current ?? {
+        status: 'unavailable',
+        severity: 'warning',
+        message: 'Live data health could not be refreshed.',
+        totalRecords: 0,
+        newestSync: null,
+        activeRun: null
+      });
+    } finally {
+      if (!silent) setHealthLoading(false);
+    }
+  }, []);
+
   const loadPreferences = useCallback(async (workspace: Workspace) => {
     setLoading(true);
     setNotice('');
+    setHealth(null);
     try {
       const response = await fetch(`/api/customer/workspaces/${encodeURIComponent(workspace.id)}/preferences`, {
         cache: 'no-store'
@@ -113,8 +180,9 @@ export function DashboardWorkspaceExperience() {
       setNotice(error instanceof Error ? error.message : 'Workspace presentation settings are unavailable.');
     } finally {
       setLoading(false);
+      void loadHealth(workspace.id);
     }
-  }, [applyPreferences]);
+  }, [applyPreferences, loadHealth]);
 
   useEffect(() => {
     let active = true;
@@ -142,6 +210,33 @@ export function DashboardWorkspaceExperience() {
   }, [loadPreferences]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setClock(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    function updateConnectivity() {
+      setOnline(navigator.onLine);
+      if (navigator.onLine && selectedId) void loadHealth(selectedId);
+    }
+    setOnline(navigator.onLine);
+    window.addEventListener('online', updateConnectivity);
+    window.addEventListener('offline', updateConnectivity);
+    return () => {
+      window.removeEventListener('online', updateConnectivity);
+      window.removeEventListener('offline', updateConnectivity);
+    };
+  }, [loadHealth, selectedId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && navigator.onLine) void loadHealth(selectedId, true);
+    }, 60_000);
+    return () => window.clearInterval(poll);
+  }, [loadHealth, selectedId]);
+
+  useEffect(() => {
     function captureWorkspaceChange(event: Event) {
       const target = event.target;
       if (!(target instanceof HTMLSelectElement)) return;
@@ -163,6 +258,13 @@ export function DashboardWorkspaceExperience() {
     root.dir = 'ltr';
   }, []);
 
+  const healthTone = !online ? 'critical' : health?.severity || 'info';
+  const healthLabel = !online
+    ? 'Offline'
+    : health?.activeRun
+      ? `${health.activeRun.mode || 'CRM'} sync running`
+      : health?.status || 'Checking data health';
+
   return (
     <div className="dashboard-workspace-experience">
       <section className="dashboard-workspace-brand" aria-live="polite">
@@ -181,8 +283,24 @@ export function DashboardWorkspaceExperience() {
         </div>
         <div className="dashboard-workspace-clock">
           {loading ? <LoaderCircle className="dashboard-workspace-spin" size={18} /> : <Building2 size={18} />}
-          <div><small>WORKSPACE TIME</small><strong>{preferences ? formatLocalTime(preferences) : 'Loading…'}</strong></div>
+          <div><small>WORKSPACE TIME</small><strong>{preferences ? formatLocalTime(preferences, clock) : 'Loading…'}</strong></div>
         </div>
+      </section>
+      <section className={`dashboard-data-health dashboard-data-health-${healthTone}`} aria-live="polite">
+        <span className="dashboard-data-health-icon">{healthIcon(health, online)}</span>
+        <div>
+          <small>LIVE DATA HEALTH</small>
+          <strong>{healthLabel}</strong>
+          <p>{!online ? 'Reconnect to refresh HubSpot data health.' : health?.message || 'Checking synchronization freshness and connection status.'}</p>
+        </div>
+        <div className="dashboard-data-health-meta">
+          <span>{health ? new Intl.NumberFormat(preferences?.locale || 'en-US').format(health.totalRecords) : '—'} records</span>
+          <span>{formatRelativeTime(health?.newestSync || null, preferences)}</span>
+        </div>
+        <button type="button" onClick={() => void loadHealth(selectedId)} disabled={!online || healthLoading || !selectedId}>
+          <RefreshCw className={healthLoading ? 'dashboard-workspace-spin' : ''} size={15} />
+          Refresh health
+        </button>
       </section>
       {notice ? <div className="dashboard-workspace-notice">{notice} Safe defaults are active.</div> : null}
       <RevenueCommandCenter />
