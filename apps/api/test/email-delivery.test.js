@@ -48,7 +48,7 @@ test('builds an escaped report message with a tenant-specific settings link', ()
     export_completed_at: '2026-07-23T06:00:00.000Z'
   }, 'https://ops.example.com');
   assert.match(message.subject, /<Acme>/);
-  assert.match(message.html, /&lt;Acme&gt;/);
+  assert.match(message.html, /&lt;ACME&gt;/);
   assert.doesNotMatch(message.html, /<Acme>/);
   assert.match(message.text, /settings\/reports\?workspaceId=workspace-id/);
 });
