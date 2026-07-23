@@ -9,7 +9,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const response = await fetch(`${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/saved-views/${encodeURIComponent(viewId)}/duplicate`, {
       method: 'POST',
-      headers: customerHeaders(request),
+      headers: customerHeaders(request, { 'content-type': 'application/json' }),
       body: JSON.stringify(await request.json().catch(() => ({}))),
       cache: 'no-store',
       signal: AbortSignal.timeout(15_000)
