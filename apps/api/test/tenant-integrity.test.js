@@ -25,7 +25,7 @@ test('all integrity checks are read-only, parameterized and workspace scoped', (
     assert.match(check.sql, /LIMIT \$2/);
     assert.match(check.sql, /\$1::uuid IS NULL/);
     assert.doesNotMatch(check.sql, /SELECT \*/);
-    assert.doesNotMatch(check.sql, /DELETE|UPDATE|INSERT|DROP|TRUNCATE/i);
+    assert.doesNotMatch(check.sql, /\b(?:DELETE|UPDATE|INSERT|DROP|TRUNCATE)\b/i);
   }
 });
 
