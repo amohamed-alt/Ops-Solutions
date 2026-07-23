@@ -194,11 +194,59 @@ export function DashboardProductShell() {
     const originalFetch = rawFetch.bind(window);
     const workspaces = new Map<string, WorkspaceContext>();
     let latestDrilldown: CapturedDrilldown | null = null;
+    let reportRequestVersion = 0;
+    let operatingAbort: AbortController | null = null;
+
+    function captureOperatingReport(response: Response, workspaceId: string, requestVersion?: number) {
+      void response.clone().json().then((payload) => {
+        if (requestVersion !== undefined && requestVersion !== reportRequestVersion) return;
+        if (!payload?.report?.operatingReports) return;
+        setReportSnapshot({
+          workspaceId,
+          report: payload.report
+        } as AgreedReportSnapshot);
+      }).catch(() => undefined);
+    }
 
     const enhancedFetch: typeof window.fetch = async (...args) => {
-      const response = await originalFetch(...args);
-      const url = new URL(requestUrl(args[0]), window.location.origin);
+      const requestedUrl = new URL(requestUrl(args[0]), window.location.origin);
+      const progressiveMatch = requestedUrl.origin === window.location.origin
+        ? requestedUrl.pathname.match(/^\/api\/dashboard\/([^/]+)\/reports$/)
+        : null;
 
+      let response: Response;
+      if (progressiveMatch && !requestedUrl.searchParams.has('scope')) {
+        const requestVersion = ++reportRequestVersion;
+        const workspaceId = decodeURIComponent(progressiveMatch[1]);
+        const coreUrl = new URL(requestedUrl);
+        coreUrl.searchParams.set('scope', 'core');
+        setReportSnapshot(null);
+
+        response = await originalFetch(coreUrl.toString(), args[1]);
+        if (response.ok) {
+          operatingAbort?.abort();
+          const controller = new AbortController();
+          operatingAbort = controller;
+          const operatingUrl = new URL(requestedUrl);
+          operatingUrl.searchParams.set('scope', 'operating');
+          const timeout = window.setTimeout(() => controller.abort(), 180_000);
+
+          void originalFetch(operatingUrl.toString(), {
+            ...(args[1] ?? {}),
+            cache: 'no-store',
+            signal: controller.signal
+          }).then((operatingResponse) => {
+            if (operatingResponse.ok) captureOperatingReport(operatingResponse, workspaceId, requestVersion);
+          }).catch(() => undefined).finally(() => {
+            window.clearTimeout(timeout);
+            if (operatingAbort === controller) operatingAbort = null;
+          });
+        }
+      } else {
+        response = await originalFetch(...args);
+      }
+
+      const url = requestedUrl;
       if (url.origin === window.location.origin) {
         if (url.pathname === '/api/customer/workspaces') {
           void response.clone().json().then((payload) => {
@@ -221,14 +269,8 @@ export function DashboardProductShell() {
         }
 
         const reportMatch = url.pathname.match(/^\/api\/dashboard\/([^/]+)\/reports$/);
-        if (reportMatch) {
-          void response.clone().json().then((payload) => {
-            if (!payload?.report?.operatingReports) return;
-            setReportSnapshot({
-              workspaceId: decodeURIComponent(reportMatch[1]),
-              report: payload.report
-            } as AgreedReportSnapshot);
-          }).catch(() => undefined);
+        if (reportMatch && url.searchParams.get('scope') !== 'core') {
+          captureOperatingReport(response, decodeURIComponent(reportMatch[1]));
         }
 
         const drilldownMatch = url.pathname.match(/^\/api\/dashboard\/([^/]+)\/reports\/([^/]+)$/);
@@ -262,6 +304,7 @@ export function DashboardProductShell() {
     improveDashboardSemantics();
 
     return () => {
+      operatingAbort?.abort();
       observer.disconnect();
       if (window.fetch === enhancedFetch) window.fetch = rawFetch;
     };

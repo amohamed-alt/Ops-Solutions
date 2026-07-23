@@ -7,7 +7,7 @@ import {
   registerSyncOperationsRoutes as registerBaseSyncOperationsRoutes,
   validateHubSpotV3Signature
 } from './sync-operations-base.js';
-import { registerRevenueReportingRoutes } from './agreed-reporting.js';
+import { registerRevenueReportingRoutes } from './scoped-revenue-reporting.js';
 
 const LEGACY_REVENUE_ROUTES = new Set([
   '/api/v1/workspaces/:workspaceId/analytics/revenue',
