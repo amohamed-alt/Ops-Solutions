@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const response = await fetch(`${API_URL}/api/v1/customer/workspaces/${anchorWorkspace.id}/companies`, {
       method: 'POST',
-      headers: customerHeaders(request),
+      headers: customerHeaders(request, { 'content-type': 'application/json' }),
       body: JSON.stringify({ name: body?.name ?? body?.companyName }),
       cache: 'no-store',
       signal: AbortSignal.timeout(15_000)
