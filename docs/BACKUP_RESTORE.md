@@ -48,6 +48,59 @@ bash scripts/verify-postgres-backup.sh \
 
 It validates the checksum when the companion `.sha256` file exists and asks the PostgreSQL container to parse the complete archive catalog.
 
+## Freshness monitoring
+
+Use the dedicated monitor to validate the newest complete backup set and enforce an operational recovery-point objective:
+
+```bash
+bash scripts/check-backup-freshness.sh --max-age-hours 26
+```
+
+The monitor validates all of the following before reporting a healthy result:
+
+- the backup directory and latest manifest exist;
+- the manifest is valid schema version 1 and contains bounded metadata;
+- the archive and companion checksum file both exist;
+- archive size matches the manifest;
+- the calculated SHA-256 value matches both the manifest and checksum file;
+- PostgreSQL can parse the archive catalog with `pg_restore --list`;
+- the verified backup is no older than the configured threshold.
+
+Exit codes are designed for cron, systemd, uptime agents and external monitoring:
+
+- `0`: healthy and fresh;
+- `2`: valid backup, but stale;
+- `3`: backup missing, incomplete or corrupt;
+- `4`: monitoring configuration or runtime dependency is invalid.
+
+Machine-readable JSON output is available without exposing database credentials or backup contents:
+
+```bash
+bash scripts/check-backup-freshness.sh \
+  --max-age-hours 26 \
+  --format json
+```
+
+Example cron health check at 04:30 UTC:
+
+```cron
+30 4 * * * cd /root/Ops-Solutions && bash scripts/check-backup-freshness.sh --max-age-hours 26 --format json >> /var/log/ops-solutions-backup-health.log 2>&1
+```
+
+For an external alert command, preserve the exit status rather than piping directly into a command that masks failures:
+
+```bash
+status=0
+output="$(bash scripts/check-backup-freshness.sh --max-age-hours 26 --format json)" || status=$?
+printf '%s\n' "$output"
+if (( status != 0 )); then
+  # Send only the public-safe JSON result to the chosen monitoring provider.
+  exit "$status"
+fi
+```
+
+`--skip-archive-check` is intended only for a lightweight secondary check when Docker or PostgreSQL is deliberately unavailable. Daily production monitoring should keep archive verification enabled.
+
 ## Restore drill
 
 Restore into a disposable database first:
@@ -81,6 +134,7 @@ That flag is intentionally explicit and should be used only during a documented 
 
 - create one backup daily;
 - verify every backup immediately after creation;
+- run the freshness monitor after the backup window and alert on every non-zero result;
 - copy backup sets to encrypted off-host storage;
 - perform a disposable restore drill at least monthly;
 - record backup timestamp, restore duration and validation result in the operational log;
@@ -105,4 +159,4 @@ Example cron entry at 02:15 UTC:
 
 ## Deferred external decisions
 
-The repository does not select an off-site storage provider, encryption recipient, regional retention policy or legal retention duration. Those choices require infrastructure and compliance decisions. The local artifacts are permission-restricted but should not be treated as the only backup copy.
+The repository does not select an off-site storage provider, encryption recipient, regional retention policy, legal retention duration or alert-delivery vendor. Those choices require infrastructure and compliance decisions. The local artifacts are permission-restricted but should not be treated as the only backup copy.
