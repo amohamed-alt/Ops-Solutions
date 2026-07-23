@@ -25,6 +25,7 @@ const CHECKS = Object.freeze([
              ARRAY_AGG(workspace_id::text ORDER BY workspace_id::text) AS workspace_ids
       FROM hubspot_connections
       WHERE portal_id IS NOT NULL
+        AND ($1::uuid IS NULL OR workspace_id = $1)
       GROUP BY portal_id
       HAVING COUNT(*) > 1
       ORDER BY COUNT(*) DESC, portal_id
@@ -163,6 +164,11 @@ const CHECKS = Object.freeze([
   }
 ]);
 
+const SENSITIVE_METADATA_KEYS = new Set([
+  'raw', 'properties', 'payload', 'body', 'access_token', 'refresh_token',
+  'access_token_encrypted', 'refresh_token_encrypted', 'password_hash', 'artifact'
+]);
+
 function sanitizeRow(row) {
   return {
     entityId: String(row.entity_id ?? '').slice(0, 300),
@@ -172,9 +178,16 @@ function sanitizeRow(row) {
     metadata: Object.fromEntries(
       Object.entries(row)
         .filter(([key]) => !['entity_id', 'workspace_id', 'workspace_ids', 'occurrences'].includes(key))
+        .filter(([key]) => !SENSITIVE_METADATA_KEYS.has(key.toLowerCase()))
         .map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value])
     )
   };
+}
+
+function queryValues(sql, options) {
+  const placeholders = [...String(sql).matchAll(/\$(\d+)/g)].map((match) => Number(match[1]));
+  const highest = placeholders.length ? Math.max(...placeholders) : 0;
+  return [options.workspaceId, options.limit, options.staleHours].slice(0, highest);
 }
 
 export async function runTenantIntegrityAudit(postgres, input = {}) {
@@ -184,7 +197,7 @@ export async function runTenantIntegrityAudit(postgres, input = {}) {
 
   for (const check of CHECKS) {
     try {
-      const queryResult = await postgres.query(check.sql, [options.workspaceId, options.limit, options.staleHours]);
+      const queryResult = await postgres.query(check.sql, queryValues(check.sql, options));
       const rows = queryResult.rows.map(sanitizeRow);
       results.push({
         key: check.key,
