@@ -1,3 +1,6 @@
+import { registerRevenueIntelligenceRoutes } from './revenue-intelligence.js';
+import { registerWorkspaceGoalRoutes } from './workspace-goals.js';
+
 const DEFAULTS = Object.freeze({
   currency: 'USD',
   timezone: 'UTC',
@@ -90,6 +93,9 @@ function serialize(row) {
 export function registerWorkspacePreferencesRoutes(app, { postgres, withTransaction, requireViewer, writeAudit }) {
   const schemaReady = ensureWorkspacePreferencesSchema(postgres);
   const basePath = '/api/v1/customer/workspaces/:workspaceId/preferences';
+
+  registerWorkspaceGoalRoutes(app, { postgres, requireViewer, writeAudit });
+  registerRevenueIntelligenceRoutes(app, { postgres, requireViewer, writeAudit });
 
   app.get(basePath, { preHandler: requireViewer }, async (request) => {
     await schemaReady;
