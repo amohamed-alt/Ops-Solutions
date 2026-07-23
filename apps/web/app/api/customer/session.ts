@@ -3,10 +3,10 @@ import { NextRequest, NextResponse } from 'next/server';
 export const CUSTOMER_SESSION_COOKIE = 'ops_customer_session';
 export const API_URL = process.env.API_INTERNAL_URL ?? 'http://api:3001';
 
-export function internalAdminHeaders() {
+export function internalAdminHeaders(extra: Record<string, string> = {}) {
   return {
-    'content-type': 'application/json',
-    'x-admin-key': process.env.ADMIN_API_KEY ?? ''
+    'x-admin-key': process.env.ADMIN_API_KEY ?? '',
+    ...extra
   };
 }
 
@@ -14,10 +14,10 @@ export function sessionToken(request: NextRequest) {
   return request.cookies.get(CUSTOMER_SESSION_COOKIE)?.value ?? '';
 }
 
-export function customerHeaders(request: NextRequest) {
+export function customerHeaders(request: NextRequest, extra: Record<string, string> = {}) {
   return {
-    'content-type': 'application/json',
-    'x-session-token': sessionToken(request)
+    'x-session-token': sessionToken(request),
+    ...extra
   };
 }
 

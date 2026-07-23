@@ -28,7 +28,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!access.ok) return access.response;
   const body = await request.json();
   const response = await fetch(`${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/invitations`, {
-    method: 'POST', headers: customerHeaders(request), body: JSON.stringify(body), cache: 'no-store'
+    method: 'POST', headers: customerHeaders(request, { 'content-type': 'application/json' }), body: JSON.stringify(body), cache: 'no-store'
   });
   return relay(response);
 }
@@ -39,7 +39,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!access.ok) return access.response;
   const body = await request.json();
   const response = await fetch(`${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(body.userId)}`, {
-    method: 'PATCH', headers: customerHeaders(request), body: JSON.stringify({ role: body.role }), cache: 'no-store'
+    method: 'PATCH', headers: customerHeaders(request, { 'content-type': 'application/json' }), body: JSON.stringify({ role: body.role }), cache: 'no-store'
   });
   return relay(response);
 }

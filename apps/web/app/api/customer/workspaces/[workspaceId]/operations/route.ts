@@ -108,7 +108,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const response = await fetch(url, {
       method,
-      headers: internalAdminHeaders(),
+      headers: internalAdminHeaders(payload ? { 'content-type': 'application/json' } : {}),
       body: payload ? JSON.stringify(payload) : undefined,
       cache: 'no-store',
       signal: AbortSignal.timeout(action === 'discover' ? 120_000 : 20_000)

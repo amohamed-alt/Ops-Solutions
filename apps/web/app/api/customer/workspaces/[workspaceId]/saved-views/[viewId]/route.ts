@@ -8,7 +8,7 @@ async function forward(request: NextRequest, workspaceId: string, viewId: string
   try {
     const response = await fetch(`${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/saved-views/${encodeURIComponent(viewId)}`, {
       method,
-      headers: customerHeaders(request),
+      headers: customerHeaders(request, method === 'PATCH' ? { 'content-type': 'application/json' } : {}),
       body: method === 'PATCH' ? JSON.stringify(await request.json().catch(() => ({}))) : undefined,
       cache: 'no-store',
       signal: AbortSignal.timeout(15_000)
