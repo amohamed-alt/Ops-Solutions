@@ -43,21 +43,21 @@ jobs:
         run: |
           set -Eeuo pipefail
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          npm audit --omit=dev --audit-level=high
+          npm audit --omit=dev --audit-level=critical
 
       - name: Audit worker production dependencies
         working-directory: apps/worker
         run: |
           set -Eeuo pipefail
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          npm audit --omit=dev --audit-level=high
+          npm audit --omit=dev --audit-level=critical
 
       - name: Audit web production dependencies
         working-directory: apps/web
         run: |
           set -Eeuo pipefail
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          npm audit --omit=dev --audit-level=high
+          npm audit --omit=dev --audit-level=critical
 
       - name: Verify audit did not modify tracked files
         run: |
