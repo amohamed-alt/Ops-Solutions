@@ -10,7 +10,8 @@ test('dashboard captures the adaptive report payload and renders the agreed pane
   const shell = await readFile(shellPath, 'utf8');
   assert.match(shell, /AgreedReportsPanel/);
   assert.match(shell, /payload\?\.report\?\.operatingReports/);
-  assert.match(shell, /\/api\/dashboard\/\(\[\^\/\]\+\)\/reports\$/);
+  assert.match(shell, /const reportMatch = url\.pathname\.match/);
+  assert.match(shell, /setReportSnapshot/);
   assert.match(shell, /workspaceContexts\[reportSnapshot\.workspaceId\]/);
 });
 
