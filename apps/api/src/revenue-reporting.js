@@ -199,6 +199,8 @@ function contactAssociationDimensions(alias, objectType) {
 
 function mixedActivityContactDimensions(alias = 'r') {
   return `
+    AND ($6::text IS NULL OR TRUE)
+    AND ($7::text IS NULL OR TRUE)
     AND (
       ($5::text IS NULL AND $8::text IS NULL)
       OR EXISTS (
@@ -255,8 +257,12 @@ function objectPredicate(objectType, alias = 'r', { period = true } = {}) {
     ${alias}.workspace_id = $1
     AND ${alias}.object_type = '${objectType}'
     AND ${alias}.archived = FALSE
+    AND $2::date IS NOT NULL
+    AND $3::date IS NOT NULL
     ${period ? `AND ${timestamp} >= $2::date AND ${timestamp} < ($3::date + INTERVAL '1 day')` : ''}
     AND ($4::text IS NULL OR ${ownerSql(alias, objectType)} = $4)
+    AND ($6::text IS NULL OR TRUE)
+    AND ($7::text IS NULL OR TRUE)
     ${contactAssociationDimensions(alias, objectType)}
     ${dealAssociationDimensions(alias, objectType)}`;
 }

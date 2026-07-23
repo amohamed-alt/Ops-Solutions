@@ -2,10 +2,35 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  buildRevenueReportingPack,
   getRevenueDrilldown,
   normalizeReportingFilters,
   registerRevenueReportingRoutes
 } from '../src/revenue-reporting.js';
+
+test('all reporting queries declare optional filter parameter types', async () => {
+  const captured = [];
+  const postgres = {
+    async query(text, values) {
+      captured.push({ text, values });
+      return { rows: [] };
+    }
+  };
+
+  await buildRevenueReportingPack(postgres, 'workspace-id', {
+    from: '2026-07-01',
+    to: '2026-07-22'
+  });
+
+  const reportingQueries = captured.filter(({ values }) => values.length === 8);
+  assert.ok(reportingQueries.length > 0);
+  for (const { text } of reportingQueries) {
+    assert.match(text, /\$2::date/);
+    assert.match(text, /\$3::date/);
+    assert.match(text, /\$6::text/);
+    assert.match(text, /\$7::text/);
+  }
+});
 
 test('normalizes a default 30 day reporting range and dimensions', () => {
   assert.deepEqual(normalizeReportingFilters({ ownerId: ' 77 ', country: ' UAE ' }, new Date('2026-07-22T12:00:00Z')), {
