@@ -1,4 +1,5 @@
 import { DashboardProductShell } from '@/components/sdr/DashboardProductShell';
+import '@/components/sdr/dashboard-layout-fix.css';
 
 export const dynamic = 'force-dynamic';
 
