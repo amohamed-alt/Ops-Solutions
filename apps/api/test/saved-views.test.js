@@ -164,19 +164,21 @@ test('updates and deletes only the requesting user view', async () => {
   assert.deepEqual(deleteQuery.values, [VIEW_ID, 'workspace-id', 'user-id']);
 });
 
-test('registers viewer-protected saved view lifecycle routes', () => {
+test('registers viewer-protected preferences and saved view lifecycle routes', () => {
   const routes = [];
-  const app = Object.fromEntries(['get', 'post', 'patch', 'delete'].map((method) => [method, (path, options, handler) => {
+  const app = Object.fromEntries(['get', 'put', 'post', 'patch', 'delete'].map((method) => [method, (path, options, handler) => {
     routes.push({ method, path, options, handler });
   }]));
   const requireViewer = [() => undefined, () => undefined];
   registerSavedViewRoutes(app, {
-    postgres: {},
+    postgres: { async query() { return { rows: [], rowCount: 0 }; } },
     withTransaction: async (handler) => handler({}),
     requireViewer,
     writeAudit: async () => undefined
   });
   assert.deepEqual(routes.map(({ method, path }) => `${method.toUpperCase()} ${path}`), [
+    'GET /api/v1/customer/workspaces/:workspaceId/preferences',
+    'PUT /api/v1/customer/workspaces/:workspaceId/preferences',
     'GET /api/v1/customer/workspaces/:workspaceId/saved-views',
     'POST /api/v1/customer/workspaces/:workspaceId/saved-views',
     'PATCH /api/v1/customer/workspaces/:workspaceId/saved-views/:viewId',
