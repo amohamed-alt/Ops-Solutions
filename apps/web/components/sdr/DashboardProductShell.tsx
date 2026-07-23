@@ -1,7 +1,8 @@
 'use client';
 
-import { useLayoutEffect } from 'react';
+import { useLayoutEffect, useState } from 'react';
 
+import { AgreedReportsPanel, type AgreedReportSnapshot } from './AgreedReportsPanel';
 import { DashboardWorkspaceExperience } from './DashboardWorkspaceExperience';
 import './dashboard-product-polish.css';
 
@@ -185,6 +186,9 @@ function requestUrl(input: RequestInfo | URL) {
 }
 
 export function DashboardProductShell() {
+  const [reportSnapshot, setReportSnapshot] = useState<AgreedReportSnapshot | null>(null);
+  const [workspaceContexts, setWorkspaceContexts] = useState<Record<string, WorkspaceContext>>({});
+
   useLayoutEffect(() => {
     const rawFetch = window.fetch;
     const originalFetch = rawFetch.bind(window);
@@ -199,27 +203,42 @@ export function DashboardProductShell() {
         if (url.pathname === '/api/customer/workspaces') {
           void response.clone().json().then((payload) => {
             const rows = Array.isArray(payload?.results) ? payload.results : [];
+            const nextContexts: Record<string, WorkspaceContext> = {};
             for (const row of rows) {
               const workspace = row?.workspace;
               if (!workspace?.id || workspace.portal_id === null || workspace.portal_id === undefined) continue;
-              workspaces.set(String(workspace.id), {
+              const context = {
                 id: String(workspace.id),
                 name: String(workspace.name || 'Workspace'),
                 portalId: String(workspace.portal_id)
-              });
+              };
+              workspaces.set(context.id, context);
+              nextContexts[context.id] = context;
             }
+            setWorkspaceContexts(nextContexts);
             if (latestDrilldown) installHubSpotLinks(latestDrilldown, workspaces);
           }).catch(() => undefined);
         }
 
-        const match = url.pathname.match(/^\/api\/dashboard\/([^/]+)\/reports\/([^/]+)$/);
-        if (match) {
+        const reportMatch = url.pathname.match(/^\/api\/dashboard\/([^/]+)\/reports$/);
+        if (reportMatch) {
+          void response.clone().json().then((payload) => {
+            if (!payload?.report?.operatingReports) return;
+            setReportSnapshot({
+              workspaceId: decodeURIComponent(reportMatch[1]),
+              report: payload.report
+            } as AgreedReportSnapshot);
+          }).catch(() => undefined);
+        }
+
+        const drilldownMatch = url.pathname.match(/^\/api\/dashboard\/([^/]+)\/reports\/([^/]+)$/);
+        if (drilldownMatch) {
           void response.clone().json().then((payload) => {
             const drilldown = payload?.drilldown;
             if (!drilldown || !Array.isArray(drilldown.results)) return;
             latestDrilldown = {
-              workspaceId: decodeURIComponent(match[1]),
-              objectType: String(drilldown.objectType || match[2]),
+              workspaceId: decodeURIComponent(drilldownMatch[1]),
+              objectType: String(drilldown.objectType || drilldownMatch[2]),
               results: drilldown.results.map((row: { id?: string | number }) => ({ id: String(row?.id ?? '') }))
             };
             installHubSpotLinks(latestDrilldown, workspaces);
@@ -248,5 +267,12 @@ export function DashboardProductShell() {
     };
   }, []);
 
-  return <DashboardWorkspaceExperience />;
+  const portalId = reportSnapshot ? workspaceContexts[reportSnapshot.workspaceId]?.portalId ?? null : null;
+
+  return (
+    <>
+      <DashboardWorkspaceExperience />
+      <AgreedReportsPanel snapshot={reportSnapshot} portalId={portalId} />
+    </>
+  );
 }
