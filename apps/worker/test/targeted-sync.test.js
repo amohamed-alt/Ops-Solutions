@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-import {
+process.env.DATABASE_URL ||= 'postgres://test:test@localhost:5432/test';
+process.env.REDIS_URL ||= 'redis://localhost:6379';
+
+const {
   claimWebhookEvents,
   ensureTargetedWebhookSchema
-} from '../src/targeted-sync.js';
+} = await import('../src/targeted-sync.js');
 
 const WORKSPACE_ID = '5839ad18-0d29-4e1b-aa51-47a0b9756aad';
 
