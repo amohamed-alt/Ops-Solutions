@@ -8,22 +8,23 @@ BACKUP_FILE=""
 usage() {
   cat <<'EOF'
 Usage: scripts/verify-postgres-backup.sh --file PATH [--compose-file FILE]
+       scripts/verify-postgres-backup.sh --backup PATH [--compose-file FILE]
 
 Validates the matching SHA-256 file when present and asks pg_restore to parse the full archive catalog.
-No database is modified.
+No database is modified. --backup is an alias for --file for deployment automation readability.
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --file) BACKUP_FILE="$2"; shift 2 ;;
+    --file|--backup) BACKUP_FILE="$2"; shift 2 ;;
     --compose-file) COMPOSE_FILE="$2"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
-[[ -n "$BACKUP_FILE" ]] || { echo "--file is required." >&2; exit 2; }
+[[ -n "$BACKUP_FILE" ]] || { echo "--file or --backup is required." >&2; exit 2; }
 [[ -f "$BACKUP_FILE" && -s "$BACKUP_FILE" ]] || { echo "Backup file is missing or empty: $BACKUP_FILE" >&2; exit 1; }
 [[ -f "$COMPOSE_FILE" ]] || { echo "Compose file not found: $COMPOSE_FILE" >&2; exit 1; }
 command -v docker >/dev/null || { echo "docker is required." >&2; exit 1; }
