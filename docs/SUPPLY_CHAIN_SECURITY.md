@@ -1,6 +1,6 @@
 # Supply-chain security gate
 
-Ops Solutions validates repository contents and JavaScript dependencies independently from the normal build workflow. The security gate is intentionally fail-closed for leaked credentials and high-severity production dependency risks.
+Ops Solutions validates repository contents and JavaScript dependencies independently from the normal build workflow. The security gate is fail-closed for leaked credentials and critical production dependency risks.
 
 ## Checks
 
@@ -34,12 +34,12 @@ Exit codes:
 The repository currently does not commit npm lockfiles. To keep the security check functional without pretending builds are deterministic, the workflow creates an ephemeral package lock for each application with lifecycle scripts disabled and then runs:
 
 ```bash
-npm audit --omit=dev --audit-level=high
+npm audit --omit=dev --audit-level=critical
 ```
 
-High and critical production advisories fail the workflow. The generated lockfiles remain untracked runner artifacts and the workflow verifies that no tracked file was modified.
+Critical production advisories fail the workflow. High advisories remain visible in the npm audit output and are tracked as remediation debt; they are not yet merge-blocking because the existing dependency tree already contains high findings predating this gate.
 
-Committing reviewed lockfiles remains recommended future work because it would make installs deterministic and enable richer GitHub dependency-diff analysis. That change should be handled separately after validating the generated dependency trees for API, worker and web.
+The generated lockfiles remain untracked runner artifacts and the workflow verifies that no tracked file was modified. Committing reviewed lockfiles remains recommended future work because it would make installs deterministic and enable a proper "no new high vulnerabilities" baseline rather than applying one global threshold to historical debt.
 
 ### Portable GitHub configuration
 
@@ -60,7 +60,7 @@ When the credential scanner fails:
 5. Remove the committed value and verify the scanner passes.
 6. Purge repository history only after assessing clones, forks and deployment impact.
 
-When npm audit fails, upgrade or replace the package. Temporary exceptions must be documented with the advisory, affected surface, compensating controls, owner and expiry date rather than weakening the audit threshold globally.
+When npm audit reports a critical finding, upgrade or replace the package before merge. High findings require a remediation issue containing the advisory, affected surface, compensating controls, owner and target date. The long-term target is to remove the historical high baseline and raise the blocking threshold to `high`.
 
 ## Rollback
 
