@@ -56,10 +56,12 @@ test('blocks tracked environment and private key files but permits templates', (
 });
 
 test('scans only tracked files and reports sanitized locations', async () => {
+  const stripeLikeSecret = ['sk', 'live', '4Pm9qR7tV2nK8cL5sD1fH6jB3wX0zA'].join('_');
+  const untrackedSecret = ['github', 'pat', '11AA22BB33CC44DD55EE66FF77GG88HH99JJ00KK11LL'].join('_');
   const root = await repository({
     'src/safe.js': "export const key = process.env.API_KEY;\n",
-    'src/leaked.js': `export const key = 'sk_live_${'x'.repeat(30)}';\n`,
-    'untracked.txt': `github_pat_${'x'.repeat(50)}\n`
+    'src/leaked.js': `export const key = '${stripeLikeSecret}';\n`,
+    'untracked.txt': `${untrackedSecret}\n`
   });
   git(root, 'reset', '-q', 'untracked.txt');
   const result = await scanRepository(root);
@@ -67,7 +69,8 @@ test('scans only tracked files and reports sanitized locations', async () => {
   assert.equal(result.findings.length, 1);
   assert.equal(result.findings[0].file, 'src/leaked.js');
   assert.equal(result.findings[0].category, 'stripe_live_key');
-  assert.doesNotMatch(JSON.stringify(result), /sk_live_/);
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(stripeLikeSecret));
+  assert.doesNotMatch(JSON.stringify(result), new RegExp(untrackedSecret));
 });
 
 test('passes a repository containing only safe tracked configuration', async () => {
