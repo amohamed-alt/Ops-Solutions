@@ -1,0 +1,50 @@
+name: Apply scheduled reports integration
+
+on:
+  push:
+    branches:
+      - feature/scheduled-report-orchestration
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[scheduled-reports-integrated]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/scheduled-report-orchestration
+          fetch-depth: 0
+      - name: Integrate scheduled reports
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/api/src/server.js')
+          text = path.read_text()
+          text = text.replace(
+            "import { ensureMappingWizardSchema, registerMappingWizardRoutes } from './mapping-wizard.js';\n",
+            "import { ensureMappingWizardSchema, registerMappingWizardRoutes } from './mapping-wizard.js';\nimport { ensureScheduledReportSchema, registerScheduledReportRoutes } from './scheduled-reports.js';\n"
+          )
+          marker = "const backgroundExports = registerBackgroundExportRoutes(app, {\n  postgres,\n  redis,\n  redisUrl: config.redisUrl,\n  requireViewer: customerAuth.requireViewer,\n  requireWorkspace,\n  writeAudit: customerAuth.writeAudit\n});\n"
+          addition = marker + "\nconst scheduledReports = registerScheduledReportRoutes(app, {\n  postgres,\n  redisUrl: config.redisUrl,\n  requireViewer: customerAuth.requireViewer,\n  requireAdmin: customerAuth.requireAdmin,\n  writeAudit: customerAuth.writeAudit\n});\n"
+          if marker not in text:
+            raise SystemExit('background export registration marker missing')
+          text = text.replace(marker, addition, 1)
+          text = text.replace(
+            "    backgroundExports.close(),\n    syncOperations.close(),",
+            "    scheduledReports.close(),\n    backgroundExports.close(),\n    syncOperations.close(),"
+          )
+          text = text.replace(
+            "  await ensureMappingWizardSchema(postgres);\n  await backgroundExports.start();",
+            "  await ensureMappingWizardSchema(postgres);\n  await ensureScheduledReportSchema(postgres);\n  await backgroundExports.start();\n  await scheduledReports.start();"
+          )
+          path.write_text(text)
+          PY
+          git rm .github/workflows/apply-scheduled-reports-patch.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/api/src/server.js
+          git commit -m "Integrate scheduled report scheduler [scheduled-reports-integrated]"
+          git push origin HEAD:feature/scheduled-report-orchestration
