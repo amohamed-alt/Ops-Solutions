@@ -1,0 +1,66 @@
+name: Security Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+  schedule:
+    - cron: '17 2 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-gate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-security:
+    name: Secrets and dependency policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Scan tracked files for credentials
+        run: node scripts/security-gate.mjs --format text
+
+      - name: Audit API production dependencies
+        working-directory: apps/api
+        run: |
+          set -Eeuo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm audit --omit=dev --audit-level=critical
+
+      - name: Audit worker production dependencies
+        working-directory: apps/worker
+        run: |
+          set -Eeuo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm audit --omit=dev --audit-level=critical
+
+      - name: Audit web production dependencies
+        working-directory: apps/web
+        run: |
+          set -Eeuo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm audit --omit=dev --audit-level=critical
+
+      - name: Verify audit did not modify tracked files
+        run: |
+          set -Eeuo pipefail
+          git diff --exit-code
+          test -z "$(git status --short --untracked-files=no)"
