@@ -1,14 +1,20 @@
 import { DashboardProductShell } from '@/components/sdr/DashboardProductShell';
+import { ObjectIntelligenceWorkspace } from '@/components/sdr/ObjectIntelligenceWorkspace';
 import '@/components/sdr/dashboard-layout-fix.css';
+import '@/components/sdr/dashboard-saas-refresh.css';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'Revenue Command Center · Ops Intelligence',
-  description: 'Filtered HubSpot revenue, SDR, pipeline, source, team and data-quality intelligence.'
+  description: 'Filtered HubSpot revenue, SDR, pipeline, object, team and data-quality intelligence.'
 };
 
 export default function DashboardPage() {
-  // DashboardProductShell composes DashboardWorkspaceExperience and adds safe product-level enhancements.
-  return <DashboardProductShell />;
+  return (
+    <>
+      <DashboardProductShell />
+      <ObjectIntelligenceWorkspace />
+    </>
+  );
 }
