@@ -1,12 +1,12 @@
-import { DashboardWorkspaceExperience } from '@/components/sdr/DashboardWorkspaceExperience';
+import { EnterpriseRevenueWorkspace } from '@/components/sdr/EnterpriseRevenueWorkspace';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
-  title: 'Revenue Command Center · Ops Intelligence',
-  description: 'Filtered HubSpot revenue, SDR, pipeline, source, team and data-quality intelligence.'
+  title: 'Revenue Operating System · Ops Intelligence',
+  description: 'Role-based HubSpot revenue forecasting, risk scoring, SDR execution, team performance and RevOps data health.'
 };
 
 export default function DashboardPage() {
-  return <DashboardWorkspaceExperience />;
+  return <EnterpriseRevenueWorkspace />;
 }
