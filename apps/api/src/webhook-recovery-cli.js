@@ -5,7 +5,7 @@ import { postgres } from './database.js';
 import { ensureHubSpotWebhookSchema, jobNameForMode } from './sync-operations.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const ACTIONS = new Set(['status', 'list', 'retry', 'ignore']);
+const ACTIONS = new Set(['fleet', 'status', 'list', 'retry', 'ignore']);
 const STATUSES = new Set(['received', 'queued', 'ignored', 'failed']);
 
 export function parseWebhookRecoveryArguments(argv) {
@@ -16,7 +16,9 @@ export function parseWebhookRecoveryArguments(argv) {
     status: '',
     limit: 50,
     eventIds: [],
-    dryRun: false
+    dryRun: false,
+    staleHours: 24,
+    onlyUnhealthy: false
   };
 
   for (let index = 0; index < input.length; index += 1) {
@@ -26,17 +28,27 @@ export function parseWebhookRecoveryArguments(argv) {
     else if (token === '--status') options.status = String(input[++index] ?? '').trim().toLowerCase();
     else if (token === '--limit') options.limit = Number(input[++index]);
     else if (token === '--event') options.eventIds.push(String(input[++index] ?? '').trim());
+    else if (token === '--stale-hours') options.staleHours = Number(input[++index]);
+    else if (token === '--only-unhealthy') options.onlyUnhealthy = true;
     else if (token === '--dry-run') options.dryRun = true;
     else if (token === '--help' || token === '-h') options.help = true;
     else throw new Error(`Unknown argument: ${token}`);
   }
 
   if (options.help) return options;
-  if (!ACTIONS.has(options.action)) throw new Error('Action must be status, list, retry, or ignore.');
-  if (!UUID_PATTERN.test(options.workspaceId)) throw new Error('A valid --workspace UUID is required.');
+  if (!ACTIONS.has(options.action)) throw new Error('Action must be fleet, status, list, retry, or ignore.');
+  if (options.action !== 'fleet' && !UUID_PATTERN.test(options.workspaceId)) {
+    throw new Error('A valid --workspace UUID is required.');
+  }
+  if (options.action === 'fleet' && options.workspaceId) {
+    throw new Error('Fleet health does not accept --workspace. Use status for one workspace.');
+  }
   if (options.status && !STATUSES.has(options.status)) throw new Error('Status must be received, queued, ignored, or failed.');
   if (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 100) {
     throw new Error('--limit must be an integer between 1 and 100.');
+  }
+  if (!Number.isFinite(options.staleHours) || options.staleHours < 1 || options.staleHours > 720) {
+    throw new Error('--stale-hours must be between 1 and 720.');
   }
   options.eventIds = [...new Set(options.eventIds.filter(Boolean))];
   if (options.action === 'ignore' && options.eventIds.length === 0) {
@@ -51,8 +63,55 @@ export function recoveryModeForEvents(events) {
     : 'incremental';
 }
 
+export function classifyFleetWorkspace(row, { now = Date.now(), staleHours = 24 } = {}) {
+  const connectionStatus = String(row.hubspot_status ?? 'disconnected');
+  const failed = Number(row.failed ?? 0);
+  const pending = Number(row.pending ?? 0);
+  const latestReceivedAt = row.latest_received_at ? new Date(row.latest_received_at).getTime() : null;
+  const latestSyncAt = row.latest_sync_at ? new Date(row.latest_sync_at).getTime() : null;
+  const staleAfterMs = staleHours * 60 * 60 * 1000;
+
+  let health = 'healthy';
+  let reason = 'Connection, webhook journal and synchronization are healthy.';
+  if (connectionStatus !== 'connected') {
+    health = 'disconnected';
+    reason = 'HubSpot OAuth is not connected.';
+  } else if (failed > 0) {
+    health = 'degraded';
+    reason = `${failed} webhook event${failed === 1 ? '' : 's'} require recovery.`;
+  } else if (pending > 0) {
+    health = 'pending';
+    reason = `${pending} webhook event${pending === 1 ? '' : 's'} are waiting to be queued.`;
+  } else if (latestSyncAt && now - latestSyncAt > staleAfterMs) {
+    health = 'stale';
+    reason = `The CRM mirror has not synchronized within ${staleHours} hours.`;
+  } else if (!latestReceivedAt) {
+    health = 'no_webhooks';
+    reason = 'No webhook delivery has been observed for this workspace.';
+  }
+
+  return {
+    workspaceId: String(row.workspace_id),
+    workspaceName: String(row.workspace_name),
+    portalId: row.portal_id ? Number(row.portal_id) : null,
+    connectionStatus,
+    health,
+    reason,
+    counts: {
+      total: Number(row.total ?? 0),
+      failed,
+      pending,
+      queued: Number(row.queued ?? 0),
+      ignored: Number(row.ignored ?? 0)
+    },
+    latestReceivedAt: row.latest_received_at ?? null,
+    latestProcessedAt: row.latest_processed_at ?? null,
+    latestSyncAt: row.latest_sync_at ?? null
+  };
+}
+
 function helpText() {
-  return `HubSpot webhook recovery\n\nUsage:\n  node src/webhook-recovery-cli.js --action status --workspace <uuid>\n  node src/webhook-recovery-cli.js --action list --workspace <uuid> [--status failed] [--limit 50]\n  node src/webhook-recovery-cli.js --action retry --workspace <uuid> [--event <uuid>] [--limit 100] [--dry-run]\n  node src/webhook-recovery-cli.js --action ignore --workspace <uuid> --event <uuid> [--event <uuid>] [--dry-run]\n\nRetry without --event selects the oldest failed or received events from the last seven days.`;
+  return `HubSpot webhook recovery\n\nUsage:\n  node src/webhook-recovery-cli.js --action fleet [--only-unhealthy] [--stale-hours 24]\n  node src/webhook-recovery-cli.js --action status --workspace <uuid>\n  node src/webhook-recovery-cli.js --action list --workspace <uuid> [--status failed] [--limit 50]\n  node src/webhook-recovery-cli.js --action retry --workspace <uuid> [--event <uuid>] [--limit 100] [--dry-run]\n  node src/webhook-recovery-cli.js --action ignore --workspace <uuid> --event <uuid> [--event <uuid>] [--dry-run]\n\nFleet health is read-only. Retry without --event selects the oldest failed or received events from the last seven days.`;
 }
 
 async function requireWorkspace(workspaceId) {
@@ -66,6 +125,41 @@ async function requireWorkspace(workspaceId) {
   );
   if (result.rowCount === 0) throw new Error('Workspace not found.');
   return result.rows[0];
+}
+
+async function fleetHealth({ staleHours, onlyUnhealthy }) {
+  const result = await postgres.query(
+    `SELECT w.id AS workspace_id,
+            w.name AS workspace_name,
+            c.portal_id,
+            c.status AS hubspot_status,
+            COUNT(e.id)::int AS total,
+            COUNT(e.id) FILTER (WHERE e.status = 'failed')::int AS failed,
+            COUNT(e.id) FILTER (WHERE e.status = 'received')::int AS pending,
+            COUNT(e.id) FILTER (WHERE e.status = 'queued')::int AS queued,
+            COUNT(e.id) FILTER (WHERE e.status = 'ignored')::int AS ignored,
+            MAX(e.received_at) AS latest_received_at,
+            MAX(e.processed_at) AS latest_processed_at,
+            MAX(r.synced_at) AS latest_sync_at
+     FROM workspaces w
+     LEFT JOIN hubspot_connections c ON c.workspace_id = w.id
+     LEFT JOIN hubspot_webhook_events e ON e.workspace_id = w.id
+     LEFT JOIN crm_records r ON r.workspace_id = w.id
+     WHERE w.status = 'active'
+     GROUP BY w.id, w.name, c.portal_id, c.status
+     ORDER BY w.name`,
+    []
+  );
+  const workspaces = result.rows.map((row) => classifyFleetWorkspace(row, { staleHours }));
+  const visible = onlyUnhealthy ? workspaces.filter((workspace) => workspace.health !== 'healthy') : workspaces;
+  const summary = visible.reduce((output, workspace) => {
+    output.total += 1;
+    output[workspace.health] = Number(output[workspace.health] ?? 0) + 1;
+    output.failedEvents += workspace.counts.failed;
+    output.pendingEvents += workspace.counts.pending;
+    return output;
+  }, { total: 0, failedEvents: 0, pendingEvents: 0 });
+  return { generatedAt: new Date().toISOString(), staleHours, summary, workspaces: visible };
 }
 
 async function status(workspaceId) {
@@ -180,6 +274,7 @@ async function ignoreEvents(options) {
 
 export async function runWebhookRecovery(options) {
   await ensureHubSpotWebhookSchema(postgres);
+  if (options.action === 'fleet') return fleetHealth(options);
   const workspace = await requireWorkspace(options.workspaceId);
   if (options.action === 'status') return { workspace, summary: await status(options.workspaceId) };
   if (options.action === 'list') return { workspace, events: await listEvents(options) };
