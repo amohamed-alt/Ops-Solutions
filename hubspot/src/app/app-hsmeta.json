@@ -4,7 +4,7 @@
   "config": {
     "name": "Ops Solutions",
     "description": "Connect HubSpot accounts to Ops Solutions for read-only CRM discovery, secure synchronization, semantic property mapping, and intelligent revenue operations dashboards.",
-    "distribution": "private",
+    "distribution": "marketplace",
     "auth": {
       "type": "oauth",
       "redirectUrls": [
