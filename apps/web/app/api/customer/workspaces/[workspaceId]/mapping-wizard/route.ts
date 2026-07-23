@@ -19,7 +19,7 @@ async function forward(request: NextRequest, url: string, init: RequestInit = {}
   try {
     const response = await fetch(url, {
       ...init,
-      headers: { ...customerHeaders(request), ...(init.headers ?? {}) },
+      headers: { ...customerHeaders(request), ...(init.body ? { 'content-type': 'application/json' } : {}), ...(init.headers ?? {}) },
       cache: 'no-store',
       signal: AbortSignal.timeout(20_000)
     });
