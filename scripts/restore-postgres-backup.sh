@@ -11,7 +11,7 @@ ALLOW_PRODUCTION_TARGET="false"
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/restore-postgres-backup.sh --file PATH --target-database NAME --confirm RESTORE
+  bash scripts/restore-postgres-backup.sh --file PATH --target-database NAME --confirm RESTORE
     [--compose-file FILE] [--allow-production-target]
 
 The command verifies the archive, recreates the target database, restores with --no-owner/--no-acl,
@@ -51,7 +51,7 @@ if [[ "$TARGET_DATABASE" == "$production_db" && "$ALLOW_PRODUCTION_TARGET" != "t
   exit 3
 fi
 
-scripts/verify-postgres-backup.sh --file "$BACKUP_FILE" --compose-file "$COMPOSE_FILE"
+bash scripts/verify-postgres-backup.sh --file "$BACKUP_FILE" --compose-file "$COMPOSE_FILE"
 
 # Terminate only sessions connected to the explicit target database.
 docker compose -f "$COMPOSE_FILE" exec -T "$POSTGRES_SERVICE" \
