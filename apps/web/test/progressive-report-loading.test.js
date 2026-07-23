@@ -29,8 +29,11 @@ test('advanced report failures cannot block the core dashboard response', async 
 test('report proxy applies separate bounded timeouts per report scope', async () => {
   const route = await readFile(routePath, 'utf8');
 
-  assert.match(route, /scope === 'core'\) return 60_000/);
-  assert.match(route, /scope === 'operating'\) return 180_000/);
+  assert.match(route, /CORE_REPORT_TIMEOUT_MS = 60_000/);
+  assert.match(route, /OPERATING_REPORT_TIMEOUT_MS = 180_000/);
+  assert.match(route, /REPORT_TIMEOUT_MS = 90_000/);
+  assert.match(route, /scope === 'core'\) return CORE_REPORT_TIMEOUT_MS/);
+  assert.match(route, /scope === 'operating'\) return OPERATING_REPORT_TIMEOUT_MS/);
   assert.match(route, /AbortSignal\.timeout\(reportTimeoutMs/);
   assert.match(route, /revenue_reporting_timeout/);
 });
