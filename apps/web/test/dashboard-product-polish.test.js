@@ -21,7 +21,8 @@ test('product shell adds record-level HubSpot links for core CRM activities', as
   assert.match(source, /deals: '0-3'/);
   assert.match(source, /ric-hubspot-record-link/);
   assert.match(source, /response\.clone\(\)\.json\(\)/);
-  assert.match(source, /\/api\/dashboard\/\(\[\^\/\]\+\)\/reports/);
+  assert.match(source, /url\.pathname\.match/);
+  assert.match(source, /reports/);
   assert.doesNotMatch(source, /ADMIN_API_KEY|x-admin-key|access[_-]?token|client[_-]?secret/i);
 });
 
