@@ -1,6 +1,6 @@
 # Supply-chain security gate
 
-Ops Solutions validates repository contents and JavaScript dependencies independently from the normal build workflow. The security gate is intentionally fail-closed for leaked credentials and newly introduced high-severity dependency risks.
+Ops Solutions validates repository contents and JavaScript dependencies independently from the normal build workflow. The security gate is intentionally fail-closed for leaked credentials and high-severity production dependency risks.
 
 ## Checks
 
@@ -29,19 +29,25 @@ Exit codes:
 - `2`: credential or sensitive-file finding
 - `4`: configuration or repository inspection failure
 
-### Dependency policy
+### Production dependency audit
 
-Every application package is installed from its lockfile with lifecycle scripts disabled, then audited using production dependencies only. High and critical advisories fail the workflow.
+The repository currently does not commit npm lockfiles. To keep the security check functional without pretending builds are deterministic, the workflow creates an ephemeral package lock for each application with lifecycle scripts disabled and then runs:
 
-Pull requests also run GitHub's dependency-review action. New dependencies fail when they introduce high-severity vulnerabilities or use GPL-3.0/AGPL-3.0 licenses that conflict with the intended commercial SaaS distribution. Exceptions require an explicit legal and engineering review rather than silently weakening the workflow.
+```bash
+npm audit --omit=dev --audit-level=high
+```
 
-### CodeQL
+High and critical production advisories fail the workflow. The generated lockfiles remain untracked runner artifacts and the workflow verifies that no tracked file was modified.
 
-GitHub CodeQL runs JavaScript/TypeScript `security-extended` queries for pull requests, pushes to `main`, weekly scheduled checks and manual runs. Findings are uploaded to GitHub code scanning using the minimum required permissions.
+Committing reviewed lockfiles remains recommended future work because it would make installs deterministic and enable richer GitHub dependency-diff analysis. That change should be handled separately after validating the generated dependency trees for API, worker and web.
+
+### Portable GitHub configuration
+
+The gate deliberately avoids requiring GitHub Advanced Security. Dependency Review and CodeQL were evaluated but are not enabled as required checks because availability depends on repository licensing and security-feature configuration. The current controls therefore run consistently on pull requests, pushes to `main`, weekly schedules and manual dispatches.
 
 ## Workflow permissions
 
-The default workflow token is read-only. Only the CodeQL job receives `security-events: write`, and the dependency-review job receives pull-request read access. No production secrets, deployment keys or customer data are available to this workflow.
+The workflow token has read-only repository contents permission. Checkout credentials are not persisted. No production secrets, deployment keys or customer data are available to the workflow.
 
 ## Incident handling
 
@@ -54,7 +60,7 @@ When the credential scanner fails:
 5. Remove the committed value and verify the scanner passes.
 6. Purge repository history only after assessing clones, forks and deployment impact.
 
-When dependency review or npm audit fails, upgrade or replace the package. Temporary exceptions must be documented with the advisory, affected surface, compensating controls, owner and expiry date.
+When npm audit fails, upgrade or replace the package. Temporary exceptions must be documented with the advisory, affected surface, compensating controls, owner and expiry date rather than weakening the audit threshold globally.
 
 ## Rollback
 
