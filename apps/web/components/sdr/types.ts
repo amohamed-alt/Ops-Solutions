@@ -88,6 +88,7 @@ export interface Workspace {
   id: string;
   name: string;
   slug?: string;
+  role?: 'owner' | 'admin' | 'viewer';
   status?: string;
   portal_id?: number | string | null;
   hubspot_status?: string | null;

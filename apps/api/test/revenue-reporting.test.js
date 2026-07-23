@@ -83,6 +83,52 @@ test('drilldowns remain tenant scoped and parameterized', async () => {
   assert.equal(captured.values[9], 50);
 });
 
+test('revenue pack includes dynamic property mapping coverage', async () => {
+  const postgres = {
+    async query(text) {
+      if (text.includes('FROM property_mappings')) {
+        return { rows: [{ semantic_key: 'market', semantic_label: 'Market', object_type: 'contacts', property_name: 'country', source: 'customer_approved', updated_at: '2026-07-22T00:00:00Z' }] };
+      }
+      if (text.includes('FROM property_mapping_suggestions')) return { rows: [{ pending: '2' }] };
+      return { rows: [] };
+    }
+  };
+
+  const pack = await buildRevenueReportingPack(postgres, 'workspace-id', {
+    from: '2026-07-01',
+    to: '2026-07-22'
+  });
+  assert.equal(pack.propertyMappings.approved, 1);
+  assert.equal(pack.propertyMappings.pendingSuggestions, 2);
+  assert.equal(pack.propertyMappings.byObjectType.contacts, 1);
+  assert.equal(pack.drilldowns.includes('all-companies'), true);
+  assert.equal(pack.drilldowns.includes('marketing-contacts'), true);
+});
+
+test('company and marketing drilldowns use known report keys', async () => {
+  const captured = [];
+  const postgres = {
+    async query(text, values) {
+      captured.push({ text, values });
+      return { rows: [] };
+    }
+  };
+
+  const companies = await getRevenueDrilldown(postgres, 'workspace-id', 'all-companies', {
+    from: '2026-07-01',
+    to: '2026-07-22'
+  });
+  const marketing = await getRevenueDrilldown(postgres, 'workspace-id', 'marketing-contacts', {
+    from: '2026-07-01',
+    to: '2026-07-22'
+  });
+
+  assert.equal(companies.objectType, 'companies');
+  assert.equal(marketing.objectType, 'contacts');
+  assert.match(captured[0].text, /object_type = 'companies'/);
+  assert.match(captured[1].text, /hs_analytics_source|lead_source|original_source/);
+});
+
 test('rejects unknown revenue drilldowns before querying', async () => {
   await assert.rejects(
     () => getRevenueDrilldown({ query: () => assert.fail('database should not be queried') }, 'workspace-id', 'unknown'),

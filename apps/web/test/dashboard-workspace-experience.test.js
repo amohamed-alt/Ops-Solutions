@@ -5,6 +5,7 @@ import test from 'node:test';
 const pagePath = new URL('../app/dashboard/page.js', import.meta.url);
 const componentPath = new URL('../components/sdr/DashboardWorkspaceExperience.tsx', import.meta.url);
 const stylePath = new URL('../components/sdr/dashboard-workspace-experience.css', import.meta.url);
+const commandCenterPath = new URL('../components/sdr/RevenueCommandCenter.tsx', import.meta.url);
 
 test('dashboard uses the workspace presentation shell', async () => {
   const source = await readFile(pagePath, 'utf8');
@@ -34,4 +35,18 @@ test('workspace branding applies safe appearance, locale and accent fallbacks', 
   assert.match(styles, /html\[data-workspace-appearance='dark'\]/);
   assert.match(styles, /prefers-color-scheme: dark/);
   assert.match(styles, /var\(--workspace-accent\)/);
+});
+
+test('revenue command center exposes modular CRM dashboards and searchable drilldowns', async () => {
+  const source = await readFile(commandCenterPath, 'utf8');
+  assert.match(source, /Contacts dashboard/);
+  assert.match(source, /Companies dashboard/);
+  assert.match(source, /Deals & pipeline dashboard/);
+  assert.match(source, /Marketing foundation/);
+  assert.match(source, /Customer success & retention foundation/);
+  assert.match(source, /Dynamic HubSpot property mapping/);
+  assert.match(source, /Search loaded records/);
+  assert.match(source, /workspaceRole/);
+  assert.match(source, /all-companies/);
+  assert.match(source, /marketing-contacts/);
 });

@@ -69,12 +69,16 @@ export default function OnboardingClient() {
   const searchParams = useSearchParams();
   const connectedCallback = searchParams.get('hubspot') === 'connected' || searchParams.get('connected') === '1';
   const callbackWorkspaceId = searchParams.get('workspaceId') ?? '';
-  const [mode, setMode] = useState<'signup' | 'login'>('signup');
+  const resetToken = searchParams.get('resetToken') ?? '';
+  const [mode, setMode] = useState<'signup' | 'login' | 'forgot' | 'reset'>(resetToken ? 'reset' : 'signup');
   const [session, setSession] = useState<SessionPayload | null>(null);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState(searchParams.get('workspaceId') ?? '');
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [signup, setSignup] = useState({ name: '', companyName: '', email: '', password: '' });
   const [login, setLogin] = useState({ email: '', password: '' });
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetPassword, setResetPassword] = useState({ password: '', confirm: '' });
+  const [resetPath, setResetPath] = useState('');
   const [newCompanyName, setNewCompanyName] = useState('');
   const [creatingCompany, setCreatingCompany] = useState(false);
   const [message, setMessage] = useState('');
@@ -200,6 +204,53 @@ export default function OnboardingClient() {
     });
   }
 
+  async function requestPasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setMessage('');
+    setResetPath('');
+    startTransition(async () => {
+      try {
+        const response = await fetch('/api/customer/auth/password-reset/request', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ email: forgotEmail })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || 'Unable to request a password reset.');
+        setMessage(payload.message || 'If the account exists, reset instructions are on the way.');
+        setResetPath(payload.resetPath || '');
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Unable to request a password reset.');
+      }
+    });
+  }
+
+  async function confirmPasswordReset(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (resetPassword.password !== resetPassword.confirm) {
+      setMessage('Passwords must match.');
+      return;
+    }
+    setMessage('');
+    startTransition(async () => {
+      try {
+        const response = await fetch('/api/customer/auth/password-reset/confirm', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ token: resetToken, password: resetPassword.password })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || 'Unable to reset this password.');
+        setResetPassword({ password: '', confirm: '' });
+        setMode('login');
+        window.history.replaceState({}, '', '/onboarding');
+        setMessage('Password updated. Sign in with your new password.');
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Unable to reset this password.');
+      }
+    });
+  }
+
   async function createCompany(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = newCompanyName.trim();
@@ -295,9 +346,19 @@ export default function OnboardingClient() {
               <button className={mode === 'signup' ? 'active' : ''} onClick={() => setMode('signup')}>Create account</button>
               <button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Sign in</button>
             </div>
-            <span className="onboarding-step-label">{mode === 'signup' ? 'START YOUR COMPANY WORKSPACE' : 'WELCOME BACK'}</span>
-            <h2>{mode === 'signup' ? 'Build your command center' : 'Open your workspace'}</h2>
-            <p>{mode === 'signup' ? 'Create your account first. Your company workspace and dashboard access stay private to your team.' : 'Sign in to continue connecting or open your live dashboards.'}</p>
+            <span className="onboarding-step-label">
+              {mode === 'signup' ? 'START YOUR COMPANY WORKSPACE' : mode === 'login' ? 'WELCOME BACK' : mode === 'reset' ? 'ACCOUNT RECOVERY' : 'SECURE RESET'}
+            </span>
+            <h2>{mode === 'signup' ? 'Build your command center' : mode === 'login' ? 'Open your workspace' : mode === 'reset' ? 'Choose a new password' : 'Reset your password'}</h2>
+            <p>
+              {mode === 'signup'
+                ? 'Create your account first. Your company workspace and dashboard access stay private to your team.'
+                : mode === 'login'
+                  ? 'Sign in to continue connecting or open your live dashboards.'
+                  : mode === 'reset'
+                    ? 'Use a strong password. Existing sessions will be signed out after the reset.'
+                    : 'Enter your work email. If the account exists, reset instructions will be sent without revealing account status.'}
+            </p>
             {mode === 'signup' ? (
               <form onSubmit={signUp}>
                 <label><span>Your name</span><div><CircleUserRound size={17} /><input value={signup.name} onChange={(event) => setSignup({ ...signup, name: event.target.value })} placeholder="Abdullah Mohamed" autoComplete="name" minLength={2} required /></div></label>
@@ -306,11 +367,26 @@ export default function OnboardingClient() {
                 <label><span>Password</span><div><KeyRound size={17} /><input type="password" value={signup.password} onChange={(event) => setSignup({ ...signup, password: event.target.value })} placeholder="At least 10 characters" autoComplete="new-password" minLength={10} required /></div></label>
                 <button disabled={isPending}>{isPending ? <><LoaderCircle className="spin" size={18} />Creating workspace…</> : <>Create my workspace <ArrowRight size={18} /></>}</button>
               </form>
-            ) : (
+            ) : mode === 'login' ? (
               <form onSubmit={signIn}>
                 <label><span>Work email</span><div><BadgeCheck size={17} /><input type="email" value={login.email} onChange={(event) => setLogin({ ...login, email: event.target.value })} placeholder="you@company.com" autoComplete="email" required /></div></label>
                 <label><span>Password</span><div><KeyRound size={17} /><input type="password" value={login.password} onChange={(event) => setLogin({ ...login, password: event.target.value })} placeholder="Your password" autoComplete="current-password" required /></div></label>
+                <button type="button" className="onboarding-secondary-action" onClick={() => { setMode('forgot'); setMessage(''); }}>Forgot password?</button>
                 <button disabled={isPending}>{isPending ? <><LoaderCircle className="spin" size={18} />Signing in…</> : <>Open my workspace <ArrowRight size={18} /></>}</button>
+              </form>
+            ) : mode === 'reset' ? (
+              <form onSubmit={confirmPasswordReset}>
+                <label><span>New password</span><div><KeyRound size={17} /><input type="password" value={resetPassword.password} onChange={(event) => setResetPassword({ ...resetPassword, password: event.target.value })} placeholder="At least 10 characters" autoComplete="new-password" minLength={10} required /></div></label>
+                <label><span>Confirm password</span><div><LockKeyhole size={17} /><input type="password" value={resetPassword.confirm} onChange={(event) => setResetPassword({ ...resetPassword, confirm: event.target.value })} placeholder="Repeat the new password" autoComplete="new-password" minLength={10} required /></div></label>
+                <button disabled={isPending || !resetToken}>{isPending ? <><LoaderCircle className="spin" size={18} />Updating password...</> : <>Update password <ArrowRight size={18} /></>}</button>
+                <button type="button" className="onboarding-secondary-action" onClick={() => { setMode('login'); setMessage(''); window.history.replaceState({}, '', '/onboarding'); }}>Back to sign in</button>
+              </form>
+            ) : (
+              <form onSubmit={requestPasswordReset}>
+                <label><span>Work email</span><div><BadgeCheck size={17} /><input type="email" value={forgotEmail} onChange={(event) => setForgotEmail(event.target.value)} placeholder="you@company.com" autoComplete="email" required /></div></label>
+                <button disabled={isPending}>{isPending ? <><LoaderCircle className="spin" size={18} />Sending reset...</> : <>Send reset instructions <ArrowRight size={18} /></>}</button>
+                <button type="button" className="onboarding-secondary-action" onClick={() => { setMode('login'); setMessage(''); setResetPath(''); }}>Back to sign in</button>
+                {resetPath ? <a className="onboarding-dev-reset-link" href={resetPath}>Open development reset link</a> : null}
               </form>
             )}
           </>

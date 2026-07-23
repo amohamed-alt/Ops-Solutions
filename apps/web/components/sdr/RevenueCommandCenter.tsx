@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
+  BadgeCheck,
   BarChart3,
   Bookmark,
   BriefcaseBusiness,
@@ -154,6 +155,19 @@ type Report = {
     score: number;
     fields: Array<{ key: string; complete: number; missing: number; percentage: number }>;
   };
+  propertyMappings: {
+    approved: number;
+    pendingSuggestions: number;
+    byObjectType: Record<string, number>;
+    recent: Array<{
+      semanticKey: string;
+      semanticLabel: string;
+      objectType: string;
+      propertyName: string;
+      source?: string | null;
+      updatedAt?: string | null;
+    }>;
+  };
   attention: Record<string, number>;
 };
 
@@ -200,11 +214,13 @@ type NavigationItem = {
 
 const NAVIGATION: NavigationItem[] = [
   { id: 'overview', label: 'Executive overview', icon: Gauge },
-  { id: 'activity', label: 'Activity performance', icon: Activity },
-  { id: 'pipeline', label: 'Pipeline & revenue', icon: BriefcaseBusiness },
-  { id: 'sources', label: 'Sources & markets', icon: Globe2 },
-  { id: 'team', label: 'Team performance', icon: UsersRound },
-  { id: 'quality', label: 'Data quality', icon: ShieldCheck }
+  { id: 'contacts', label: 'Contacts dashboard', icon: UsersRound },
+  { id: 'companies', label: 'Companies dashboard', icon: Building2 },
+  { id: 'deals', label: 'Deals & pipeline', icon: BriefcaseBusiness },
+  { id: 'activities', label: 'Activities & performance', icon: Activity },
+  { id: 'marketing', label: 'Marketing foundation', icon: Globe2 },
+  { id: 'success', label: 'Customer success', icon: BadgeCheck },
+  { id: 'mappings', label: 'Property mapping', icon: ShieldCheck }
 ];
 
 const PIE_COLORS = [
@@ -440,6 +456,14 @@ function OutcomeList({ rows }: { rows: Array<{ key: string; value: number }> }) 
 
 function RecordLabel({ row }: { row: DrilldownRow }) {
   const properties = row.properties || {};
+  if (properties.name || properties.domain) {
+    return (
+      <>
+        <strong>{properties.name || properties.domain || `Company ${row.id}`}</strong>
+        <small>{properties.domain || properties.industry || `HubSpot ID ${row.id}`}</small>
+      </>
+    );
+  }
   if (properties.firstname || properties.lastname) {
     return (
       <>
@@ -479,6 +503,16 @@ function DrilldownDrawer({
   onClose: () => void;
   onPage: (offset: number) => void;
 }) {
+  const [search, setSearch] = useState('');
+  const rows = drilldown?.results ?? [];
+  const visibleRows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return rows;
+    return rows.filter((row) => {
+      const haystack = [row.id, ...Object.values(row.properties || {})].join(' ').toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [rows, search]);
   if (!drilldown) return null;
   return (
     <div className="ric-drawer-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
@@ -491,17 +525,24 @@ function DrilldownDrawer({
           </div>
           <button onClick={onClose} aria-label="Close report"><X size={18} /></button>
         </header>
+        <label className="ric-drawer-search">
+          <Search size={15} />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search loaded records" autoComplete="off" />
+        </label>
         <div className="ric-drawer-table">
           <div className="ric-drawer-head"><span>Record</span><span>Owner / Status</span><span>Company / Pipeline</span><span>Last activity</span></div>
-          {drilldown.results.map((row) => {
+          {visibleRows.map((row) => {
             const properties = row.properties || {};
             const contactUrl = drilldown.objectType === 'contacts' && portalId
               ? `https://app.hubspot.com/contacts/${portalId}/contact/${row.id}`
               : null;
+            const companyUrl = drilldown.objectType === 'companies' && portalId
+              ? `https://app.hubspot.com/contacts/${portalId}/company/${row.id}`
+              : null;
             const dealUrl = drilldown.objectType === 'deals' && portalId
               ? `https://app.hubspot.com/contacts/${portalId}/deal/${row.id}`
               : null;
-            const recordUrl = contactUrl || dealUrl;
+            const recordUrl = contactUrl || companyUrl || dealUrl;
             return (
               <article key={row.id}>
                 <span className="ric-record-main">
@@ -523,6 +564,7 @@ function DrilldownDrawer({
             );
           })}
           {drilldown.results.length === 0 ? <div className="ric-empty">No records match this report.</div> : null}
+          {drilldown.results.length > 0 && visibleRows.length === 0 ? <div className="ric-empty">No loaded records match this search.</div> : null}
         </div>
         <footer>
           <button onClick={() => onPage(Math.max(0, drilldown.offset - drilldown.limit))} disabled={loading || drilldown.offset === 0}>
@@ -565,6 +607,7 @@ export function RevenueCommandCenter() {
   const [dashboardSection, setDashboardSection] = useState('overview');
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [isPending, startTransition] = useTransition();
 
   const selectedState = useMemo(
@@ -688,7 +731,7 @@ export function RevenueCommandCenter() {
     });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadAttempt]);
 
   function selectWorkspace(workspaceId: string) {
     setSelectedId(workspaceId);
@@ -988,9 +1031,10 @@ export function RevenueCommandCenter() {
       <main className="ric-loading">
         <div><Database size={34} /><RefreshCw className="ric-spin" size={24} /></div>
         <span>Building your command center</span>
-        <h1>Loading every report that matters.</h1>
-        <p>Verifying your customer session and compiling tenant-isolated HubSpot analytics.</p>
-        {message ? <button onClick={() => router.push('/onboarding')}>Return to onboarding</button> : null}
+        <h1>{message ? 'Reports need another try.' : 'Loading every report that matters.'}</h1>
+        <p>{message || 'Verifying your customer session and compiling tenant-isolated HubSpot analytics.'}</p>
+        {message ? <button onClick={() => { setMessage(''); setInitialized(false); setLoadAttempt((value) => value + 1); }}>Retry dashboard load</button> : null}
+        {message ? <button className="secondary" onClick={() => router.push('/onboarding')}>Return to onboarding</button> : null}
       </main>
     );
   }
@@ -1030,6 +1074,15 @@ export function RevenueCommandCenter() {
   const executiveInsight = overview.dealsAtRisk > 0
     ? `${integer(overview.dealsAtRisk)} open deals need intervention while ${compact(overview.openPipeline)} remains exposed in pipeline.`
     : `${integer(overview.meetings)} meetings and ${integer(overview.wonDeals)} wins were recorded with no current deal-risk alerts.`;
+  const workspaceRole = workspace.role || 'viewer';
+  const canManageWorkspace = ['owner', 'admin'].includes(workspaceRole);
+  const activeFilterCount = [filters.ownerId, filters.country, filters.pipelineId, filters.stageId, filters.leadSource].filter(Boolean).length + 1;
+  const marketingContacts = report.leadSourcePerformance.reduce((sum, row) => sum + Number(row.contacts || 0), 0);
+  const marketingOpportunities = report.leadSourcePerformance.reduce((sum, row) => sum + Number(row.opportunities || 0), 0);
+  const customerSuccessSignals = Number(report.attention.staleContacts || 0) + Number(report.attention.dealsClosingSoon || 0);
+  const hasReportData = Object.values(overview).some((value) => Number(value || 0) > 0);
+  const companyRecords = Number(selectedState?.recordCounts?.find((row) => row.object_type === 'companies')?.count || 0);
+  const propertyMappings = report.propertyMappings ?? { approved: 0, pendingSuggestions: 0, byObjectType: {}, recent: [] };
 
   return (
     <main className="ric-shell">
@@ -1046,6 +1099,10 @@ export function RevenueCommandCenter() {
             </button>
           ))}
         </nav>
+        <div className="ric-role-card">
+          <ShieldCheck size={16} />
+          <div><strong>{titleCase(workspaceRole)} access</strong><span>{canManageWorkspace ? 'Can manage mappings and team settings' : 'Read-only reporting workspace'}</span></div>
+        </div>
         <div className="ric-nav-label">COMPANIES</div>
         <div className="ric-workspaces">
           {workspaces.map((row) => (
@@ -1147,6 +1204,7 @@ export function RevenueCommandCenter() {
           <div><span>EXECUTIVE INTELLIGENCE</span><h1>See the whole revenue operation.</h1><p>{executiveInsight}</p></div>
           <div className="ric-score"><ShieldCheck size={20} /><div><strong>{percentage(report.dataQuality.score)}</strong><span>CRM quality score</span></div></div>
         </section>
+        {!hasReportData ? <div className="ric-empty-state"><Database size={18} /><strong>No reportable CRM data yet</strong><span>Connect HubSpot, approve mappings, or widen the date window to populate these dashboards.</span></div> : null}
 
         {filterOpen ? (
           <section className="ric-filterbar">
@@ -1178,7 +1236,26 @@ export function RevenueCommandCenter() {
           </div>
         </section>
 
-        <section className="ric-grid ric-grid-wide" id="activity">
+        <section className="ric-grid" id="contacts">
+          <Panel title="Contacts dashboard" description="Lifecycle, ownership, data quality and action-ready contact records." action={<button className="ric-link-button" onClick={() => loadDrilldown('all-contacts', 'All contacts')}>Open contacts</button>}>
+            <div className="ric-summary-grid">
+              <button onClick={() => loadDrilldown('all-contacts', 'All contacts')}><span>Portfolio</span><strong>{integer(overview.portfolioContacts)}</strong><small>Synced contacts</small></button>
+              <button onClick={() => loadDrilldown('new-contacts', 'New contacts')}><span>New</span><strong>{integer(overview.newContacts)}</strong><small>{report.filters.days}-day intake</small></button>
+              <button onClick={() => loadDrilldown('missing-owner-contacts', 'Missing owner contacts')}><span>Ownership</span><strong>{integer(overview.missingOwnerContacts)}</strong><small>Need assignment</small></button>
+              <button onClick={() => loadDrilldown('stale-contacts', 'Stale contacts')}><span>Retention risk</span><strong>{integer(report.attention.staleContacts)}</strong><small>21+ days stale</small></button>
+            </div>
+          </Panel>
+          <Panel title="Companies dashboard" description="Account coverage and workspace-isolated company drilldowns." action={<button className="ric-link-button" onClick={() => loadDrilldown('all-companies', 'All companies')}>Open companies</button>} id="companies">
+            <div className="ric-summary-grid">
+              <button onClick={() => loadDrilldown('all-companies', 'All companies')}><span>Companies</span><strong>{integer(companyRecords)}</strong><small>Synced accounts</small></button>
+              <article><span>Markets</span><strong>{integer(report.countryDistribution.length)}</strong><small>Countries represented</small></article>
+              <article><span>Source coverage</span><strong>{integer(report.filterOptions.leadSources.length)}</strong><small>Acquisition channels</small></article>
+              <article><span>Isolation</span><strong>{titleCase(workspaceRole)}</strong><small>Current workspace role</small></article>
+            </div>
+          </Panel>
+        </section>
+
+        <section className="ric-grid ric-grid-wide" id="activities">
           <Panel title="Activity performance" description="Calls, meetings and tasks across the selected reporting period." action={<span className="ric-chip">Compared with {report.comparisonPeriod.from} → {report.comparisonPeriod.to}</span>}>
             <div className="ric-chart large">
               <ResponsiveContainer width="100%" height="100%">
@@ -1199,7 +1276,7 @@ export function RevenueCommandCenter() {
               </ResponsiveContainer>
             </div>
           </Panel>
-          <Panel title="Pipeline by stage" description="Open deal volume and value across active stages." action={<span className="ric-chip">{compact(overview.openPipeline)} exposed</span>} id="pipeline">
+          <Panel title="Deals & pipeline dashboard" description="Open deal volume, value, risk and close-date pressure across active stages." action={<button className="ric-link-button" onClick={() => loadDrilldown('open-deals', 'Open deals')}>{compact(overview.openPipeline)} exposed</button>} id="deals">
             <div className="ric-chart large">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={report.pipelineByStage.slice(0, 12)} layout="vertical" margin={{ top: 0, right: 18, left: 10, bottom: 0 }}>
@@ -1214,8 +1291,8 @@ export function RevenueCommandCenter() {
           </Panel>
         </section>
 
-        <section className="ric-grid" id="sources">
-          <Panel title="Lead source performance" description="Contacts, opportunities and wins by acquisition source.">
+        <section className="ric-grid" id="marketing">
+          <Panel title="Marketing foundation" description="Contacts, opportunities and wins by acquisition source." action={<button className="ric-link-button" onClick={() => loadDrilldown('marketing-contacts', 'Marketing-sourced contacts')}>View sourced contacts</button>}>
             <div className="ric-chart">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={report.leadSourcePerformance.slice(0, 8)} margin={{ top: 6, right: 8, left: -14, bottom: 36 }}>
@@ -1231,7 +1308,7 @@ export function RevenueCommandCenter() {
               </ResponsiveContainer>
             </div>
           </Panel>
-          <Panel title="Market distribution" description="Contact concentration across countries and commercial markets.">
+          <Panel title="Market distribution" description="Contact concentration across countries and commercial markets." action={<span className="ric-chip">{integer(marketingOpportunities)} opportunities</span>}>
             <div className="ric-chart">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -1246,7 +1323,15 @@ export function RevenueCommandCenter() {
           </Panel>
         </section>
 
-        <section className="ric-grid ric-grid-wide" id="team">
+        <section className="ric-grid ric-grid-wide" id="success">
+          <Panel title="Customer success & retention foundation" description="Early retention signals from customers, stale relationships and upcoming close-date pressure." action={<button className="ric-link-button" onClick={() => loadDrilldown('customer-success-contacts', 'Customer lifecycle contacts')}>Open customer records</button>}>
+            <div className="ric-summary-grid">
+              <button onClick={() => loadDrilldown('customer-success-contacts', 'Customer lifecycle contacts')}><span>Customers</span><strong>{integer(report.attention.staleContacts + overview.wonDeals)}</strong><small>Lifecycle and won-deal base</small></button>
+              <button onClick={() => loadDrilldown('stale-contacts', 'Stale customer relationships')}><span>Stale</span><strong>{integer(report.attention.staleContacts)}</strong><small>Re-engagement needed</small></button>
+              <button onClick={() => loadDrilldown('deals-closing-soon', 'Deals closing soon')}><span>Renewal focus</span><strong>{integer(report.attention.dealsClosingSoon)}</strong><small>Next 14 days</small></button>
+              <article><span>Signals</span><strong>{integer(customerSuccessSignals)}</strong><small>Retention queue</small></article>
+            </div>
+          </Panel>
           <Panel title="Team performance" description="Owner-level activity, conversion, open pipeline and won revenue." action={<span className="ric-chip">{report.ownerPerformance.length} owners</span>}>
             <div className="ric-owner-table">
               <div className="ric-owner-head"><span>Owner</span><span>Calls</span><span>Meetings</span><span>Rate</span><span>Open deals</span><span>Pipeline</span><span>Won revenue</span></div>
@@ -1265,7 +1350,7 @@ export function RevenueCommandCenter() {
           </div>
         </section>
 
-        <section className="ric-grid" id="quality">
+        <section className="ric-grid" id="mappings">
           <Panel title="CRM data quality" description="Completeness across the fields needed for reliable reporting." action={<span className="ric-score-pill">{percentage(report.dataQuality.score)}</span>}>
             <div className="ric-quality-list">
               {report.dataQuality.fields.map((row) => (
@@ -1276,14 +1361,25 @@ export function RevenueCommandCenter() {
               ))}
             </div>
           </Panel>
-          <Panel title="Task execution status" description="Current task-status distribution for the reporting period."><OutcomeList rows={report.outcomes.tasks} /></Panel>
+          <Panel title="Dynamic HubSpot property mapping" description="Approved semantic mappings that keep dashboards portable across different HubSpot schemas." action={<span className="ric-score-pill">{integer(propertyMappings.pendingSuggestions)} pending</span>}>
+            <div className="ric-mapping-list">
+              {propertyMappings.recent.map((row) => (
+                <article key={`${row.semanticKey}-${row.objectType}`}>
+                  <span>{titleCase(row.objectType)}</span>
+                  <strong>{row.semanticLabel || titleCase(row.semanticKey)}</strong>
+                  <small>{row.propertyName} - {row.source || 'approved mapping'}</small>
+                </article>
+              ))}
+              {propertyMappings.recent.length === 0 ? <div className="ric-empty">No approved property mappings yet. Admins can review suggestions in workspace mappings.</div> : null}
+            </div>
+          </Panel>
         </section>
 
         <section className="ric-footprint">
-          <div><Layers3 size={18} /><span>Active filters</span><strong>{[filters.ownerId, filters.country, filters.pipelineId, filters.stageId, filters.leadSource].filter(Boolean).length + 1}</strong></div>
-          <div><BarChart3 size={18} /><span>Report modules</span><strong>14</strong></div>
+          <div><Layers3 size={18} /><span>Active filters</span><strong>{activeFilterCount}</strong></div>
+          <div><BarChart3 size={18} /><span>Report modules</span><strong>18</strong></div>
           <div><Database size={18} /><span>Generated</span><strong>{new Date(report.generatedAt).toLocaleTimeString()}</strong></div>
-          <div><Building2 size={18} /><span>Workspace</span><strong>{workspace.name}</strong></div>
+          <div><Building2 size={18} /><span>Marketing contacts</span><strong>{integer(marketingContacts)}</strong></div>
         </section>
       </section>
 

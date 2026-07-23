@@ -6,6 +6,7 @@ import { hashValue, randomToken } from './crypto.js';
 const scrypt = promisify(scryptCallback);
 const SESSION_DAYS = 30;
 const INVITATION_DAYS = 7;
+const PASSWORD_RESET_MINUTES = 30;
 const PASSWORD_KEY_LENGTH = 64;
 const WORKSPACE_ROLES = new Set(['owner', 'admin', 'viewer']);
 const ROLE_WEIGHT = Object.freeze({ viewer: 10, admin: 20, owner: 30 });
@@ -113,6 +114,15 @@ export async function ensureCustomerAuthSchema(postgres) {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+      token_hash CHAR(64) NOT NULL UNIQUE,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS audit_events (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -136,6 +146,11 @@ export async function ensureCustomerAuthSchema(postgres) {
       WHERE status = 'pending';
     CREATE INDEX IF NOT EXISTS workspace_invitations_expiry_idx
       ON workspace_invitations(expires_at, status);
+    CREATE INDEX IF NOT EXISTS password_reset_tokens_user_expiry_idx
+      ON password_reset_tokens(user_id, expires_at DESC);
+    CREATE INDEX IF NOT EXISTS password_reset_tokens_expiry_idx
+      ON password_reset_tokens(expires_at)
+      WHERE used_at IS NULL;
     CREATE INDEX IF NOT EXISTS audit_events_workspace_created_idx
       ON audit_events(workspace_id, created_at DESC);
 
@@ -350,6 +365,96 @@ export function registerCustomerAuthRoutes(app, { postgres, withTransaction }) {
     const sessionToken = await createSession(postgres, user.id, request);
     const context = await loadContext(postgres, sessionToken, { touch: false });
     return { sessionToken, user: context.user, workspaces: context.workspaces };
+  });
+
+  app.post('/api/v1/auth/password-reset/request', async (request) => {
+    const email = normalizeEmail(request.body?.email);
+    const generic = {
+      status: 'accepted',
+      message: 'If an active account exists for this email, password reset instructions will be sent.'
+    };
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return generic;
+
+    const result = await postgres.query(
+      `SELECT id, email FROM app_users WHERE email = $1 AND status = 'active' LIMIT 1`,
+      [email]
+    );
+    const user = result.rows[0];
+    if (!user) return generic;
+
+    const token = randomToken(40);
+    await postgres.query(
+      `INSERT INTO password_reset_tokens(user_id, token_hash, expires_at)
+       VALUES ($1, $2, NOW() + ($3::int * INTERVAL '1 minute'))`,
+      [user.id, hashValue(token), PASSWORD_RESET_MINUTES]
+    );
+    await writeAudit(postgres, request, {
+      actorUserId: user.id,
+      action: 'auth.password_reset_requested',
+      targetType: 'user',
+      targetId: user.id,
+      metadata: { email }
+    });
+
+    return {
+      ...generic,
+      resetPath: process.env.NODE_ENV === 'production' ? undefined : `/onboarding?resetToken=${token}`
+    };
+  });
+
+  app.post('/api/v1/auth/password-reset/confirm', async (request, reply) => {
+    const token = String(request.body?.token ?? '').trim();
+    const password = String(request.body?.password ?? '');
+    if (token.length < 20 || !validatePassword(password)) {
+      return reply.code(400).send({
+        error: 'invalid_password_reset',
+        message: 'Enter a valid reset token and a password of at least 10 characters.'
+      });
+    }
+
+    const tokenHash = hashValue(token);
+    const passwordHash = await hashPassword(password);
+    const reset = await withTransaction(async (client) => {
+      const tokenResult = await client.query(
+        `SELECT id, user_id
+         FROM password_reset_tokens
+         WHERE token_hash = $1 AND used_at IS NULL AND expires_at > NOW()
+         LIMIT 1
+         FOR UPDATE`,
+        [tokenHash]
+      );
+      const tokenRow = tokenResult.rows[0];
+      if (!tokenRow) return null;
+      await client.query(
+        `UPDATE app_users SET password_hash = $2, updated_at = NOW()
+         WHERE id = $1 AND status = 'active'`,
+        [tokenRow.user_id, passwordHash]
+      );
+      await client.query(
+        `UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1`,
+        [tokenRow.id]
+      );
+      await client.query(
+        `DELETE FROM user_sessions WHERE user_id = $1`,
+        [tokenRow.user_id]
+      );
+      return tokenRow;
+    });
+
+    if (!reset) {
+      return reply.code(410).send({
+        error: 'password_reset_unavailable',
+        message: 'This password reset link is invalid or expired.'
+      });
+    }
+
+    await writeAudit(postgres, request, {
+      actorUserId: reset.user_id,
+      action: 'auth.password_reset_completed',
+      targetType: 'user',
+      targetId: reset.user_id
+    });
+    return { status: 'reset' };
   });
 
   app.get('/api/v1/auth/session', { preHandler: requireCustomer }, async (request) => ({

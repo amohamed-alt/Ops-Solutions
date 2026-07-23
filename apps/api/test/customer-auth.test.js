@@ -30,6 +30,21 @@ test('hashes and verifies passwords without storing plaintext', async () => {
   assert.equal(await verifyPassword('wrong-password', encoded), false);
 });
 
+test('customer auth schema includes single-use password reset tokens', async () => {
+  const queries = [];
+  await import('../src/customer-auth.js').then(({ ensureCustomerAuthSchema }) => ensureCustomerAuthSchema({
+    query: async (text) => {
+      queries.push(text);
+      return { rows: [] };
+    }
+  }));
+  const schema = queries.join('\n');
+  assert.match(schema, /CREATE TABLE IF NOT EXISTS password_reset_tokens/);
+  assert.match(schema, /token_hash CHAR\(64\) NOT NULL UNIQUE/);
+  assert.match(schema, /used_at TIMESTAMPTZ/);
+  assert.doesNotMatch(schema, /reset_token TEXT|plaintext/i);
+});
+
 test('allows only same-origin OAuth return paths', () => {
   assert.equal(sanitizeReturnPath('/onboarding?step=scan'), '/onboarding?step=scan');
   assert.equal(sanitizeReturnPath('https://evil.example/path'), '/onboarding');

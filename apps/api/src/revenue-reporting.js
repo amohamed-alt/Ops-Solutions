@@ -1,10 +1,17 @@
 const REPORT_KEYS = new Set([
+  'all-contacts',
+  'new-contacts',
+  'all-companies',
+  'marketing-contacts',
+  'customer-success-contacts',
   'untouched-contacts',
   'stale-contacts',
   'missing-owner-contacts',
+  'open-tasks',
   'overdue-tasks',
   'no-next-activity-deals',
   'overdue-close-deals',
+  'deals-closing-soon',
   'open-deals',
   'won-deals',
   'calls',
@@ -13,6 +20,7 @@ const REPORT_KEYS = new Set([
 
 const OBJECT_COLUMNS = Object.freeze({
   contacts: ['firstname', 'lastname', 'email', 'phone', 'mobilephone', 'company', 'country', 'hubspot_owner_id', 'hs_lead_status', 'lifecyclestage', 'notes_last_contacted'],
+  companies: ['name', 'domain', 'industry', 'country', 'city', 'hubspot_owner_id', 'lifecyclestage', 'hs_lastmodifieddate'],
   deals: ['dealname', 'amount', 'pipeline', 'dealstage', 'closedate', 'hubspot_owner_id', 'hs_next_activity_date', 'hs_is_closed', 'hs_is_closed_won'],
   tasks: ['hs_task_subject', 'hs_task_status', 'hs_task_priority', 'hs_timestamp', 'hubspot_owner_id', 'hs_activity_assigned_to_user_id'],
   calls: ['hs_call_title', 'hs_call_status', 'hs_call_disposition', 'hs_timestamp', 'hubspot_owner_id', 'hs_activity_assigned_to_user_id'],
@@ -754,6 +762,45 @@ async function filterOptions(postgres, workspaceId) {
   };
 }
 
+async function propertyMappingSummary(postgres, workspaceId) {
+  const [mappings, suggestions] = await Promise.all([
+    postgres.query(
+      `SELECT m.semantic_key, m.object_type, m.property_name, m.source,
+              m.updated_at, f.label AS semantic_label
+       FROM property_mappings m
+       LEFT JOIN semantic_fields f ON f.semantic_key = m.semantic_key
+       WHERE m.workspace_id = $1
+       ORDER BY m.updated_at DESC, m.semantic_key
+       LIMIT 60`,
+      [workspaceId]
+    ),
+    postgres.query(
+      `SELECT COUNT(*)::bigint AS pending
+       FROM property_mapping_suggestions
+       WHERE workspace_id = $1 AND status = 'suggested'`,
+      [workspaceId]
+    )
+  ]);
+  const rows = mappings.rows.map((row) => ({
+    semanticKey: row.semantic_key,
+    semanticLabel: row.semantic_label ?? row.semantic_key,
+    objectType: row.object_type,
+    propertyName: row.property_name,
+    source: row.source,
+    updatedAt: row.updated_at
+  }));
+  const byObjectType = rows.reduce((accumulator, row) => {
+    accumulator[row.objectType] = (accumulator[row.objectType] ?? 0) + 1;
+    return accumulator;
+  }, {});
+  return {
+    approved: rows.length,
+    pendingSuggestions: numeric(suggestions.rows[0]?.pending),
+    byObjectType,
+    recent: rows.slice(0, 8)
+  };
+}
+
 function metricComparisons(current, previous) {
   const keys = ['newContacts', 'calls', 'meetings', 'tasks', 'completedTasks', 'wonDeals', 'wonRevenue'];
   return Object.fromEntries(keys.map((key) => [key, {
@@ -766,7 +813,7 @@ function metricComparisons(current, previous) {
 export async function buildRevenueReportingPack(postgres, workspaceId, rawFilters = {}) {
   const filters = normalizeReportingFilters(rawFilters);
   const previous = previousFilters(filters);
-  const [overview, previousOverview, trend, pipeline, sources, countries, owners, outcomes, quality, attention, options] = await Promise.all([
+  const [overview, previousOverview, trend, pipeline, sources, countries, owners, outcomes, quality, attention, options, propertyMappings] = await Promise.all([
     overviewMetrics(postgres, workspaceId, filters),
     overviewMetrics(postgres, workspaceId, previous),
     activityTrend(postgres, workspaceId, filters),
@@ -777,7 +824,8 @@ export async function buildRevenueReportingPack(postgres, workspaceId, rawFilter
     outcomeDistributions(postgres, workspaceId, filters),
     dataQuality(postgres, workspaceId, filters),
     attentionSnapshot(postgres, workspaceId, filters),
-    filterOptions(postgres, workspaceId)
+    filterOptions(postgres, workspaceId),
+    propertyMappingSummary(postgres, workspaceId)
   ]);
 
   return {
@@ -794,6 +842,7 @@ export async function buildRevenueReportingPack(postgres, workspaceId, rawFilter
     ownerPerformance: owners,
     outcomes,
     dataQuality: quality,
+    propertyMappings,
     attention,
     drilldowns: [...REPORT_KEYS]
   };
@@ -801,6 +850,36 @@ export async function buildRevenueReportingPack(postgres, workspaceId, rawFilter
 
 function drilldownDefinition(reportKey) {
   const definitions = {
+    'all-contacts': {
+      objectType: 'contacts',
+      period: false,
+      condition: 'TRUE',
+      orderBy: 'COALESCE(r.hubspot_updated_at,r.synced_at,r.hubspot_created_at) DESC'
+    },
+    'new-contacts': {
+      objectType: 'contacts',
+      period: true,
+      condition: 'TRUE',
+      orderBy: 'COALESCE(r.hubspot_created_at,r.synced_at) DESC'
+    },
+    'all-companies': {
+      objectType: 'companies',
+      period: false,
+      condition: 'TRUE',
+      orderBy: 'COALESCE(r.hubspot_updated_at,r.synced_at,r.hubspot_created_at) DESC'
+    },
+    'marketing-contacts': {
+      objectType: 'contacts',
+      period: false,
+      condition: `${leadSourceSql('r')} <> 'Unknown'`,
+      orderBy: 'COALESCE(r.hubspot_created_at,r.synced_at) DESC'
+    },
+    'customer-success-contacts': {
+      objectType: 'contacts',
+      period: false,
+      condition: `LOWER(COALESCE(r.properties->>'lifecyclestage','')) IN ('customer','evangelist')`,
+      orderBy: `COALESCE(${jsonTimestampSql('notes_last_contacted','r')},r.hubspot_updated_at,r.synced_at) ASC`
+    },
     'untouched-contacts': {
       objectType: 'contacts',
       period: false,
@@ -821,6 +900,12 @@ function drilldownDefinition(reportKey) {
       condition: `NULLIF(r.properties->>'hubspot_owner_id','') IS NULL`,
       orderBy: 'COALESCE(r.hubspot_created_at,r.synced_at) DESC'
     },
+    'open-tasks': {
+      objectType: 'tasks',
+      period: false,
+      condition: `UPPER(COALESCE(r.properties->>'hs_task_status','')) NOT IN ('COMPLETED','DONE','CLOSED')`,
+      orderBy: `COALESCE(${jsonTimestampSql('hs_timestamp','r')},r.hubspot_created_at) ASC`
+    },
     'overdue-tasks': {
       objectType: 'tasks',
       period: false,
@@ -838,6 +923,14 @@ function drilldownDefinition(reportKey) {
       objectType: 'deals',
       period: false,
       condition: `NOT (${closedSql('r')}) AND ${jsonTimestampSql('closedate','r')} < CURRENT_DATE`,
+      orderBy: `${jsonTimestampSql('closedate','r')} ASC`
+    },
+    'deals-closing-soon': {
+      objectType: 'deals',
+      period: false,
+      condition: `NOT (${closedSql('r')})
+        AND ${jsonTimestampSql('closedate','r')} >= CURRENT_DATE
+        AND ${jsonTimestampSql('closedate','r')} < CURRENT_DATE + INTERVAL '14 days'`,
       orderBy: `${jsonTimestampSql('closedate','r')} ASC`
     },
     'open-deals': {
