@@ -1,0 +1,126 @@
+name: Finalize scheduled reports lifecycle
+
+on:
+  push:
+    branches:
+      - feature/scheduled-report-orchestration
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[scheduled-lifecycle-integrated]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/scheduled-report-orchestration
+          fetch-depth: 0
+      - name: Patch export lifecycle and schedule authorization
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          export_path = Path('apps/api/src/background-exports.js')
+          text = export_path.read_text()
+          success = """    await postgres.query(
+      `UPDATE report_export_jobs
+       SET status = 'completed', file_name = $2, content_type = $3,
+           file_size_bytes = $4, artifact = $5, error = NULL,
+           completed_at = NOW(), expires_at = NOW() + INTERVAL '24 hours', updated_at = NOW()
+       WHERE id = $1 AND workspace_id = $6 AND requested_by_user_id = $7`,
+      [
+        exportJobId,
+        result.fileName,
+        contentType,
+        artifact.byteLength,
+        artifact,
+        workspaceId,
+        userId
+      ]
+    );
+    return { status: 'completed', fileSizeBytes: artifact.byteLength };"""
+          success_replacement = success.replace(
+            "    return { status: 'completed', fileSizeBytes: artifact.byteLength };",
+            """    await postgres.query(
+      `WITH updated AS (
+         UPDATE scheduled_report_executions
+         SET status = 'ready_for_delivery', delivery_status = 'provider_not_configured',
+             completed_at = NOW(), error = NULL
+         WHERE export_job_id = $1 AND workspace_id = $2
+         RETURNING schedule_id
+       )
+       UPDATE scheduled_report_schedules s
+       SET last_success_at = NOW(), last_error = NULL, updated_at = NOW()
+       FROM updated
+       WHERE s.id = updated.schedule_id AND s.workspace_id = $2`,
+      [exportJobId, workspaceId]
+    ).catch((error) => {
+      if (error.code !== '42P01') throw error;
+    });
+    return { status: 'completed', fileSizeBytes: artifact.byteLength };"""
+          )
+          if success not in text:
+            raise SystemExit('export success marker missing')
+          text = text.replace(success, success_replacement, 1)
+
+          failure = """    await postgres.query(
+      `UPDATE report_export_jobs
+       SET status = $2, error = $3, updated_at = NOW()
+       WHERE id = $1 AND workspace_id = $4 AND requested_by_user_id = $5`,
+      [exportJobId, finalAttempt ? 'failed' : 'queued', 'Export generation failed.', workspaceId, userId]
+    );
+    throw error;"""
+          failure_replacement = failure.replace(
+            "    throw error;",
+            """    if (finalAttempt) {
+      await postgres.query(
+        `WITH updated AS (
+           UPDATE scheduled_report_executions
+           SET status = 'failed', error = 'Export generation failed.', completed_at = NOW()
+           WHERE export_job_id = $1 AND workspace_id = $2
+           RETURNING schedule_id
+         )
+         UPDATE scheduled_report_schedules s
+         SET last_failure_at = NOW(), last_error = 'Export generation failed.', updated_at = NOW()
+         FROM updated
+         WHERE s.id = updated.schedule_id AND s.workspace_id = $2`,
+        [exportJobId, workspaceId]
+      ).catch((scheduleError) => {
+        if (scheduleError.code !== '42P01') throw scheduleError;
+      });
+    }
+    throw error;"""
+          )
+          if failure not in text:
+            raise SystemExit('export failure marker missing')
+          export_path.write_text(text.replace(failure, failure_replacement, 1))
+
+          schedule_path = Path('apps/api/src/scheduled-reports.js')
+          schedule = schedule_path.read_text()
+          marker = """    const result = await postgres.query(
+      `UPDATE scheduled_report_schedules SET saved_view_id=$3,name=$4,frequency=$5,weekday=$6,monthday=$7,
+       delivery_hour=$8,delivery_minute=$9,timezone=$10,recipients=$11::jsonb,format=$12,delivery_mode=$13,
+       enabled=$14,next_run_at=$15,updated_at=NOW()
+       WHERE id=$1 AND workspace_id=$2 RETURNING *`,"""
+          replacement = """    const allowedView = await postgres.query(
+      `SELECT 1 FROM saved_reporting_views WHERE id = $1 AND workspace_id = $2 AND user_id = $3 LIMIT 1`,
+      [input.savedViewId, request.params.workspaceId, request.customer.user.id]
+    );
+    if (allowedView.rowCount === 0) throw scheduleError('Saved reporting view not found.', 'SAVED_VIEW_NOT_FOUND', 404);
+    const result = await postgres.query(
+      `UPDATE scheduled_report_schedules SET saved_view_id=$3,name=$4,frequency=$5,weekday=$6,monthday=$7,
+       delivery_hour=$8,delivery_minute=$9,timezone=$10,recipients=$11::jsonb,format=$12,delivery_mode=$13,
+       enabled=$14,next_run_at=$15,updated_at=NOW()
+       WHERE id=$1 AND workspace_id=$2 RETURNING *`,"""
+          if marker not in schedule:
+            raise SystemExit('schedule update marker missing')
+          schedule_path.write_text(schedule.replace(marker, replacement, 1))
+          PY
+          git rm .github/workflows/finalize-scheduled-reports.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add apps/api/src/background-exports.js apps/api/src/scheduled-reports.js
+          git commit -m "Complete scheduled report lifecycle [scheduled-lifecycle-integrated]"
+          git push origin HEAD:feature/scheduled-report-orchestration
