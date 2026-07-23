@@ -1,4 +1,4 @@
-import { DashboardWorkspaceExperience } from '@/components/sdr/DashboardWorkspaceExperience';
+import { DashboardProductShell } from '@/components/sdr/DashboardProductShell';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,5 +8,6 @@ export const metadata = {
 };
 
 export default function DashboardPage() {
-  return <DashboardWorkspaceExperience />;
+  // DashboardProductShell composes DashboardWorkspaceExperience and adds safe product-level enhancements.
+  return <DashboardProductShell />;
 }
