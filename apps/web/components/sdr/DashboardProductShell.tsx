@@ -27,19 +27,26 @@ const HUBSPOT_OBJECT_TYPE_IDS: Record<string, string> = {
   tickets: '0-5'
 };
 
+const HUBSPOT_OBJECT_ALIASES: Record<string, string> = {
+  call: 'calls',
+  company: 'companies',
+  contact: 'contacts',
+  deal: 'deals',
+  meeting: 'meetings',
+  task: 'tasks',
+  ticket: 'tickets'
+};
+
 const PANEL_ACTIONS: Record<string, string[]> = {
   'Activity performance': ['Calls', 'Meetings', 'Overdue tasks'],
   'Pipeline by stage': ['Open deals', 'Deals at risk'],
   'Call outcomes': ['Calls'],
-  'Meeting outcomes': ['Meetings'],
-  'CRM data quality': ['Portfolio contacts']
+  'Meeting outcomes': ['Meetings']
 };
 
 function normalizedObjectType(value: string) {
   const normalized = value.trim().toLowerCase();
-  if (normalized.endsWith('ies')) return `${normalized.slice(0, -3)}ies`;
-  if (normalized.endsWith('s')) return normalized;
-  return `${normalized}s`;
+  return HUBSPOT_OBJECT_ALIASES[normalized] ?? normalized;
 }
 
 function hubSpotRecordUrl(portalId: string, objectType: string, recordId: string) {
@@ -85,8 +92,8 @@ function installPanelActions() {
     const title = panel.querySelector('h2')?.textContent?.trim();
     if (!title || panel.dataset.productPolished === 'true') continue;
 
-    const actions = PANEL_ACTIONS[title];
-    if (!actions) continue;
+    const actions = PANEL_ACTIONS[title]?.filter((label) => findKpiButton(label));
+    if (!actions?.length) continue;
 
     panel.dataset.productPolished = 'true';
     const header = panel.querySelector<HTMLElement>(':scope > header');
@@ -99,7 +106,7 @@ function installPanelActions() {
     header.append(actionGroup);
 
     const chart = panel.querySelector<HTMLElement>('.ric-chart');
-    const primaryAction = actions.find((label) => findKpiButton(label));
+    const primaryAction = actions[0];
     if (chart && primaryAction) {
       chart.classList.add('ric-chart-interactive');
       chart.tabIndex = 0;
@@ -148,11 +155,15 @@ function installHubSpotLinks(
     const href = hubSpotRecordUrl(portalId, captured.objectType, row.id);
     if (!href) return;
 
-    record.dataset.hubspotRecordId = row.id;
     const recordMain = record.querySelector<HTMLElement>('.ric-record-main');
     if (!recordMain) return;
 
-    recordMain.querySelector('.ric-hubspot-record-link')?.remove();
+    const existingLink = recordMain.querySelector<HTMLAnchorElement>('.ric-hubspot-record-link');
+    if (record.dataset.hubspotRecordId === row.id && existingLink?.href === href) return;
+
+    existingLink?.remove();
+    record.dataset.hubspotRecordId = row.id;
+
     const link = document.createElement('a');
     link.className = 'ric-hubspot-record-link';
     link.href = href;
@@ -175,7 +186,8 @@ function requestUrl(input: RequestInfo | URL) {
 
 export function DashboardProductShell() {
   useLayoutEffect(() => {
-    const originalFetch = window.fetch.bind(window);
+    const rawFetch = window.fetch;
+    const originalFetch = rawFetch.bind(window);
     const workspaces = new Map<string, WorkspaceContext>();
     let latestDrilldown: CapturedDrilldown | null = null;
 
@@ -232,7 +244,7 @@ export function DashboardProductShell() {
 
     return () => {
       observer.disconnect();
-      if (window.fetch === enhancedFetch) window.fetch = originalFetch;
+      if (window.fetch === enhancedFetch) window.fetch = rawFetch;
     };
   }, []);
 
