@@ -19,15 +19,13 @@ test('normalizes bounded audit options', () => {
   assert.deepEqual(normalizeTenantAuditOptions(), { workspaceId: null, limit: 100, staleHours: 24 });
 });
 
-test('all mutable-domain checks are parameterized and workspace scoped where applicable', () => {
+test('all integrity checks are read-only, parameterized and workspace scoped', () => {
   assert.ok(TENANT_INTEGRITY_CHECKS.length >= 8);
   for (const check of TENANT_INTEGRITY_CHECKS) {
     assert.match(check.sql, /LIMIT \$2/);
+    assert.match(check.sql, /\$1::uuid IS NULL/);
     assert.doesNotMatch(check.sql, /SELECT \*/);
     assert.doesNotMatch(check.sql, /DELETE|UPDATE|INSERT|DROP|TRUNCATE/i);
-    if (check.key !== 'duplicate_portal_connections') {
-      assert.match(check.sql, /\$1::uuid IS NULL/);
-    }
   }
 });
 
@@ -45,10 +43,11 @@ test('returns a healthy fleet report when every integrity query is empty', async
   assert.equal(tenantAuditExitCode(report), 0);
   assert.ok(calls.every((call) => call.values[0] === WORKSPACE_ID));
   assert.ok(calls.every((call) => call.values[1] === 25));
-  assert.ok(calls.every((call) => call.values[2] === 12));
+  assert.ok(calls.filter((call) => call.text.includes('$3')).every((call) => call.values[2] === 12));
+  assert.ok(calls.filter((call) => !call.text.includes('$3')).every((call) => call.values.length === 2));
 });
 
-test('classifies warning findings as degraded and removes raw CRM properties', async () => {
+test('classifies warning findings as degraded and strips sensitive metadata', async () => {
   const report = await runTenantIntegrityAudit({
     async query(text) {
       if (text.includes('crm_record_associations')) {
@@ -57,6 +56,7 @@ test('classifies warning findings as degraded and removes raw CRM properties', a
             entity_id: 'contacts:1->companies:2',
             workspace_id: WORKSPACE_ID,
             raw: { secret: 'must-not-appear' },
+            properties: { email: 'private@example.com' },
             property_name: 'safe_property_name'
           }]
         };
@@ -70,7 +70,9 @@ test('classifies warning findings as degraded and removes raw CRM properties', a
   const finding = report.results.find((item) => item.key === 'orphaned_associations');
   assert.equal(finding.count, 1);
   assert.equal(finding.samples[0].workspaceId, WORKSPACE_ID);
-  assert.deepEqual(finding.samples[0].metadata.raw, { secret: 'must-not-appear' });
+  assert.equal(finding.samples[0].metadata.raw, undefined);
+  assert.equal(finding.samples[0].metadata.properties, undefined);
+  assert.equal(finding.samples[0].metadata.property_name, 'safe_property_name');
 });
 
 test('treats missing optional feature tables as not applicable', async () => {
