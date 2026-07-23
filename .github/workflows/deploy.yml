@@ -17,7 +17,7 @@ jobs:
   deploy:
     name: Deploy production
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
 
     steps:
       - name: Checkout repository
@@ -32,6 +32,8 @@ jobs:
             exit 1
           fi
           bash -n scripts/verify-production.sh
+          bash -n scripts/backup-postgres.sh
+          bash -n scripts/verify-postgres-backup.sh
 
       - name: Configure SSH
         shell: bash
@@ -123,9 +125,35 @@ jobs:
             --exclude='coverage/' \
             --exclude='logs/' \
             --exclude='.deploy-backups/' \
+            --exclude='backups/' \
             -e "ssh -i $HOME/.ssh/deploy_key -p $VPS_PORT -o BatchMode=yes -o IdentitiesOnly=yes" \
             ./ \
             "$VPS_USER@$VPS_HOST:$VPS_DEPLOY_PATH/"
+
+      - name: Create verified pre-deployment database backup
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+        run: |
+          set -Eeuo pipefail
+          ssh -i "$HOME/.ssh/deploy_key" -p "$VPS_PORT" -o BatchMode=yes -o IdentitiesOnly=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "set -Eeuo pipefail; \
+             cd '$VPS_DEPLOY_PATH'; \
+             if [ -f docker-compose.prod.yml ]; then compose_file='docker-compose.prod.yml'; else compose_file='docker-compose.yml'; fi; \
+             if docker compose -f \"\$compose_file\" ps -q postgres | grep -q .; then \
+               chmod +x scripts/backup-postgres.sh scripts/verify-postgres-backup.sh; \
+               backup_output=\$(COMPOSE_FILE=\"\$compose_file\" scripts/backup-postgres.sh --retention-days 14); \
+               backup_file=\$(printf '%s\n' \"\$backup_output\" | sed -n 's/^Backup completed: //p' | tail -n 1); \
+               test -n \"\$backup_file\" && test -f \"\$backup_file\"; \
+               scripts/verify-postgres-backup.sh --backup \"\$backup_file\"; \
+               echo 'Verified pre-deployment PostgreSQL backup created.'; \
+             else \
+               echo 'PostgreSQL container is not running; treating this as an initial deployment and skipping the backup gate.'; \
+             fi"
 
       - name: Build and start Docker services
         shell: bash
@@ -197,6 +225,7 @@ jobs:
                 "cd '$VPS_DEPLOY_PATH' 2>/dev/null || exit 0; \
                  if [ -f docker-compose.prod.yml ]; then compose_file='docker-compose.prod.yml'; else compose_file='docker-compose.yml'; fi; \
                  echo '--- docker compose ps ---'; docker compose -f \"\$compose_file\" ps; \
+                 echo '--- latest database backup manifests ---'; find backups/postgres -maxdepth 1 -type f -name '*.manifest.json' -printf '%TY-%Tm-%TdT%TH:%TM:%TSZ %f\n' 2>/dev/null | sort -r | head -n 3; \
                  echo '--- api logs ---'; docker compose -f \"\$compose_file\" logs --tail=120 api; \
                  echo '--- worker logs ---'; docker compose -f \"\$compose_file\" logs --tail=120 worker; \
                  echo '--- web logs ---'; docker compose -f \"\$compose_file\" logs --tail=120 web" 2>&1
