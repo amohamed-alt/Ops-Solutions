@@ -8,6 +8,7 @@ const DEFAULTS = Object.freeze({
 });
 
 const APPEARANCES = new Set(['system', 'light', 'dark']);
+const WRITER_ROLES = new Set(['owner', 'admin']);
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 const LOCALE_PATTERN = /^[a-z]{2,3}(?:-[A-Z]{2})?$/;
 const HEX_PATTERN = /^#[0-9a-f]{6}$/i;
@@ -86,8 +87,12 @@ function serialize(row) {
   };
 }
 
-export function registerWorkspacePreferencesRoutes(app, { postgres, withTransaction, requireViewer, requireAdmin, writeAudit }) {
-  app.get('/api/v1/customer/workspaces/:workspaceId/preferences', { preHandler: requireViewer }, async (request) => {
+export function registerWorkspacePreferencesRoutes(app, { postgres, withTransaction, requireViewer, writeAudit }) {
+  const schemaReady = ensureWorkspacePreferencesSchema(postgres);
+  const basePath = '/api/v1/customer/workspaces/:workspaceId/preferences';
+
+  app.get(basePath, { preHandler: requireViewer }, async (request) => {
+    await schemaReady;
     const result = await postgres.query(`
       SELECT w.id AS workspace_id, w.name, w.slug, w.updated_at,
              p.currency, p.timezone, p.locale, p.appearance, p.accent_color,
@@ -105,7 +110,14 @@ export function registerWorkspacePreferencesRoutes(app, { postgres, withTransact
     return serialize(result.rows[0]);
   });
 
-  app.put('/api/v1/customer/workspaces/:workspaceId/preferences', { preHandler: requireAdmin }, async (request) => {
+  app.put(basePath, { preHandler: requireViewer }, async (request, reply) => {
+    if (!WRITER_ROLES.has(request.workspaceMembership?.role)) {
+      return reply.code(403).send({
+        error: 'workspace_role_required',
+        message: 'Admin access is required to update workspace preferences.'
+      });
+    }
+    await schemaReady;
     const input = normalizeWorkspacePreferences(request.body);
     const workspaceId = request.params.workspaceId;
     const actorUserId = request.customer.user.id;
@@ -138,6 +150,7 @@ export function registerWorkspacePreferencesRoutes(app, { postgres, withTransact
     });
     await writeAudit(request, {
       workspaceId,
+      actorUserId,
       action: 'workspace.preferences_updated',
       targetType: 'workspace',
       targetId: workspaceId,
