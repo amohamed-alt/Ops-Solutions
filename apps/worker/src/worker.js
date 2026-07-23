@@ -6,7 +6,7 @@ import pg from 'pg';
 import { ensureAnalyticsIndexes, runPlannerMaintenance } from './analytics-maintenance.js';
 import { config, assertHubSpotWorkerConfiguration } from './config.js';
 import { ensureSyncSchema, syncWorkspace, workspacesDueForSync } from './sync.js';
-import { ensureTargetedWebhookSchema, syncWebhookEvents } from './targeted-sync.js';
+import { syncWebhookEvents } from './targeted-sync.js';
 
 const { Pool } = pg;
 
@@ -221,7 +221,6 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 
 try {
   await ensureSyncSchema(postgres);
-  await ensureTargetedWebhookSchema(postgres);
   const indexResult = await ensureAnalyticsIndexes(postgres, { log });
   await maintainAnalyticsPlanner();
   await heartbeat();
