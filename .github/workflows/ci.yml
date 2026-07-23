@@ -51,11 +51,22 @@ jobs:
 
           if (project.platformVersion !== '2026.03') throw new Error('Unexpected HubSpot platform version');
           if (app.type !== 'app') throw new Error('Invalid HubSpot app component type');
-          if (app.config.distribution !== 'private') throw new Error('HubSpot beta app must use private distribution');
+          if (app.config.distribution !== 'marketplace') throw new Error('HubSpot app must use Marketplace distribution');
           if (app.config.auth?.type !== 'oauth') throw new Error('HubSpot app must use OAuth');
           if (!app.config.auth.redirectUrls?.includes(expectedRedirect)) throw new Error('Production OAuth redirect URL is missing');
           if (!Array.isArray(app.config.auth.requiredScopes) || app.config.auth.requiredScopes.length === 0) {
             throw new Error('HubSpot required scopes are missing');
+          }
+          const dashboardScopes = [
+            'crm.objects.contacts.read',
+            'crm.objects.companies.read',
+            'crm.objects.deals.read',
+            'crm.objects.owners.read'
+          ];
+          for (const scope of dashboardScopes) {
+            if (!app.config.auth.requiredScopes.includes(scope)) {
+              throw new Error(`Dashboard scope is missing: ${scope}`);
+            }
           }
           NODE
 
