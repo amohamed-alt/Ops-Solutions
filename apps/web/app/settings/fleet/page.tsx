@@ -132,9 +132,8 @@ export default function FleetOperationsPage() {
   const [onlyNeedsAttention, setOnlyNeedsAttention] = useState(false);
   const [message, setMessage] = useState('');
 
-  const loadFleet = useCallback(async (workspaceList?: Workspace[]) => {
-    const source = workspaceList ?? workspaces;
-    if (source.length === 0) {
+  const loadFleet = useCallback(async (workspaceList: Workspace[]) => {
+    if (workspaceList.length === 0) {
       setRows([]);
       setFailures([]);
       setLoading(false);
@@ -143,12 +142,12 @@ export default function FleetOperationsPage() {
     }
     setRefreshing(true);
     setMessage('');
-    const results = await Promise.all(source.map(readOperations));
+    const results = await Promise.all(workspaceList.map(readOperations));
     setRows(results.flatMap((result) => result.row ? [result.row] : []));
     setFailures(results.filter((result) => result.error));
     setLoading(false);
     setRefreshing(false);
-  }, [workspaces]);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -209,7 +208,7 @@ export default function FleetOperationsPage() {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.message || 'Unable to queue synchronization.');
       setMessage(`${row.workspace.name}: ${title(mode)} synchronization queued.`);
-      await loadFleet();
+      await loadFleet(workspaces);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to queue synchronization.');
     } finally {
@@ -225,7 +224,7 @@ export default function FleetOperationsPage() {
           <h1>Revenue operations fleet health</h1>
           <p>Monitor HubSpot connectivity, synchronization freshness, mapping readiness and webhook reliability across every company available to your account.</p>
         </div>
-        <button type="button" onClick={() => void loadFleet()} disabled={refreshing || loading}>
+        <button type="button" onClick={() => void loadFleet(workspaces)} disabled={refreshing || loading}>
           <RefreshCw className={refreshing ? styles.spin : ''} />
           {refreshing ? 'Refreshing…' : 'Refresh fleet'}
         </button>
