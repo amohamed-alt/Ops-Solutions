@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireOperationsAccess, adminHeaders } from '../../../../operations/auth';
 import { API_URL, internalAdminHeaders, requireCustomerWorkspace } from '../../../../customer/session';
 
+const DRILLDOWN_TIMEOUT_MS = 60_000;
+
 export async function GET(request: NextRequest, { params }: { params: Promise<{ workspaceId: string; reportKey: string }> }) {
   const { workspaceId, reportKey } = await params;
   const operationsAccess = requireOperationsAccess(request);
@@ -18,12 +20,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const response = await fetch(target, {
       headers: operationsAccess.ok ? adminHeaders() : internalAdminHeaders(),
       cache: 'no-store',
-      signal: AbortSignal.timeout(30_000)
+      signal: AbortSignal.timeout(DRILLDOWN_TIMEOUT_MS)
     });
     const payload = await response.json();
     return NextResponse.json(payload, { status: response.status });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Report details are unavailable.';
-    return NextResponse.json({ error: 'revenue_drilldown_unavailable', message }, { status: 503 });
+    const timedOut = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+    return NextResponse.json({
+      error: timedOut ? 'revenue_drilldown_timeout' : 'revenue_drilldown_unavailable',
+      message: timedOut
+        ? 'This report contains a large record set. Retry in a moment with narrower filters.'
+        : error instanceof Error ? error.message : 'Report details are unavailable.'
+    }, { status: timedOut ? 504 : 503 });
   }
 }
