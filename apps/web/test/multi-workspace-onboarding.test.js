@@ -38,3 +38,19 @@ test('onboarding UI scopes status, build and OAuth calls to the active workspace
   assert.match(content, /onboarding\/run\$\{workspaceQuery\(activeWorkspaceId\)\}/);
   assert.match(content, /hubspot\/start\$\{workspaceQuery\(activeWorkspaceId\)\}/);
 });
+
+test('bodyless discovery requests do not advertise an empty JSON body', async () => {
+  const run = await source('run');
+  assert.match(run, /hubspot\/discover`, \{[\s\S]*?method: 'POST',[\s\S]*?headers: internalAdminHeaders\(\),/);
+
+  const session = await readFile(new URL('../app/api/customer/session.ts', import.meta.url), 'utf8');
+  const helper = session.match(/export function internalAdminHeaders[\s\S]*?\n\}/)?.[0] ?? '';
+  assert.doesNotMatch(helper, /'content-type': 'application\/json'/);
+  assert.match(session, /internalAdminHeaders\(extra: Record<string, string> = \{\}\)/);
+});
+
+test('JSON onboarding requests explicitly send a JSON content type with a body', async () => {
+  const run = await source('run');
+  assert.match(run, /mappings\/[\s\S]*?headers: internalAdminHeaders\(\{ 'content-type': 'application\/json' \}\),[\s\S]*?body: JSON\.stringify/);
+  assert.match(run, /\/sync`, \{[\s\S]*?headers: internalAdminHeaders\(\{ 'content-type': 'application\/json' \}\),[\s\S]*?body: JSON\.stringify/);
+});
