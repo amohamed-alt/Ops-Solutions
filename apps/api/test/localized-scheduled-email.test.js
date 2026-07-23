@@ -45,7 +45,7 @@ test('builds an escaped localized and branded scheduled report email', () => {
   assert.match(message.text, /EGP · en-GB/);
   assert.match(message.html, /border-left:4px solid #123abc/);
   assert.match(message.html, /Board &lt;Review&gt;/);
-  assert.match(message.html, /&lt;Acme Gulf&gt;/);
+  assert.match(message.html, /&lt;ACME GULF&gt;/);
   assert.doesNotMatch(message.html, /<Acme Gulf>/);
   assert.match(message.html, /settings\/reports\?workspaceId=5aa22a37-acde-4f5e-b8b5-36659b121116/);
 });
