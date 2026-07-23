@@ -3,6 +3,10 @@ const MIGRATION_LOCK = 812341236;
 const MAX_ATTEMPTS = 5;
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const PROVIDERS = new Set(['disabled', 'resend', 'postmark']);
+const DEFAULT_LOCALE = 'en-US';
+const DEFAULT_TIMEZONE = 'UTC';
+const DEFAULT_CURRENCY = 'USD';
+const DEFAULT_ACCENT = '#087f68';
 
 const SCHEMA_SQL = `
   ALTER TABLE scheduled_report_executions
@@ -108,26 +112,100 @@ export async function ensureEmailDeliverySchema(postgres) {
   }
 }
 
-function reportPeriod(filters = {}) {
-  if (filters.from && filters.to) return `${filters.from} to ${filters.to}`;
-  return 'the selected reporting period';
+function validLocale(value) {
+  const candidate = safeText(value, 40) || DEFAULT_LOCALE;
+  try {
+    new Intl.NumberFormat(candidate).format(1);
+    return candidate;
+  } catch {
+    return DEFAULT_LOCALE;
+  }
+}
+
+function validTimezone(value) {
+  const candidate = safeText(value, 80) || DEFAULT_TIMEZONE;
+  try {
+    new Intl.DateTimeFormat(DEFAULT_LOCALE, { timeZone: candidate }).format(new Date());
+    return candidate;
+  } catch {
+    return DEFAULT_TIMEZONE;
+  }
+}
+
+function validCurrency(value) {
+  const candidate = safeText(value, 3).toUpperCase();
+  return /^[A-Z]{3}$/.test(candidate) ? candidate : DEFAULT_CURRENCY;
+}
+
+function validAccent(value) {
+  const candidate = safeText(value, 7);
+  return /^#[0-9a-f]{6}$/i.test(candidate) ? candidate : DEFAULT_ACCENT;
+}
+
+function safeLogoUrl(value) {
+  const candidate = safeText(value, 1000);
+  if (!candidate) return '';
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== 'https:' || url.username || url.password) return '';
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+export function resolveScheduledReportBranding(row) {
+  return {
+    companyName: safeText(row.company_name || row.workspace_name, 120) || 'Your company',
+    locale: validLocale(row.locale),
+    timezone: validTimezone(row.timezone),
+    currency: validCurrency(row.currency),
+    accentColor: validAccent(row.accent_color),
+    logoUrl: safeLogoUrl(row.logo_url)
+  };
+}
+
+function localizedDate(value, context, options = {}) {
+  const date = new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) return 'Not available';
+  return new Intl.DateTimeFormat(context.locale, {
+    timeZone: context.timezone,
+    dateStyle: options.dateStyle || 'medium',
+    ...(options.includeTime === false ? {} : { timeStyle: options.timeStyle || 'short' })
+  }).format(date);
+}
+
+function reportPeriod(filters = {}, context) {
+  if (!filters.from || !filters.to) return 'the selected reporting period';
+  const from = localizedDate(`${filters.from}T12:00:00Z`, context, { includeTime: false });
+  const to = localizedDate(`${filters.to}T12:00:00Z`, context, { includeTime: false });
+  return `${from} – ${to}`;
 }
 
 export function buildScheduledReportMessage(row, appUrl) {
-  const workspace = safeText(row.workspace_name, 120) || 'Your company';
+  const context = resolveScheduledReportBranding(row);
+  const workspace = context.companyName;
   const view = safeText(row.view_name || row.schedule_name, 120) || 'Revenue report';
-  const period = reportPeriod(row.filters || {});
+  const period = reportPeriod(row.filters || {}, context);
+  const generatedAt = localizedDate(row.export_completed_at || Date.now(), context);
   const settingsUrl = `${String(appUrl || '').replace(/\/$/, '')}/settings/reports?workspaceId=${encodeURIComponent(row.workspace_id)}`;
   const subject = `${workspace} · ${view}`;
+  const deliveryCopy = row.delivery_mode === 'attachment'
+    ? 'The requested report is attached to this email.'
+    : 'Your scheduled report has been generated successfully.';
   const text = [
     `${view} for ${workspace}`,
     `Reporting period: ${period}`,
-    `Generated: ${new Date(row.export_completed_at || Date.now()).toISOString()}`,
-    row.delivery_mode === 'attachment' ? 'The requested report is attached.' : 'Your scheduled report has been generated successfully.',
+    `Generated: ${generatedAt} (${context.timezone})`,
+    `Reporting context: ${context.currency} · ${context.locale}`,
+    deliveryCopy,
     `Manage this schedule: ${settingsUrl}`
   ].join('\n\n');
-  const html = `<!doctype html><html><body style="margin:0;background:#f4f7f6;font-family:Arial,sans-serif;color:#17332f"><div style="max-width:640px;margin:0 auto;padding:32px 16px"><div style="background:#fff;border:1px solid #dce8e5;border-radius:18px;padding:28px"><div style="font-size:12px;letter-spacing:.12em;color:#52746e;font-weight:700">OPS INTELLIGENCE</div><h1 style="font-size:25px;margin:12px 0 8px">${escapeHtml(view)}</h1><p style="margin:0 0 22px;color:#52746e">${escapeHtml(workspace)} · ${escapeHtml(period)}</p><div style="background:#f2f8f6;border-radius:12px;padding:16px"><strong>Report ready</strong><p style="margin:7px 0 0;color:#52746e">${row.delivery_mode === 'attachment' ? 'The requested report is attached to this email.' : 'The scheduled report was generated successfully.'}</p></div><p style="font-size:13px;color:#6c827e;margin:22px 0 0">Generated ${escapeHtml(new Date(row.export_completed_at || Date.now()).toISOString())}</p><a href="${escapeHtml(settingsUrl)}" style="display:inline-block;margin-top:20px;color:#087f68;font-weight:700">Manage scheduled reports</a></div></div></body></html>`;
-  return { subject, text, html };
+  const logo = context.logoUrl
+    ? `<img src="${escapeHtml(context.logoUrl)}" alt="${escapeHtml(workspace)}" style="display:block;max-width:160px;max-height:56px;object-fit:contain;margin:0 0 18px"/>`
+    : `<div style="width:42px;height:42px;border-radius:12px;background:${context.accentColor};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;margin:0 0 18px">${escapeHtml(workspace.slice(0, 2).toUpperCase())}</div>`;
+  const html = `<!doctype html><html><body style="margin:0;background:#f4f7f6;font-family:Arial,sans-serif;color:#17332f"><div style="max-width:640px;margin:0 auto;padding:32px 16px"><div style="background:#fff;border:1px solid #dce8e5;border-radius:18px;padding:28px">${logo}<div style="font-size:12px;letter-spacing:.12em;color:#52746e;font-weight:700">${escapeHtml(workspace.toUpperCase())}</div><h1 style="font-size:25px;margin:12px 0 8px">${escapeHtml(view)}</h1><p style="margin:0 0 22px;color:#52746e">${escapeHtml(period)}</p><div style="background:#f2f8f6;border-left:4px solid ${context.accentColor};border-radius:12px;padding:16px"><strong>Report ready</strong><p style="margin:7px 0 0;color:#52746e">${escapeHtml(deliveryCopy)}</p></div><table role="presentation" style="width:100%;margin-top:22px;border-collapse:collapse;font-size:13px;color:#52746e"><tr><td style="padding:6px 0">Generated</td><td style="padding:6px 0;text-align:right;color:#17332f;font-weight:700">${escapeHtml(generatedAt)}</td></tr><tr><td style="padding:6px 0">Timezone</td><td style="padding:6px 0;text-align:right;color:#17332f;font-weight:700">${escapeHtml(context.timezone)}</td></tr><tr><td style="padding:6px 0">Currency</td><td style="padding:6px 0;text-align:right;color:#17332f;font-weight:700">${escapeHtml(context.currency)}</td></tr></table><a href="${escapeHtml(settingsUrl)}" style="display:inline-block;margin-top:20px;color:${context.accentColor};font-weight:700">Manage scheduled reports</a></div></div></body></html>`;
+  return { subject, text, html, context };
 }
 
 async function sendResend(config, payload, fetchImpl) {
@@ -226,11 +304,13 @@ async function claimExecution(postgres) {
       SELECT e.id, e.workspace_id, e.delivery_attempt_count, e.export_job_id,
              s.id AS schedule_id, s.name AS schedule_name, s.recipients, s.delivery_mode,
              w.name AS workspace_name, x.view_name, x.filters, x.file_name, x.content_type,
-             x.file_size_bytes, x.artifact, x.completed_at AS export_completed_at
+             x.file_size_bytes, x.artifact, x.completed_at AS export_completed_at,
+             p.company_name, p.currency, p.timezone, p.locale, p.accent_color, p.logo_url
       FROM scheduled_report_executions e
       JOIN scheduled_report_schedules s ON s.id = e.schedule_id AND s.workspace_id = e.workspace_id
       JOIN workspaces w ON w.id = e.workspace_id
       JOIN report_export_jobs x ON x.id = e.export_job_id AND x.workspace_id = e.workspace_id
+      LEFT JOIN workspace_preferences p ON p.workspace_id = e.workspace_id
       WHERE e.status = 'ready_for_delivery'
         AND COALESCE(e.next_delivery_attempt_at, NOW()) <= NOW()
         AND e.delivery_attempt_count < $1
@@ -256,11 +336,17 @@ async function claimExecution(postgres) {
   }
 }
 
-async function completeDelivery(postgres, row, result, provider) {
+async function completeDelivery(postgres, row, result, provider, context) {
   await postgres.query(`UPDATE scheduled_report_executions
     SET status='delivered',delivery_status='delivered',provider_message_id=$2,
         delivery_metadata=$3::jsonb,error=NULL,completed_at=NOW(),next_delivery_attempt_at=NULL
-    WHERE id=$1 AND workspace_id=$4`, [row.id, result.providerMessageId, JSON.stringify({ provider }), row.workspace_id]);
+    WHERE id=$1 AND workspace_id=$4`, [row.id, result.providerMessageId, JSON.stringify({
+      provider,
+      locale: context.locale,
+      timezone: context.timezone,
+      currency: context.currency,
+      branded: Boolean(context.logoUrl || context.accentColor !== DEFAULT_ACCENT)
+    }), row.workspace_id]);
   await postgres.query(`UPDATE scheduled_report_schedules
     SET last_success_at=NOW(),last_error=NULL,updated_at=NOW() WHERE id=$1 AND workspace_id=$2`, [row.schedule_id, row.workspace_id]);
 }
@@ -308,7 +394,7 @@ export async function processScheduledReportDeliveries(postgres, {
         attachment,
         idempotencyKey: `scheduled-report-${String(row.id).replaceAll('-', '')}`
       }, fetchImpl);
-      await completeDelivery(postgres, row, result, config.provider);
+      await completeDelivery(postgres, row, result, config.provider, message.context);
       delivered += 1;
     } catch (error) {
       await failDelivery(postgres, row, error, config.configured);
