@@ -224,8 +224,8 @@ const NAVIGATION: NavigationItem[] = [
 ];
 
 const PIE_COLORS = [
-  '#5b67f1', '#14b8a6', '#f59e0b', '#8b5cf6', '#ec4899', '#0ea5e9',
-  '#22c55e', '#f97316', '#64748b', '#ef4444', '#06b6d4', '#a855f7'
+  '#2563eb', '#0f766e', '#f59e0b', '#475569', '#7c3aed', '#0891b2',
+  '#16a34a', '#dc2626', '#64748b', '#ea580c', '#0284c7', '#9333ea'
 ];
 
 function formatDateInput(date: Date) {
@@ -1261,7 +1261,7 @@ export function RevenueCommandCenter() {
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={report.activityTrend} margin={{ top: 8, right: 10, left: -16, bottom: 0 }}>
                   <defs>
-                    <linearGradient id="callsFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#5b67f1" stopOpacity={0.34} /><stop offset="100%" stopColor="#5b67f1" stopOpacity={0} /></linearGradient>
+                    <linearGradient id="callsFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2563eb" stopOpacity={0.28} /><stop offset="100%" stopColor="#2563eb" stopOpacity={0} /></linearGradient>
                     <linearGradient id="tasksFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#14b8a6" stopOpacity={0.25} /><stop offset="100%" stopColor="#14b8a6" stopOpacity={0} /></linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e8edf5" />
@@ -1269,7 +1269,7 @@ export function RevenueCommandCenter() {
                   <YAxis tick={{ fontSize: 10, fill: '#8490a3' }} axisLine={false} tickLine={false} />
                   <Tooltip content={<TooltipCard />} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: 11 }} />
-                  <Area type="monotone" dataKey="calls" stroke="#5b67f1" fill="url(#callsFill)" strokeWidth={2.5} />
+                  <Area type="monotone" dataKey="calls" stroke="#2563eb" fill="url(#callsFill)" strokeWidth={2.5} />
                   <Area type="monotone" dataKey="tasks" stroke="#14b8a6" fill="url(#tasksFill)" strokeWidth={2} />
                   <Area type="monotone" dataKey="meetings" stroke="#f59e0b" fill="transparent" strokeWidth={2.5} />
                 </AreaChart>
@@ -1284,7 +1284,7 @@ export function RevenueCommandCenter() {
                   <XAxis type="number" tickFormatter={(value) => compact(value)} tick={{ fontSize: 10, fill: '#8490a3' }} axisLine={false} tickLine={false} />
                   <YAxis type="category" dataKey="stageLabel" width={112} tick={{ fontSize: 10, fill: '#536176' }} axisLine={false} tickLine={false} />
                   <Tooltip formatter={(value) => compact(value)} />
-                  <Bar dataKey="amount" radius={[0, 7, 7, 0]} fill="#5b67f1" />
+                  <Bar dataKey="amount" radius={[0, 7, 7, 0]} fill="#2563eb" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1301,7 +1301,7 @@ export function RevenueCommandCenter() {
                   <YAxis tick={{ fontSize: 10, fill: '#8490a3' }} axisLine={false} tickLine={false} />
                   <Tooltip content={<TooltipCard />} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: 10 }} />
-                  <Bar dataKey="contacts" fill="#5b67f1" radius={[5, 5, 0, 0]} />
+                  <Bar dataKey="contacts" fill="#2563eb" radius={[5, 5, 0, 0]} />
                   <Bar dataKey="opportunities" fill="#14b8a6" radius={[5, 5, 0, 0]} />
                   <Bar dataKey="won" fill="#22c55e" radius={[5, 5, 0, 0]} />
                 </BarChart>

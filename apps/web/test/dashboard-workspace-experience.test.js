@@ -6,6 +6,7 @@ const pagePath = new URL('../app/dashboard/page.js', import.meta.url);
 const componentPath = new URL('../components/sdr/DashboardWorkspaceExperience.tsx', import.meta.url);
 const stylePath = new URL('../components/sdr/dashboard-workspace-experience.css', import.meta.url);
 const commandCenterPath = new URL('../components/sdr/RevenueCommandCenter.tsx', import.meta.url);
+const navigationPath = new URL('../components/customer/CustomerNavigation.tsx', import.meta.url);
 
 test('dashboard uses the workspace presentation shell', async () => {
   const source = await readFile(pagePath, 'utf8');
@@ -49,4 +50,13 @@ test('revenue command center exposes modular CRM dashboards and searchable drill
   assert.match(source, /workspaceRole/);
   assert.match(source, /all-companies/);
   assert.match(source, /marketing-contacts/);
+});
+
+test('dashboard command center owns its navigation chrome', async () => {
+  const source = await readFile(navigationPath, 'utf8');
+  const styles = await readFile(stylePath, 'utf8');
+  assert.match(source, /dashboardCommandCenter/);
+  assert.match(source, /visible = !dashboardCommandCenter/);
+  assert.match(styles, /Dashboard-specific composition polish/);
+  assert.match(styles, /margin-left: 264px/);
 });

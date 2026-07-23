@@ -20,7 +20,8 @@ export function CustomerNavigation() {
   const [session, setSession] = useState<Session | null>(null);
   const [signingOut, setSigningOut] = useState(false);
 
-  const visible = CUSTOMER_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+  const dashboardCommandCenter = pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+  const visible = !dashboardCommandCenter && CUSTOMER_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`));
 
   useEffect(() => {
     if (!visible) return;
@@ -83,7 +84,7 @@ export function CustomerNavigation() {
           <Settings size={16} /> Team & security
         </Link>
         <button type="button" onClick={logout} disabled={signingOut}>
-          <LogOut size={16} /> {signingOut ? 'Signing out…' : 'Sign out'}
+          <LogOut size={16} /> {signingOut ? 'Signing out...' : 'Sign out'}
         </button>
       </div>
     </nav>

@@ -135,3 +135,169 @@ html[data-workspace-appearance='dark'] .dashboard-data-health-meta span { color:
 }
 
 @keyframes dashboard-workspace-spin { to { transform: rotate(360deg); } }
+
+/* Dashboard-specific composition polish. The command center owns navigation on this page. */
+.dashboard-workspace-experience:has(.ric-shell) {
+  --ric-page: #f6f8fb;
+  background: var(--ric-page);
+}
+
+.dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-brand {
+  margin-left: 264px;
+  padding: 10px 28px;
+  border-bottom-color: #e5eaf1;
+  background: #fff;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-copy small,
+.dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-clock small {
+  font-size: 9px;
+  letter-spacing: .1em;
+}
+
+.dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-copy h1 {
+  margin: 1px 0 2px;
+  font-size: 18px;
+}
+
+.dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-copy p span {
+  padding: 3px 7px;
+  border-radius: 7px;
+  font-size: 10px;
+}
+
+.dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-clock {
+  min-width: 170px;
+  padding: 8px 11px;
+  border-radius: 10px;
+}
+
+.dashboard-workspace-experience:has(.ric-shell) .dashboard-data-health,
+.dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-notice {
+  margin: 12px 28px 0 292px;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.dashboard-workspace-experience:has(.ric-shell) .dashboard-data-health {
+  padding: 10px 12px;
+  border-color: #d8efe6;
+  background: #f8fdfb;
+}
+
+.dashboard-workspace-experience:has(.ric-shell) .dashboard-data-health-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.dashboard-workspace-experience:has(.ric-shell) .ric-sidebar button:hover,
+.dashboard-workspace-experience:has(.ric-shell) .ric-filter-actions button:first-child,
+.dashboard-workspace-experience:has(.ric-shell) .ric-kpi-top > span {
+  border-color: var(--workspace-accent) !important;
+  background: var(--workspace-accent) !important;
+}
+
+.dashboard-workspace-experience:has(.ric-shell) .ric-panel:hover,
+.dashboard-workspace-experience:has(.ric-shell) .ric-kpi:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .08);
+}
+
+@media (max-width: 980px) {
+  .dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-brand {
+    margin-left: 76px;
+    padding: 10px 18px;
+  }
+
+  .dashboard-workspace-experience:has(.ric-shell) .dashboard-data-health,
+  .dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-notice {
+    margin-right: 18px;
+    margin-left: 94px;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-brand {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-clock {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 520px) {
+  .dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-brand,
+  .dashboard-workspace-experience:has(.ric-shell) .dashboard-data-health,
+  .dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-notice {
+    margin-left: 0;
+  }
+
+  .dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-brand {
+    padding: 10px 14px;
+  }
+
+  .dashboard-workspace-experience:has(.ric-shell) .dashboard-data-health,
+  .dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-notice {
+    margin-right: 14px;
+    margin-left: 14px;
+  }
+}
+
+html[data-workspace-appearance='dark'] .dashboard-workspace-experience:has(.ric-shell),
+html[data-workspace-appearance='dark'] .dashboard-workspace-experience:has(.ric-shell) .ric-shell {
+  --ric-page: #0b1120;
+  --ric-bg: #0b1120;
+  --ric-surface: #111b2b;
+  --ric-border: #243349;
+  --ric-text: #f4f8fc;
+  --ric-muted: #a9bacb;
+}
+
+html[data-workspace-appearance='dark'] .dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-brand,
+html[data-workspace-appearance='dark'] .dashboard-workspace-experience:has(.ric-shell) .dashboard-data-health {
+  border-color: #243349;
+  background: #111b2b;
+}
+
+html[data-workspace-appearance='dark'] .dashboard-workspace-experience:has(.ric-shell) .ric-topbar,
+html[data-workspace-appearance='dark'] .dashboard-workspace-experience:has(.ric-shell) .ric-kpi,
+html[data-workspace-appearance='dark'] .dashboard-workspace-experience:has(.ric-shell) .ric-panel,
+html[data-workspace-appearance='dark'] .dashboard-workspace-experience:has(.ric-shell) .ric-filterbar,
+html[data-workspace-appearance='dark'] .dashboard-workspace-experience:has(.ric-shell) .ric-attention {
+  border-color: #243349;
+  background: #111b2b;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-workspace-appearance='system'] .dashboard-workspace-experience:has(.ric-shell),
+  html[data-workspace-appearance='system'] .dashboard-workspace-experience:has(.ric-shell) .ric-shell {
+    --ric-page: #0b1120;
+    --ric-bg: #0b1120;
+    --ric-surface: #111b2b;
+    --ric-border: #243349;
+    --ric-text: #f4f8fc;
+    --ric-muted: #a9bacb;
+  }
+
+  html[data-workspace-appearance='system'] .dashboard-workspace-experience:has(.ric-shell) .dashboard-workspace-brand,
+  html[data-workspace-appearance='system'] .dashboard-workspace-experience:has(.ric-shell) .dashboard-data-health,
+  html[data-workspace-appearance='system'] .dashboard-workspace-experience:has(.ric-shell) .ric-topbar,
+  html[data-workspace-appearance='system'] .dashboard-workspace-experience:has(.ric-shell) .ric-kpi,
+  html[data-workspace-appearance='system'] .dashboard-workspace-experience:has(.ric-shell) .ric-panel,
+  html[data-workspace-appearance='system'] .dashboard-workspace-experience:has(.ric-shell) .ric-filterbar,
+  html[data-workspace-appearance='system'] .dashboard-workspace-experience:has(.ric-shell) .ric-attention {
+    border-color: #243349;
+    background: #111b2b;
+  }
+}
