@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
         `${API_URL}/api/v1/workspaces/${workspaceId}/mappings/${encodeURIComponent(candidate.semantic_key)}/approve`,
         {
           method: 'POST',
-          headers: internalAdminHeaders(),
+          headers: internalAdminHeaders({ 'content-type': 'application/json' }),
           body: JSON.stringify({ objectType: candidate.object_type, propertyName: candidate.property_name }),
           cache: 'no-store',
           signal: AbortSignal.timeout(15_000)
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     const syncResponse = await fetch(`${API_URL}/api/v1/workspaces/${workspaceId}/sync`, {
       method: 'POST',
-      headers: internalAdminHeaders(),
+      headers: internalAdminHeaders({ 'content-type': 'application/json' }),
       body: JSON.stringify({ mode: 'initial' }),
       cache: 'no-store',
       signal: AbortSignal.timeout(15_000)
