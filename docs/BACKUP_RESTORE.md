@@ -7,7 +7,7 @@ Ops Solutions stores tenant configuration, encrypted OAuth material, mirrored CR
 Run from the production project directory:
 
 ```bash
-scripts/backup-postgres.sh
+bash scripts/backup-postgres.sh
 ```
 
 Defaults:
@@ -31,8 +31,8 @@ The command:
 Override examples:
 
 ```bash
-scripts/backup-postgres.sh --retention-days 30
-scripts/backup-postgres.sh --backup-root /mnt/private-backups/ops-solutions
+bash scripts/backup-postgres.sh --retention-days 30
+bash scripts/backup-postgres.sh --backup-root /mnt/private-backups/ops-solutions
 ```
 
 The host backup directory must remain private and should also be copied to encrypted off-host storage. Repository code intentionally does not choose a cloud storage provider or encryption key.
@@ -42,7 +42,7 @@ The host backup directory must remain private and should also be copied to encry
 Verification is read-only:
 
 ```bash
-scripts/verify-postgres-backup.sh \
+bash scripts/verify-postgres-backup.sh \
   --file /root/Ops-Solutions/backups/postgres/ops-solutions-host-YYYYMMDDTHHMMSSZ.dump
 ```
 
@@ -53,7 +53,7 @@ It validates the checksum when the companion `.sha256` file exists and asks the 
 Restore into a disposable database first:
 
 ```bash
-scripts/restore-postgres-backup.sh \
+bash scripts/restore-postgres-backup.sh \
   --file /root/Ops-Solutions/backups/postgres/ops-solutions-host-YYYYMMDDTHHMMSSZ.dump \
   --target-database ops_restore_drill \
   --confirm RESTORE
@@ -89,7 +89,7 @@ That flag is intentionally explicit and should be used only during a documented 
 Example cron entry at 02:15 UTC:
 
 ```cron
-15 2 * * * cd /root/Ops-Solutions && scripts/backup-postgres.sh >> /var/log/ops-solutions-backup.log 2>&1
+15 2 * * * cd /root/Ops-Solutions && bash scripts/backup-postgres.sh >> /var/log/ops-solutions-backup.log 2>&1
 ```
 
 ## Disaster recovery sequence
@@ -100,7 +100,7 @@ Example cron entry at 02:15 UTC:
 4. Restore to a disposable database and run validation queries.
 5. Confirm tenant counts, HubSpot connection rows, latest sync runs and audit history.
 6. Restore to the production database only after approval.
-7. Restart services and run `scripts/verify-production.sh`.
+7. Restart services and run `bash scripts/verify-production.sh`.
 8. Run an incremental HubSpot sync for connected workspaces to reconcile post-backup CRM changes.
 
 ## Deferred external decisions
