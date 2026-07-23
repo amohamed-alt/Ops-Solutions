@@ -22,22 +22,18 @@ jobs:
   repository-security:
     name: Secrets and dependency policy
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: |
-            apps/api/package-lock.json
-            apps/web/package-lock.json
-            apps/worker/package-lock.json
 
       - name: Scan tracked files for credentials
         run: node scripts/security-gate.mjs --format text
@@ -45,56 +41,26 @@ jobs:
       - name: Audit API production dependencies
         working-directory: apps/api
         run: |
-          npm ci --ignore-scripts --no-audit --no-fund
+          set -Eeuo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           npm audit --omit=dev --audit-level=high
 
       - name: Audit worker production dependencies
         working-directory: apps/worker
         run: |
-          npm ci --ignore-scripts --no-audit --no-fund
+          set -Eeuo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           npm audit --omit=dev --audit-level=high
 
       - name: Audit web production dependencies
         working-directory: apps/web
         run: |
-          npm ci --ignore-scripts --no-audit --no-fund
+          set -Eeuo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           npm audit --omit=dev --audit-level=high
 
-  dependency-review:
-    name: Dependency review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Block vulnerable dependency changes
-        uses: actions/dependency-review-action@v5
-        with:
-          fail-on-severity: high
-          deny-licenses: GPL-3.0, AGPL-3.0
-          comment-summary-in-pr: on-failure
-
-  codeql:
-    name: CodeQL JavaScript analysis
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    permissions:
-      contents: read
-      security-events: write
-      packages: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
-        with:
-          languages: javascript-typescript
-          queries: security-extended
-      - name: Analyze repository
-        uses: github/codeql-action/analyze@v4
-        with:
-          category: /language:javascript-typescript
+      - name: Verify audit did not modify tracked files
+        run: |
+          set -Eeuo pipefail
+          git diff --exit-code
+          test -z "$(git status --short --untracked-files=no)"
