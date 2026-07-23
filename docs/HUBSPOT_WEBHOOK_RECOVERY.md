@@ -2,7 +2,36 @@
 
 The webhook journal is intentionally durable: failed or unprocessed events remain available for diagnosis instead of being deleted. Production operators can inspect and safely replay them from inside the API container without exposing database, Redis, HubSpot, or application secrets.
 
-## Status
+## Fleet health
+
+Use the read-only fleet action before inspecting individual companies:
+
+```bash
+scripts/recover-webhooks.sh \
+  --action fleet
+```
+
+It returns every active workspace with:
+
+- HubSpot OAuth connection state
+- portal ID
+- webhook totals by state
+- latest received and processed webhook timestamps
+- latest synchronized CRM-record timestamp
+- an operational classification: `healthy`, `degraded`, `pending`, `stale`, `no_webhooks`, or `disconnected`
+
+Show only companies that need attention and customize the freshness threshold:
+
+```bash
+scripts/recover-webhooks.sh \
+  --action fleet \
+  --only-unhealthy \
+  --stale-hours 12
+```
+
+The threshold is bounded from 1 to 720 hours. Fleet diagnostics are aggregate-only and never print raw webhook payloads, tokens, credentials, or customer record properties. Event and CRM counts are calculated in independent CTEs to avoid join multiplication on large portals.
+
+## Workspace status
 
 ```bash
 scripts/recover-webhooks.sh \
@@ -61,8 +90,9 @@ Remove `--dry-run` only after confirming the event should not be replayed. Ignor
 
 ## Safety boundaries
 
-- A valid workspace UUID is mandatory.
-- Every query includes `workspace_id`.
+- Fleet health is read-only.
+- Mutating actions require a valid workspace UUID.
+- Every event query includes `workspace_id`.
 - At most 100 events are selected in one automatic recovery.
 - Duplicate event IDs are collapsed.
 - Retry uses the existing queue retry/backoff policy.
@@ -71,4 +101,4 @@ Remove `--dry-run` only after confirming the event should not be replayed. Ignor
 
 ## Rollback
 
-Remove `scripts/recover-webhooks.sh`, `apps/api/src/webhook-recovery-cli.js`, its tests and this document. No database migration or persistent data change is required.
+Revert the fleet-health commits to restore the workspace-only CLI. No database migration or persistent data change is required.
