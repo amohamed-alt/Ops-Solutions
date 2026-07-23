@@ -1,0 +1,79 @@
+/* Final layout contract: the command center must always render beside the fixed sidebar. */
+body:has(.dashboard-workspace-experience) {
+  overflow-x: clip;
+}
+
+.dashboard-workspace-experience,
+.dashboard-workspace-experience .ric-shell {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+.dashboard-workspace-experience .ric-topbar,
+.dashboard-workspace-experience .ric-content {
+  width: calc(100% - var(--enterprise-sidebar));
+  max-width: none;
+  margin-right: 0;
+  margin-left: var(--enterprise-sidebar);
+}
+
+.dashboard-workspace-experience .ric-content {
+  min-width: 0;
+}
+
+.dashboard-workspace-experience .ric-content > *,
+.dashboard-workspace-experience .ric-grid,
+.dashboard-workspace-experience .ric-grid-wide,
+.dashboard-workspace-experience .ric-panel,
+.dashboard-workspace-experience .arr-shell,
+.dashboard-workspace-experience .arr-section,
+.dashboard-workspace-experience .arr-header {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dashboard-workspace-experience .ric-heading {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  padding: clamp(24px, 3vw, 42px);
+}
+
+.dashboard-workspace-experience .ric-heading > div:first-child {
+  min-width: 0;
+}
+
+.dashboard-workspace-experience .ric-heading h1::after,
+.dashboard-workspace-experience .ric-heading p {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-workspace-experience .ric-owner-table,
+.dashboard-workspace-experience .arr-quality-table {
+  max-width: 100%;
+}
+
+@media (max-width: 980px) {
+  .dashboard-workspace-experience .ric-topbar,
+  .dashboard-workspace-experience .ric-content {
+    width: calc(100% - var(--enterprise-sidebar));
+    margin-left: var(--enterprise-sidebar);
+  }
+}
+
+@media (max-width: 760px) {
+  body:has(.dashboard-workspace-experience) {
+    overflow-x: hidden;
+  }
+
+  .dashboard-workspace-experience .ric-topbar,
+  .dashboard-workspace-experience .ric-content {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .dashboard-workspace-experience .ric-heading {
+    padding: 22px;
+  }
+}
