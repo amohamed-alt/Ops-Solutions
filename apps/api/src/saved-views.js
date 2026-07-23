@@ -1,3 +1,5 @@
+import { registerWorkspacePreferencesRoutes } from './workspace-preferences.js';
+
 const DATE_PRESETS = new Set([
   'today',
   'yesterday',
@@ -307,6 +309,13 @@ export function registerSavedViewRoutes(app, {
   writeAudit
 }) {
   const basePath = '/api/v1/customer/workspaces/:workspaceId/saved-views';
+
+  registerWorkspacePreferencesRoutes(app, {
+    postgres,
+    withTransaction,
+    requireViewer,
+    writeAudit
+  });
 
   app.get(basePath, { preHandler: requireViewer }, async (request) => ({
     results: await listSavedViews(postgres, request.params.workspaceId, request.customer.user.id)
