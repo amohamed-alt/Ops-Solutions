@@ -18,6 +18,20 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (ALLOWED_FILTERS.has(key)) target.searchParams.set(key, value);
     }
 
+    if (customerAccess.workspace.role === 'viewer') {
+      const scopeResponse = await fetch(
+        `${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/intelligence/scope`,
+        {
+          headers: customerHeaders(request),
+          cache: 'no-store',
+          signal: AbortSignal.timeout(10_000)
+        }
+      );
+      const scope = await scopeResponse.json().catch(() => ({}));
+      if (!scopeResponse.ok) return NextResponse.json(scope, { status: scopeResponse.status });
+      target.searchParams.set('ownerId', String(scope.ownerId || '__viewer_without_owner__'));
+    }
+
     const response = await fetch(target, {
       headers: customerHeaders(request),
       cache: 'no-store',
