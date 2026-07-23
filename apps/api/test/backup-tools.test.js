@@ -5,6 +5,7 @@ import test from 'node:test';
 const backupPath = new URL('../../../scripts/backup-postgres.sh', import.meta.url);
 const verifyPath = new URL('../../../scripts/verify-postgres-backup.sh', import.meta.url);
 const restorePath = new URL('../../../scripts/restore-postgres-backup.sh', import.meta.url);
+const freshnessPath = new URL('../../../scripts/check-backup-freshness.sh', import.meta.url);
 const docsPath = new URL('../../../docs/BACKUP_RESTORE.md', import.meta.url);
 
 test('backup tooling creates private verified archives without exposing database secrets', async () => {
@@ -28,6 +29,22 @@ test('verification is read-only and validates both checksum and archive catalog'
   assert.doesNotMatch(source, /dropdb|createdb|pg_restore[^\n]*--dbname/);
 });
 
+test('freshness monitor validates complete backup sets and provides machine-readable health', async () => {
+  const source = await readFile(freshnessPath, 'utf8');
+  assert.match(source, /MAX_AGE_HOURS/);
+  assert.match(source, /--format text\|json/);
+  assert.match(source, /schemaVersion/);
+  assert.match(source, /sha256sum/);
+  assert.match(source, /pg_restore --list/);
+  assert.match(source, /"healthy"/);
+  assert.match(source, /"stale"/);
+  assert.match(source, /"corrupt"/);
+  assert.match(source, /exit 2/);
+  assert.match(source, /exit 3/);
+  assert.doesNotMatch(source, /POSTGRES_PASSWORD|access_token|refresh_token/);
+  assert.doesNotMatch(source, /dropdb|createdb|pg_restore[^\n]*--dbname/);
+});
+
 test('restore requires explicit confirmation and blocks production by default', async () => {
   const source = await readFile(restorePath, 'utf8');
   assert.match(source, /--confirm/);
@@ -41,11 +58,14 @@ test('restore requires explicit confirmation and blocks production by default', 
   assert.match(source, /SELECT 1 FROM schema_migrations/);
 });
 
-test('runbook documents off-host copies, restore drills and recovery sequencing', async () => {
+test('runbook documents off-host copies, freshness monitoring, restore drills and recovery sequencing', async () => {
   const source = await readFile(docsPath, 'utf8');
   assert.match(source, /encrypted off-host storage/i);
   assert.match(source, /restore drill/i);
   assert.match(source, /Disaster recovery sequence/);
   assert.match(source, /incremental HubSpot sync/);
   assert.match(source, /older than 26 hours/);
+  assert.match(source, /check-backup-freshness\.sh/);
+  assert.match(source, /exit code 2/i);
+  assert.match(source, /JSON/i);
 });
