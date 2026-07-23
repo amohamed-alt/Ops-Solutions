@@ -1,4 +1,4 @@
-import { RevenueCommandCenter } from '@/components/sdr/RevenueCommandCenter';
+import { DashboardWorkspaceExperience } from '@/components/sdr/DashboardWorkspaceExperience';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,5 +8,5 @@ export const metadata = {
 };
 
 export default function DashboardPage() {
-  return <RevenueCommandCenter />;
+  return <DashboardWorkspaceExperience />;
 }
