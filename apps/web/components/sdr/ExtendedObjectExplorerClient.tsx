@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -27,6 +26,8 @@ import {
 } from 'recharts';
 
 import './extended-object-explorer.css';
+
+type DateRange = { from: string; to: string };
 
 type WorkspaceRow = {
   workspace: {
@@ -113,7 +114,7 @@ function dateInput(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function initialRange() {
+function initialRange(): DateRange {
   const to = new Date();
   const from = new Date(to);
   from.setDate(from.getDate() - 29);
@@ -139,6 +140,7 @@ async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
 }
 
 function recordUrl(portalId: string, objectType: string, recordId: string) {
+  if (!portalId) return '';
   const base = `https://app.hubspot.com/contacts/${encodeURIComponent(portalId)}`;
   if (objectType === 'contacts') return `${base}/contact/${encodeURIComponent(recordId)}`;
   if (objectType === 'companies') return `${base}/company/${encodeURIComponent(recordId)}`;
@@ -156,32 +158,31 @@ function queryString(values: Record<string, string | number>) {
 }
 
 function recordTitle(row: RecordRow, columns: string[]) {
-  const p = row.properties || {};
+  const properties = row.properties || {};
   const candidates = [
-    p.name,
-    p.dealname,
-    p.subject,
-    p.hs_title,
-    p.hs_lead_name,
-    p.hs_email_subject,
-    p.hs_task_subject,
-    p.hs_meeting_title,
-    p.hs_call_title,
-    [p.firstname, p.lastname].filter(Boolean).join(' '),
-    ...columns.map((column) => p[column])
+    properties.name,
+    properties.dealname,
+    properties.subject,
+    properties.hs_title,
+    properties.hs_lead_name,
+    properties.hs_email_subject,
+    properties.hs_task_subject,
+    properties.hs_meeting_title,
+    properties.hs_call_title,
+    [properties.firstname, properties.lastname].filter(Boolean).join(' '),
+    ...columns.map((column) => properties[column])
   ];
   return candidates.find((value) => String(value || '').trim()) || `Record ${row.id}`;
 }
 
 export function ExtendedObjectExplorerClient({ objectType }: { objectType?: string }) {
-  const router = useRouter();
   const [workspaceRows, setWorkspaceRows] = useState<WorkspaceRow[]>([]);
   const [workspaceId, setWorkspaceId] = useState('');
   const [catalog, setCatalog] = useState<CatalogObject[]>([]);
   const [detail, setDetail] = useState<DetailReport | null>(null);
   const [records, setRecords] = useState<RecordsPayload | null>(null);
-  const [range, setRange] = useState(initialRange);
-  const [draftRange, setDraftRange] = useState(initialRange);
+  const [range, setRange] = useState<DateRange>(initialRange);
+  const [draftRange, setDraftRange] = useState<DateRange>(initialRange);
   const [reportKey, setReportKey] = useState('total');
   const [search, setSearch] = useState('');
   const [searchDraft, setSearchDraft] = useState('');
@@ -208,7 +209,7 @@ export function ExtendedObjectExplorerClient({ objectType }: { objectType?: stri
     setCatalog(payload.report.objects ?? []);
   }, []);
 
-  const loadDetail = useCallback(async (nextWorkspaceId: string, nextRange = range) => {
+  const loadDetail = useCallback(async (nextWorkspaceId: string, nextRange: DateRange) => {
     if (!objectType) return;
     detailAbort.current?.abort();
     const controller = new AbortController();
@@ -218,14 +219,14 @@ export function ExtendedObjectExplorerClient({ objectType }: { objectType?: stri
       controller.signal
     );
     setDetail(payload.report);
-  }, [objectType, range]);
+  }, [objectType]);
 
   const loadRecords = useCallback(async (
     nextWorkspaceId: string,
-    nextKey = reportKey,
-    nextOffset = 0,
-    nextSearch = search,
-    nextRange = range
+    nextKey: string,
+    nextOffset: number,
+    nextSearch: string,
+    nextRange: DateRange
   ) => {
     if (!objectType) return;
     recordsAbort.current?.abort();
@@ -248,11 +249,21 @@ export function ExtendedObjectExplorerClient({ objectType }: { objectType?: stri
     } finally {
       if (recordsAbort.current === controller) setRecordsLoading(false);
     }
-  }, [objectType, range, reportKey, search]);
+  }, [objectType]);
 
   useEffect(() => {
     let active = true;
+    const startupRange = initialRange();
     setLoading(true);
+    setError('');
+    setRange(startupRange);
+    setDraftRange(startupRange);
+    setReportKey('total');
+    setSearch('');
+    setSearchDraft('');
+    setDetail(null);
+    setRecords(null);
+
     fetchJson<{ results: WorkspaceRow[] }>('/api/customer/workspaces')
       .then(async (payload) => {
         if (!active) return;
@@ -265,16 +276,19 @@ export function ExtendedObjectExplorerClient({ objectType }: { objectType?: stri
         await loadCatalog(selected.workspace.id);
         if (objectType) {
           await Promise.all([
-            loadDetail(selected.workspace.id),
-            loadRecords(selected.workspace.id, 'total', 0, '')
+            loadDetail(selected.workspace.id, startupRange),
+            loadRecords(selected.workspace.id, 'total', 0, '', startupRange)
           ]);
         }
       })
       .catch((loadError) => {
-        if (!active || loadError?.name === 'AbortError') return;
+        if (!active || (loadError instanceof Error && loadError.name === 'AbortError')) return;
         setError(loadError instanceof Error ? loadError.message : 'Unable to open CRM object intelligence.');
       })
-      .finally(() => active && setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
     return () => {
       active = false;
       catalogAbort.current?.abort();
@@ -292,12 +306,14 @@ export function ExtendedObjectExplorerClient({ objectType }: { objectType?: stri
       await loadCatalog(nextWorkspaceId);
       if (objectType) {
         await Promise.all([
-          loadDetail(nextWorkspaceId),
-          loadRecords(nextWorkspaceId, reportKey, 0, search)
+          loadDetail(nextWorkspaceId, range),
+          loadRecords(nextWorkspaceId, reportKey, 0, search, range)
         ]);
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Unable to change CRM workspace.');
+      if (!(loadError instanceof Error && loadError.name === 'AbortError')) {
+        setError(loadError instanceof Error ? loadError.message : 'Unable to change CRM workspace.');
+      }
     } finally {
       setLoading(false);
     }
@@ -318,7 +334,9 @@ export function ExtendedObjectExplorerClient({ objectType }: { objectType?: stri
         await loadCatalog(workspaceId);
       }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Unable to apply dashboard filters.');
+      if (!(loadError instanceof Error && loadError.name === 'AbortError')) {
+        setError(loadError instanceof Error ? loadError.message : 'Unable to apply dashboard filters.');
+      }
     } finally {
       setLoading(false);
     }
@@ -329,14 +347,14 @@ export function ExtendedObjectExplorerClient({ objectType }: { objectType?: stri
     setReportKey(metric.key);
     setSearch('');
     setSearchDraft('');
-    await loadRecords(workspaceId, metric.key, 0, '');
+    await loadRecords(workspaceId, metric.key, 0, '', range);
     document.getElementById('extended-records')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function applySearch() {
     if (!workspaceId) return;
     setSearch(searchDraft);
-    await loadRecords(workspaceId, reportKey, 0, searchDraft);
+    await loadRecords(workspaceId, reportKey, 0, searchDraft, range);
   }
 
   const exportHref = objectType && workspaceId
@@ -349,7 +367,7 @@ export function ExtendedObjectExplorerClient({ objectType }: { objectType?: stri
       })}`
     : '#';
 
-  if (loading && !catalog.length && !detail) {
+  if (loading && catalog.length === 0 && !detail) {
     return <main className="exo-shell"><div className="exo-state"><LoaderCircle className="exo-spin" />Loading CRM object intelligence…</div></main>;
   }
 
@@ -362,9 +380,9 @@ export function ExtendedObjectExplorerClient({ objectType }: { objectType?: stri
           <select value={workspaceId} onChange={(event) => void changeWorkspace(event.target.value)} aria-label="Workspace">
             {workspaceRows.map((row) => <option key={row.workspace.id} value={row.workspace.id}>{row.workspace.name}</option>)}
           </select>
-          <input type="date" value={draftRange.from} onChange={(event) => setDraftRange((current) => ({ ...current, from: event.target.value }))} />
-          <input type="date" value={draftRange.to} onChange={(event) => setDraftRange((current) => ({ ...current, to: event.target.value }))} />
-          <button type="button" onClick={() => void applyRange()}><RefreshCw size={15} />Apply</button>
+          <input type="date" value={draftRange.from} onChange={(event) => setDraftRange((current) => ({ ...current, from: event.target.value }))} aria-label="From date" />
+          <input type="date" value={draftRange.to} onChange={(event) => setDraftRange((current) => ({ ...current, to: event.target.value }))} aria-label="To date" />
+          <button type="button" onClick={() => void applyRange()} disabled={!workspaceId || loading}><RefreshCw size={15} />Apply</button>
         </div>
       </header>
 
@@ -402,7 +420,7 @@ export function ExtendedObjectExplorerClient({ objectType }: { objectType?: stri
 
           <section className="exo-metrics">
             {detail.metrics.map((metric) => (
-              <button key={metric.key} type="button" className={`tone-${metric.tone}${reportKey === metric.key ? ' active' : ''}`} onClick={() => void openMetric(metric)}>
+              <button key={metric.key} type="button" className={`tone-${metric.tone}${reportKey === metric.key ? ' active' : ''}`} onClick={() => void openMetric(metric)} disabled={recordsLoading}>
                 <span />
                 <strong>{integer(metric.value)}</strong>
                 <h2>{metric.label}</h2>
@@ -445,25 +463,28 @@ export function ExtendedObjectExplorerClient({ objectType }: { objectType?: stri
               <div className="exo-record-actions">
                 <label><Search size={15} /><input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && void applySearch()} placeholder="Search all record properties…" /></label>
                 <button type="button" onClick={() => void applySearch()} disabled={recordsLoading}>Search</button>
-                <a href={exportHref}><Download size={15} />Export up to 25k</a>
+                <a href={exportHref} aria-disabled={!records}><Download size={15} />Export up to 25k</a>
               </div>
             </header>
             {recordsLoading ? <div className="exo-state"><LoaderCircle className="exo-spin" />Searching records…</div> : null}
             {!recordsLoading && records ? (
               <div className="exo-record-list">
-                {records.results.map((row) => (
-                  <article key={row.id}>
-                    <div><strong>{recordTitle(row, records.columns)}</strong><small>HubSpot ID {row.id}</small><a href={recordUrl(String(selectedWorkspace?.portal_id || ''), objectType, row.id)} target="_blank" rel="noreferrer">Open in HubSpot <ExternalLink size={12} /></a></div>
-                    {records.columns.slice(0, 4).map((column) => <span key={column}><b>{titleCase(column)}</b><small>{row.properties?.[column] || '—'}</small></span>)}
-                  </article>
-                ))}
+                {records.results.map((row) => {
+                  const hubSpotUrl = recordUrl(String(selectedWorkspace?.portal_id || ''), objectType, row.id);
+                  return (
+                    <article key={row.id}>
+                      <div><strong>{recordTitle(row, records.columns)}</strong><small>HubSpot ID {row.id}</small>{hubSpotUrl ? <a href={hubSpotUrl} target="_blank" rel="noreferrer">Open in HubSpot <ExternalLink size={12} /></a> : null}</div>
+                      {records.columns.slice(0, 4).map((column) => <span key={column}><b>{titleCase(column)}</b><small>{row.properties?.[column] || '—'}</small></span>)}
+                    </article>
+                  );
+                })}
                 {records.results.length === 0 ? <div className="exo-state">No records match the current report and search.</div> : null}
               </div>
             ) : null}
             <footer>
-              <button type="button" disabled={recordsLoading || !records || records.offset === 0} onClick={() => records && void loadRecords(workspaceId, reportKey, Math.max(0, records.offset - records.limit), search)}><ChevronLeft size={15} />Previous</button>
+              <button type="button" disabled={recordsLoading || !records || records.offset === 0} onClick={() => records && void loadRecords(workspaceId, reportKey, Math.max(0, records.offset - records.limit), search, range)}><ChevronLeft size={15} />Previous</button>
               <span>{records && records.total ? `${records.offset + 1}–${Math.min(records.total, records.offset + records.results.length)} of ${integer(records.total)}` : '0 records'}</span>
-              <button type="button" disabled={recordsLoading || !records?.hasMore} onClick={() => records && void loadRecords(workspaceId, reportKey, records.offset + records.limit, search)}>Next<ChevronRight size={15} /></button>
+              <button type="button" disabled={recordsLoading || !records?.hasMore} onClick={() => records && void loadRecords(workspaceId, reportKey, records.offset + records.limit, search, range)}>Next<ChevronRight size={15} /></button>
             </footer>
           </section>
         </>
