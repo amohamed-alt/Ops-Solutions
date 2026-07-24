@@ -114,12 +114,14 @@ test('enforces a Redis-backed per-user and workspace export limit', async () => 
 
 test('registers export, billing, retention and self-service workspace routes', () => {
   const routes = [];
+  const hooks = [];
   const add = (method) => (path, options, handler) => routes.push({ method, path, options, handler });
   const app = {
     get: add('GET'),
     post: add('POST'),
     patch: add('PATCH'),
-    delete: add('DELETE')
+    delete: add('DELETE'),
+    addHook(name, handler) { hooks.push({ name, handler }); }
   };
   const requireAdmin = () => undefined;
   const requireViewer = [() => undefined, () => undefined];
@@ -147,6 +149,7 @@ test('registers export, billing, retention and self-service workspace routes', (
   ]) {
     assert.ok(registered.has(expected), `Missing route: ${expected}`);
   }
+  assert.equal(hooks.filter((hook) => hook.name === 'onReady').length, 1);
   assert.equal(routes.find((route) => route.path.endsWith('export.csv'))?.options.preHandler, requireAdmin);
   assert.equal(routes.find((route) => route.path.endsWith('exports/revenue.pdf'))?.options.preHandler, requireViewer);
 });
