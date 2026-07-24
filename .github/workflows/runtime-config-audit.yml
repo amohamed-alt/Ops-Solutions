@@ -48,7 +48,7 @@ jobs:
             if (/PORT$/.test(key)) return `${key}=3000`;
             if (/^(LOG_LEVEL)$/.test(key)) return `${key}=info`;
             if (/^(EMAIL_PROVIDER)$/.test(key)) return `${key}=disabled`;
-            if (/URL|URI/.test(key)) return `${key}=https://example.test`;
+            if (/URL|URI/.test(key)) return `${key}=https://configuration-audit.example.test/resource`;
             if (/SECRET|TOKEN|PASSWORD|PRIVATE|ENCRYPTION|API_KEY|SSH_KEY/.test(key)) return `${key}=${'x'.repeat(64)}`;
             return `${key}=synthetic-ci-value`;
           });
