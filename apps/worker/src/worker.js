@@ -5,6 +5,7 @@ import pg from 'pg';
 
 import { ensureAnalyticsIndexes, runPlannerMaintenance } from './analytics-maintenance.js';
 import { config, assertHubSpotWorkerConfiguration } from './config.js';
+import { runWithReportInvalidation } from './report-cache-events.js';
 import { ensureSyncSchema, syncWorkspace, workspacesDueForSync } from './sync.js';
 import { syncWebhookEvents } from './targeted-sync.js';
 
@@ -81,7 +82,11 @@ const queueWorker = new Worker(
 
     const workspaceId = requireWorkspaceId(job);
     if (job.data?.source === 'hubspot_webhook') {
-      const result = await syncWebhookEvents(postgres, workspaceId);
+      const result = await runWithReportInvalidation(
+        heartbeatRedis,
+        { workspaceId, reason: 'hubspot_webhook_sync_completed' },
+        () => syncWebhookEvents(postgres, workspaceId)
+      );
       return {
         ...result,
         workspaceId,
@@ -106,7 +111,11 @@ const queueWorker = new Worker(
         throw new Error(`Unsupported job type: ${job.name}`);
     }
 
-    const result = await syncWorkspace(postgres, workspaceId, mode);
+    const result = await runWithReportInvalidation(
+      heartbeatRedis,
+      { workspaceId, reason: `hubspot_${mode}_sync_completed` },
+      () => syncWorkspace(postgres, workspaceId, mode)
+    );
     return {
       ...result,
       workspaceId,
@@ -250,6 +259,7 @@ try {
     schedulerIntervalMs: config.sync.schedulerIntervalMs,
     analyticsIndexes: indexResult.indexes,
     targetedWebhookSync: true,
+    reportCacheInvalidation: true,
     objectTypes: config.hubspot.objectTypes
   });
 } catch (error) {

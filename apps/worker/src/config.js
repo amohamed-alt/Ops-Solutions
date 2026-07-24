@@ -36,7 +36,13 @@ export const config = Object.freeze({
       'deals',
       'calls',
       'meetings',
-      'tasks'
+      'tasks',
+      'tickets',
+      'leads',
+      'products',
+      'line_items',
+      'quotes',
+      'emails'
     ]),
     pageSize: positiveInteger(process.env.HUBSPOT_SYNC_PAGE_SIZE, 100, { min: 10, max: 100 }),
     requestDelayMs: positiveInteger(process.env.HUBSPOT_REQUEST_DELAY_MS, 240, { min: 100, max: 5000 })
