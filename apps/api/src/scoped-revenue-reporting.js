@@ -11,13 +11,19 @@ import {
   getObjectReportingDrilldown
 } from './object-reporting.js';
 import {
+  buildExtendedObjectCatalog,
+  buildExtendedObjectDetail,
+  exportExtendedObjectCsv,
+  searchExtendedObjectRecords
+} from './extended-object-reporting.js';
+import {
   applyReportTimingHeaders,
   createReportCache,
   reportCacheKey
 } from './report-cache.js';
 
 const REPORT_SCOPES = new Set(['core', 'operating', 'full']);
-const reportCache = createReportCache({ maxEntries: 750 });
+const reportCache = createReportCache({ maxEntries: 1000 });
 
 const TTL_MS = Object.freeze({
   revenueCore: 30_000,
@@ -26,7 +32,10 @@ const TTL_MS = Object.freeze({
   revenueDrilldown: 15_000,
   objectOverview: 30_000,
   objectDetail: 45_000,
-  objectDrilldown: 15_000
+  objectDrilldown: 15_000,
+  extendedCatalog: 30_000,
+  extendedDetail: 45_000,
+  extendedRecords: 10_000
 });
 
 export function normalizeRevenueReportScope(value) {
@@ -137,6 +146,64 @@ export function registerRevenueReportingRoutes(app, { postgres, requireAdmin, re
       loader: () => getObjectReportingDrilldown(postgres, workspace.id, objectType, reportKey, request.query ?? {})
     });
     return { workspaceId: workspace.id, drilldown };
+  });
+
+  app.get('/api/v1/workspaces/:workspaceId/analytics/extended-objects', { preHandler: requireAdmin }, async (request, reply) => {
+    const workspace = await requireWorkspace(request.params.workspaceId);
+    const report = await cached(reply, {
+      namespace: 'extended-object-catalog',
+      workspaceId: workspace.id,
+      query: request.query ?? {},
+      ttlMs: TTL_MS.extendedCatalog,
+      loader: () => buildExtendedObjectCatalog(postgres, workspace.id)
+    });
+    return { workspace, report };
+  });
+
+  app.get('/api/v1/workspaces/:workspaceId/analytics/extended-objects/:objectType', { preHandler: requireAdmin }, async (request, reply) => {
+    const workspace = await requireWorkspace(request.params.workspaceId);
+    const objectType = String(request.params.objectType ?? '');
+    const report = await cached(reply, {
+      namespace: 'extended-object-detail',
+      workspaceId: workspace.id,
+      query: request.query ?? {},
+      parts: [objectType],
+      ttlMs: TTL_MS.extendedDetail,
+      loader: () => buildExtendedObjectDetail(postgres, workspace.id, objectType, request.query ?? {})
+    });
+    return { workspace, report };
+  });
+
+  app.get('/api/v1/workspaces/:workspaceId/analytics/extended-objects/:objectType/records/:reportKey', { preHandler: requireAdmin }, async (request, reply) => {
+    const workspace = await requireWorkspace(request.params.workspaceId);
+    const objectType = String(request.params.objectType ?? '');
+    const reportKey = String(request.params.reportKey ?? 'total');
+    const records = await cached(reply, {
+      namespace: 'extended-object-records',
+      workspaceId: workspace.id,
+      query: request.query ?? {},
+      parts: [objectType, reportKey],
+      ttlMs: TTL_MS.extendedRecords,
+      loader: () => searchExtendedObjectRecords(postgres, workspace.id, objectType, reportKey, request.query ?? {})
+    });
+    return { workspaceId: workspace.id, records };
+  });
+
+  app.get('/api/v1/workspaces/:workspaceId/analytics/extended-objects/:objectType/export/:reportKey.csv', { preHandler: requireAdmin }, async (request, reply) => {
+    const workspace = await requireWorkspace(request.params.workspaceId);
+    const result = await exportExtendedObjectCsv(
+      postgres,
+      workspace.id,
+      String(request.params.objectType ?? ''),
+      String(request.params.reportKey ?? 'total'),
+      request.query ?? {}
+    );
+    reply.header('cache-control', 'private, no-store');
+    reply.header('content-type', 'text/csv; charset=utf-8');
+    reply.header('content-disposition', `attachment; filename="${result.filename}"`);
+    reply.header('x-export-row-count', String(result.rowCount));
+    reply.header('x-export-truncated', result.truncated ? 'true' : 'false');
+    return reply.send(result.csv);
   });
 }
 
