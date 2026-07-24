@@ -7,23 +7,37 @@ const NOW = new Date('2026-07-24T12:00:00Z');
 
 test('serializes sessions without exposing token or IP hashes', () => {
   const value = serializeSession({
-    session_key: 'a'.repeat(64), current_session: true, user_agent: 'Mozilla/5.0 Chrome/140.0',
+    session_key: 'a'.repeat(64), current_session: true, known_device: true, user_agent: 'Mozilla/5.0 Chrome/140.0',
     created_at: '2026-07-24T01:00:00Z', last_seen_at: '2026-07-24T02:00:00Z', expires_at: '2026-08-24T01:00:00Z',
     token_hash: 'secret', ip_hash: 'private'
   }, NOW);
-  assert.deepEqual(Object.keys(value), ['id', 'current', 'client', 'createdAt', 'lastSeenAt', 'expiresAt', 'risk']);
+  assert.deepEqual(Object.keys(value), ['id', 'current', 'client', 'createdAt', 'lastSeenAt', 'expiresAt', 'familiarDevice', 'risk']);
   assert.equal(value.current, true);
   assert.equal(value.client, 'Google Chrome');
+  assert.equal(value.familiarDevice, true);
   assert.equal(value.risk.level, 'trusted');
   assert.doesNotMatch(JSON.stringify(value), /secret|private/);
 });
 
-test('classifies dormant and aged sessions deterministically', () => {
-  assert.deepEqual(classifySessionRisk({ current_session: false, created_at: '2026-06-01T00:00:00Z', last_seen_at: '2026-06-20T00:00:00Z' }, NOW), {
-    level: 'high', reason: 'Inactive for 34 days', dormantDays: 34
+test('classifies unfamiliar, dormant and aged sessions deterministically', () => {
+  assert.deepEqual(classifySessionRisk({
+    current_session: true,
+    known_device: false,
+    created_at: '2026-07-23T00:00:00Z',
+    last_seen_at: '2026-07-24T00:00:00Z'
+  }, NOW), {
+    level: 'review', reason: 'New device or browser', dormantDays: 0, familiarDevice: false
   });
-  assert.equal(classifySessionRisk({ current_session: false, created_at: '2026-01-01T00:00:00Z', last_seen_at: '2026-07-20T00:00:00Z' }, NOW).level, 'review');
-  assert.equal(classifySessionRisk({ current_session: false, created_at: '2026-07-01T00:00:00Z', last_seen_at: '2026-07-23T00:00:00Z' }, NOW).level, 'normal');
+  assert.deepEqual(classifySessionRisk({
+    current_session: false,
+    known_device: true,
+    created_at: '2026-06-01T00:00:00Z',
+    last_seen_at: '2026-06-20T00:00:00Z'
+  }, NOW), {
+    level: 'high', reason: 'Inactive for 34 days', dormantDays: 34, familiarDevice: true
+  });
+  assert.equal(classifySessionRisk({ current_session: false, known_device: true, created_at: '2026-01-01T00:00:00Z', last_seen_at: '2026-07-20T00:00:00Z' }, NOW).level, 'review');
+  assert.equal(classifySessionRisk({ current_session: false, known_device: true, created_at: '2026-07-01T00:00:00Z', last_seen_at: '2026-07-23T00:00:00Z' }, NOW).level, 'normal');
 });
 
 test('account security schema is idempotent, extensible and replica safe', async () => {
@@ -38,11 +52,12 @@ test('account security schema is idempotent, extensible and replica safe', async
   assert.match(sql, /DROP CONSTRAINT IF EXISTS account_security_events_action_check/);
   assert.match(sql, /sessions\.revoked_stale/);
   assert.match(sql, /account_security_events_user_created_idx/);
+  assert.match(sql, /user_sessions_device_familiarity_idx/);
   assert.match(sql, /COMMIT;/);
   assert.doesNotMatch(sql, /workspace_id/);
 });
 
-test('registers protected list and revocation routes with scoped SQL', async () => {
+test('registers protected list and revocation routes with scoped device familiarity SQL', async () => {
   const routes = [];
   const queries = [];
   const postgres = {
@@ -72,11 +87,14 @@ test('registers protected list and revocation routes with scoped SQL', async () 
   const reply = { code() { return this; }, send(value) { return value; } };
   await list.options.preHandler(request, reply);
   const payload = await list.handler(request);
-  assert.deepEqual(payload.summary, { active: 0, needsReview: 0, highRisk: 0 });
+  assert.deepEqual(payload.summary, { active: 0, needsReview: 0, highRisk: 0, unfamiliarDevices: 0 });
   const sessionQuery = queries.find((entry) => entry.text.includes('ORDER BY current_session DESC'));
   assert.match(sessionQuery.text, /WHERE s\.user_id = \$1/);
   assert.match(sessionQuery.text, /digest\(s\.token_hash/);
-  assert.doesNotMatch(sessionQuery.text, /AS token_hash|ip_hash/);
+  assert.match(sessionQuery.text, /prior\.user_agent IS NOT DISTINCT FROM s\.user_agent/);
+  assert.match(sessionQuery.text, /prior\.ip_hash IS NOT DISTINCT FROM s\.ip_hash/);
+  assert.match(sessionQuery.text, /AS known_device/);
+  assert.doesNotMatch(sessionQuery.text, /AS token_hash|s\.ip_hash\s+AS/);
 });
 
 test('stale cleanup is user scoped, excludes current session and validates age', async () => {
