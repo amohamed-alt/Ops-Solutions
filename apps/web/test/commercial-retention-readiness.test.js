@@ -42,7 +42,8 @@ test('retention workspace provides explicit mapping validation matching and pagi
   assert.match(page, /Import history/);
   assert.match(proxy, /requireCustomerWorkspace/);
   assert.match(proxy, /ADMIN_ROLES/);
-  assert.match(proxy, /body: method === 'GET' \? undefined : await request\.text\(\)/);
+  assert.match(proxy, /customerHeaders\(request, hasBody/);
+  assert.match(proxy, /body: hasBody \? await request\.text\(\) : undefined/);
 });
 
 test('dashboard mounts a PDF snapshot action using the current report filters', async () => {
