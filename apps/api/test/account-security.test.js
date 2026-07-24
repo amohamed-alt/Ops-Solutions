@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 import { classifySessionRisk, ensureAccountSecuritySchema, registerAccountSecurityRoutes, serializeSession } from '../src/account-security.js';
@@ -126,7 +127,10 @@ test('registers protected list, trust and revocation routes with account-scoped 
   assert.match(trustQuery.text, /WHERE s\.user_id = \$1/);
   assert.match(trustQuery.text, /s\.token_hash = \$2/);
   assert.match(trustQuery.text, /ON CONFLICT \(user_id, fingerprint_hash\)/);
-  assert.deepEqual(trustQuery.values, ['11111111-1111-4111-8111-111111111111', 'b'.repeat(64)]);
+  assert.deepEqual(trustQuery.values, [
+    '11111111-1111-4111-8111-111111111111',
+    createHash('sha256').update('session-token').digest('hex')
+  ]);
   assert.ok(queries.some((entry) => entry.values.includes('device.trusted')));
 });
 
