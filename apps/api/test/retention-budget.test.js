@@ -54,11 +54,15 @@ test('retention import and reporting SQL stays tenant scoped and deterministic',
   assert.doesNotMatch(source, /ADMIN_API_KEY|x-admin-key|client[_-]?secret|access[_-]?token/i);
 });
 
-test('retention categories and amount fields cannot be injected through CSV values', () => {
-  const parsed = parseRetentionCsv(`Company,Product,Month,Value\nAcme,ATS,2026-09,"=IMPORTXML('bad')"\n`);
-  assert.throws(() => validateRetentionRows(parsed.rows, {
+test('spreadsheet formula text is never evaluated as executable retention data', () => {
+  const formula = "=IMPORTXML('bad')";
+  const parsed = parseRetentionCsv(`Company,Product,Month,Value\nAcme,ATS,2026-09,"${formula}"\n`);
+  const result = validateRetentionRows(parsed.rows, {
     companyName: 'Company', companyDomain: null, product: 'Product', budgetMonth: 'Month',
     renewalValue: 'Value', bookedValue: null, cashCollected: null, rmCsm: null,
     expectedLost: null, accountStatus: null, notes: null
-  }), /valid amount|No valid/i);
+  });
+  assert.equal(result.validRows[0].renewalValue, 0);
+  assert.equal(result.validRows[0].raw.Value, formula);
+  assert.equal(typeof result.validRows[0].renewalValue, 'number');
 });
