@@ -43,6 +43,21 @@ function boundedHistoryLimit(value) {
   return Number.isFinite(parsed) ? Math.max(1, Math.min(100, parsed)) : 30;
 }
 
+async function withDatabaseTransaction(postgres, callback) {
+  const client = await postgres.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 function serializeReadinessSnapshot(row) {
   return {
     id: row.id,
@@ -94,7 +109,7 @@ function registerReadinessOperationsRoutes(app, dependencies) {
     await schemaReady;
     const report = await evaluateAndPersistReadiness({
       postgres: dependencies.postgres,
-      withTransaction: dependencies.withTransaction,
+      withTransaction: (callback) => withDatabaseTransaction(dependencies.postgres, callback),
       workspaceId: workspace.id,
       options: { freshnessHours: request.body?.freshnessHours },
       triggerSource: 'admin_api'
