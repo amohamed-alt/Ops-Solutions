@@ -26,14 +26,19 @@ test('classifies dormant and aged sessions deterministically', () => {
   assert.equal(classifySessionRisk({ current_session: false, created_at: '2026-07-01T00:00:00Z', last_seen_at: '2026-07-23T00:00:00Z' }, NOW).level, 'normal');
 });
 
-test('account security schema is idempotent, extensible and user scoped', async () => {
+test('account security schema is idempotent, extensible and replica safe', async () => {
   let sql = '';
   await ensureAccountSecuritySchema({ async query(text) { sql = text; return { rows: [], rowCount: 0 }; } });
+  assert.match(sql, /BEGIN;/);
+  assert.match(sql, /pg_advisory_xact_lock/);
   assert.match(sql, /CREATE TABLE IF NOT EXISTS account_security_events/);
   assert.match(sql, /user_id UUID NOT NULL REFERENCES app_users/);
+  assert.match(sql, /pg_get_constraintdef/);
+  assert.match(sql, /POSITION\('sessions\.revoked_stale'/);
   assert.match(sql, /DROP CONSTRAINT IF EXISTS account_security_events_action_check/);
   assert.match(sql, /sessions\.revoked_stale/);
   assert.match(sql, /account_security_events_user_created_idx/);
+  assert.match(sql, /COMMIT;/);
   assert.doesNotMatch(sql, /workspace_id/);
 });
 
