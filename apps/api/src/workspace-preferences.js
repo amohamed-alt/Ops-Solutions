@@ -1,3 +1,5 @@
+import { registerPasswordRecoveryRoutes } from './password-recovery.js';
+
 const DEFAULTS = Object.freeze({
   currency: 'USD',
   timezone: 'UTC',
@@ -90,6 +92,8 @@ function serialize(row) {
 export function registerWorkspacePreferencesRoutes(app, { postgres, withTransaction, requireViewer, writeAudit }) {
   const schemaReady = ensureWorkspacePreferencesSchema(postgres);
   const basePath = '/api/v1/customer/workspaces/:workspaceId/preferences';
+
+  registerPasswordRecoveryRoutes(app, { postgres, withTransaction });
 
   app.get(basePath, { preHandler: requireViewer }, async (request) => {
     await schemaReady;
