@@ -5,6 +5,10 @@ import {
   registerBillingRoutes
 } from './billing.js';
 import { buildWorkspaceSlug, normalizeCompanyName, workspaceLimit } from './customer-workspaces.js';
+import {
+  ensureOperationalAlertSchema,
+  registerOperationalAlertRoutes
+} from './operational-alerts.js';
 import { buildRevenuePdfExport } from './pdf-export.js';
 import { buildRevenueReportingPack, normalizeReportingFilters } from './revenue-reporting.js';
 import {
@@ -255,12 +259,14 @@ export function registerCustomerReportExportRoutes(app, {
   app.addHook('onReady', async () => {
     await Promise.all([
       ensureBillingSchema(postgres),
-      ensureRetentionBudgetSchema(postgres)
+      ensureRetentionBudgetSchema(postgres),
+      ensureOperationalAlertSchema(postgres)
     ]);
   });
 
   registerBillingRoutes(app, { postgres, requireViewer, writeAudit });
   registerRetentionBudgetRoutes(app, { postgres, requireViewer, writeAudit });
+  registerOperationalAlertRoutes(app, { postgres, requireViewer, writeAudit });
 
   app.post(
     '/api/v1/customer/workspaces/:workspaceId/companies',
