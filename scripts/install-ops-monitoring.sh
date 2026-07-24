@@ -59,10 +59,15 @@ EOF
 
 write_timer backup '*-*-* 04:20:00' '15m'
 write_timer sla '*:07:00' '3m'
+write_timer readiness '*:22:00' '5m'
 write_timer integrity '*-*-* 05:10:00' '20m'
 
 systemctl daemon-reload
-systemctl enable --now ops-solutions-monitor-backup.timer ops-solutions-monitor-sla.timer ops-solutions-monitor-integrity.timer
+systemctl enable --now \
+  ops-solutions-monitor-backup.timer \
+  ops-solutions-monitor-sla.timer \
+  ops-solutions-monitor-readiness.timer \
+  ops-solutions-monitor-integrity.timer
 
 echo "Installed Ops Solutions monitoring timers"
 systemctl --no-pager list-timers 'ops-solutions-monitor-*' || true
