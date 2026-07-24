@@ -1,0 +1,17 @@
+import Link from 'next/link';
+
+import { PublicPolicyLayout } from '@/components/legal/PublicPolicyLayout';
+
+export const metadata = { title: 'Data Deletion · Ops Solutions', description: 'Verified account, workspace and HubSpot data deletion process.' };
+
+export default function DataDeletionPage() {
+  const sections = [
+    { id: 'request', title: 'Submit a verified request', content: <><p>Send the request from the email address associated with your Ops Solutions account to <a href="mailto:privacy@dashboardtalentera.tech?subject=Ops%20Solutions%20Data%20Deletion%20Request">privacy@dashboardtalentera.tech</a>. Include your workspace name and whether the request covers an individual account, a connected HubSpot workspace or both.</p><div className="legal-callout">Never include passwords, OAuth tokens, session cookies, API credentials or exported CRM data in the request.</div></> },
+    { id: 'authority', title: 'Authority and verification', content: <><p>Account deletion requests must be verified against the authenticated account. Workspace-wide deletion must be requested or approved by a workspace owner or another authorized customer representative.</p><p>For HubSpot contact, company or deal records controlled by a customer, the individual should normally contact that customer. Ops Solutions will assist the customer with a verified request.</p></> },
+    { id: 'scope', title: 'What deletion covers', content: <ul><li>Customer account profile, active sessions and workspace memberships where legally permitted.</li><li>Connected HubSpot credentials and synchronized workspace records.</li><li>Mappings, saved views, exports, report schedules, alert rules and retention budget imports.</li><li>Provider-neutral subscription configuration associated with the deleted workspace.</li></ul> },
+    { id: 'exceptions', title: 'Limited retention exceptions', content: <><p>Some records may be retained for a limited period where required for security, fraud prevention, financial records, legal claims or compliance. Immutable audit evidence may be minimized or pseudonymized rather than removed when retention is necessary.</p><p>Encrypted backups age out according to the backup rotation schedule and are not restored for normal product use after deletion.</p></> },
+    { id: 'timeline', title: 'Process and timeline', content: <ol><li>We acknowledge the request and verify identity and authority.</li><li>We clarify the scope and identify any legal retention requirement.</li><li>Active credentials are revoked and deletion is executed across production systems.</li><li>We confirm completion or explain any limited information that must remain temporarily.</li></ol> },
+    { id: 'disconnect', title: 'Disconnecting HubSpot', content: <><p>A workspace administrator can disconnect the HubSpot integration to stop future synchronization. Removing the app from HubSpot stops authorization at HubSpot. A separate verified deletion request is still recommended when historical synchronized data should also be removed from Ops Solutions.</p><p>See the <Link href="/privacy">Privacy Policy</Link> for the broader retention and processing framework.</p></> }
+  ];
+  return <PublicPolicyLayout eyebrow="Data deletion" title="Verified deletion without exposing sensitive credentials." summary="The process for deleting an account, a customer workspace and synchronized HubSpot data while preserving required security and legal records." sections={sections} />;
+}
