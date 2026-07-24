@@ -6,6 +6,8 @@ POSTGRES_SERVICE="${POSTGRES_SERVICE:-postgres}"
 BACKUP_ROOT="${BACKUP_ROOT:-/root/Ops-Solutions/backups/postgres}"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"
 LOCK_FILE="${LOCK_FILE:-/tmp/ops-solutions-postgres-backup.lock}"
+ROOT_DIR="${OPS_DEPLOY_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+RUNTIME_GATE_SCRIPT="${ROOT_DIR}/scripts/predeploy-runtime-gate.sh"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 HOSTNAME_SAFE="$(hostname | tr -cd '[:alnum:]._-')"
 PREFIX="ops-solutions-${HOSTNAME_SAFE:-host}-${TIMESTAMP}"
@@ -19,6 +21,7 @@ Usage: scripts/backup-postgres.sh [--backup-root PATH] [--retention-days DAYS] [
 
 Creates a PostgreSQL custom-format backup, verifies it with pg_restore, writes a SHA-256 checksum
 and JSON manifest, then removes expired backup sets. Production secrets are never printed.
+A fail-closed runtime configuration gate runs before PostgreSQL is accessed.
 EOF
 }
 
@@ -36,6 +39,9 @@ if ! [[ "$RETENTION_DAYS" =~ ^[0-9]+$ ]] || (( RETENTION_DAYS < 1 || RETENTION_D
   echo "RETENTION_DAYS must be an integer between 1 and 365." >&2
   exit 2
 fi
+
+[[ -f "$RUNTIME_GATE_SCRIPT" ]] || { echo "Runtime configuration gate not found." >&2; exit 1; }
+OPS_DEPLOY_PATH="$ROOT_DIR" bash "$RUNTIME_GATE_SCRIPT"
 
 command -v docker >/dev/null || { echo "docker is required." >&2; exit 1; }
 command -v sha256sum >/dev/null || { echo "sha256sum is required." >&2; exit 1; }
