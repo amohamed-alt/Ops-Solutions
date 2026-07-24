@@ -13,6 +13,7 @@ const OBJECT_ROUTES = [
 ] as const;
 
 const OPERATIONS_ROUTES = [
+  ['/settings/readiness', 'Production Readiness', '✓'],
   ['/dashboard/retention-budget', 'Retention Budget', 'R'],
   ['/settings/reports', 'Scheduled Reports', 'S'],
   ['/settings/alerts', 'Operational Alerts', '!'],
