@@ -25,8 +25,9 @@ test('alert proxy preserves same-origin workspace authorization and JSON content
   assert.match(proxy, /customerHeaders\(request, hasBody/);
   assert.match(proxy, /content-type/);
   assert.match(proxy, /AbortSignal\.timeout/);
-  assert.match(proxy, /method: 'PATCH'/);
-  assert.match(proxy, /method: 'DELETE'/);
+  assert.match(proxy, /export async function PATCH[\s\S]*forward\(request, context, 'PATCH'\)/);
+  assert.match(proxy, /export async function DELETE[\s\S]*forward\(request, context, 'DELETE'\)/);
+  assert.match(proxy, /method: 'GET' \| 'POST' \| 'PATCH' \| 'DELETE'/);
 });
 
 test('command center navigation exposes alert policy management', async () => {
