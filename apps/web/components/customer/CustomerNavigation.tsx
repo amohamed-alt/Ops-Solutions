@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { BarChart3, Building2, Clock3, FileSpreadsheet, Gauge, LogOut, Network, Palette, Settings, ShieldCheck, Waypoints } from 'lucide-react';
+import { BarChart3, Building2, Clock3, FileSpreadsheet, Gauge, LogOut, Network, Palette, Settings, ShieldAlert, ShieldCheck, Waypoints } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import styles from './CustomerNavigation.module.css';
@@ -84,6 +84,9 @@ export function CustomerNavigation() {
         </Link>
         <Link href="/settings/team" className={pathname.startsWith('/settings/team') ? styles.active : ''}>
           <Settings size={16} /> Team & security
+        </Link>
+        <Link href="/settings/security" className={pathname.startsWith('/settings/security') ? styles.active : ''}>
+          <ShieldAlert size={16} /> Account security
         </Link>
         <button type="button" onClick={logout} disabled={signingOut}>
           <LogOut size={16} /> {signingOut ? 'Signing out…' : 'Sign out'}
