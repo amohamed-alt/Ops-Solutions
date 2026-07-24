@@ -1,3 +1,4 @@
+import { registerAccountSecurityRoutes } from './account-security.js';
 import { registerPasswordRecoveryRoutes } from './password-recovery.js';
 
 const DEFAULTS = Object.freeze({
@@ -94,6 +95,7 @@ export function registerWorkspacePreferencesRoutes(app, { postgres, withTransact
   const basePath = '/api/v1/customer/workspaces/:workspaceId/preferences';
 
   registerPasswordRecoveryRoutes(app, { postgres, withTransaction });
+  registerAccountSecurityRoutes(app, { postgres });
 
   app.get(basePath, { preHandler: requireViewer }, async (request) => {
     await schemaReady;
