@@ -119,7 +119,7 @@ export async function enforceSessionCap(postgres, userId, maxActiveSessions, { d
     SELECT token_hash
     FROM user_sessions
     WHERE user_id = $1 AND expires_at > NOW()
-    ORDER BY last_seen_at DESC, created_at DESC, token_hash DESC
+    ORDER BY COALESCE(last_seen_at, created_at) DESC, created_at DESC, token_hash DESC
     OFFSET $2
   `, [id, cap]);
   if (dryRun || result.rowCount === 0) {
@@ -138,13 +138,14 @@ export async function enforceAllSessionCaps(postgres, input = {}) {
   if (options.dryRun) {
     const result = await postgres.query(`
       WITH ranked AS (
-        SELECT user_id,
+        SELECT s.user_id,
                ROW_NUMBER() OVER (
-                 PARTITION BY user_id
-                 ORDER BY last_seen_at DESC, created_at DESC, token_hash DESC
+                 PARTITION BY s.user_id
+                 ORDER BY COALESCE(s.last_seen_at, s.created_at) DESC, s.created_at DESC, s.token_hash DESC
                ) AS session_rank
-        FROM user_sessions
-        WHERE expires_at > NOW()
+        FROM user_sessions s
+        JOIN app_users u ON u.id = s.user_id
+        WHERE s.expires_at > NOW() AND u.status = 'active'
       ), overflow AS (
         SELECT user_id
         FROM ranked
@@ -171,7 +172,7 @@ export async function enforceAllSessionCaps(postgres, input = {}) {
              s.user_id,
              ROW_NUMBER() OVER (
                PARTITION BY s.user_id
-               ORDER BY s.last_seen_at DESC, s.created_at DESC, s.token_hash DESC
+               ORDER BY COALESCE(s.last_seen_at, s.created_at) DESC, s.created_at DESC, s.token_hash DESC
              ) AS session_rank
       FROM user_sessions s
       CROSS JOIN lock_acquired
