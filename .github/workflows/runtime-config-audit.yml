@@ -56,22 +56,34 @@ jobs:
           NODE
           chmod 600 /tmp/ops-runtime.env
 
-      - name: Audit configuration contract
+      - name: Generate secret-safe audit result
+        id: audit
+        continue-on-error: true
         run: |
-          set -Eeuo pipefail
-          node scripts/runtime-config-audit.mjs \
-            --env-file /tmp/ops-runtime.env \
-            --template-file .env.example \
-            --format text
-
-      - name: Verify secret-safe JSON output
-        run: |
-          set -Eeuo pipefail
+          set +e
           node scripts/runtime-config-audit.mjs \
             --env-file /tmp/ops-runtime.env \
             --template-file .env.example \
             --format json > /tmp/runtime-config-audit.json
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat /tmp/runtime-config-audit.json
+          exit "$code"
+
+      - name: Upload audit diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-config-audit-${{ github.run_id }}
+          path: /tmp/runtime-config-audit.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce healthy configuration contract
+        run: |
+          set -Eeuo pipefail
           node -e "const r=require('/tmp/runtime-config-audit.json'); if(r.status!=='healthy') process.exit(1); if(JSON.stringify(r).includes('synthetic-password')) process.exit(1)"
+          test "${{ steps.audit.outputs.exit_code }}" = "0"
 
       - name: Remove synthetic environment
         if: always()
