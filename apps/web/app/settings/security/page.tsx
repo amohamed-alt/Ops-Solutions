@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, KeyRound, Laptop, LoaderCircle, LogOut, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, KeyRound, Laptop, LoaderCircle, LogOut, RefreshCw, ShieldAlert, ShieldCheck, Smartphone } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import styles from './security.module.css';
 
+type SessionRisk = { level: 'trusted' | 'normal' | 'review' | 'high'; reason: string; dormantDays: number };
 type Session = {
   id: string;
   current: boolean;
@@ -13,6 +14,7 @@ type Session = {
   createdAt: string;
   lastSeenAt: string;
   expiresAt: string;
+  risk: SessionRisk;
 };
 
 type SecurityEvent = {
@@ -22,7 +24,11 @@ type SecurityEvent = {
   createdAt: string;
 };
 
-type SecurityPayload = { sessions: Session[]; events: SecurityEvent[] };
+type SecurityPayload = {
+  sessions: Session[];
+  summary: { active: number; needsReview: number; highRisk: number };
+  events: SecurityEvent[];
+};
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
@@ -32,11 +38,19 @@ function eventLabel(action: string) {
   const labels: Record<string, string> = {
     'session.revoked': 'A session was revoked',
     'sessions.revoked_others': 'Other sessions were revoked',
+    'sessions.revoked_stale': 'Dormant sessions were cleaned up',
     'password.reset_completed': 'Password was reset',
     'password.reset_requested': 'Password recovery was requested',
     'password.reset_delivery_failed': 'Password recovery email failed'
   };
   return labels[action] || action.replaceAll('.', ' ');
+}
+
+function riskLabel(risk: SessionRisk) {
+  if (risk.level === 'trusted') return 'Trusted';
+  if (risk.level === 'high') return 'High risk';
+  if (risk.level === 'review') return 'Review';
+  return 'Normal';
 }
 
 export default function AccountSecurityPage() {
@@ -64,7 +78,7 @@ export default function AccountSecurityPage() {
 
   const otherSessions = useMemo(() => data?.sessions.filter((session) => !session.current) ?? [], [data]);
 
-  async function revoke(action: 'revoke_session' | 'revoke_others', sessionId?: string) {
+  async function revoke(action: 'revoke_session' | 'revoke_others' | 'revoke_stale', sessionId?: string) {
     if (busy) return;
     setBusy(sessionId || action);
     setMessage('');
@@ -77,9 +91,9 @@ export default function AccountSecurityPage() {
       });
       const payload = response.status === 204 ? {} : await response.json();
       if (!response.ok) throw new Error(payload.message || 'Unable to revoke session.');
-      setMessage(action === 'revoke_others'
-        ? `${Number(payload.revokedCount || 0)} other session${Number(payload.revokedCount || 0) === 1 ? '' : 's'} revoked.`
-        : 'Session revoked successfully.');
+      if (action === 'revoke_session') setMessage('Session revoked successfully.');
+      else if (action === 'revoke_stale') setMessage(`${Number(payload.revokedCount || 0)} dormant session${Number(payload.revokedCount || 0) === 1 ? '' : 's'} cleaned up.`);
+      else setMessage(`${Number(payload.revokedCount || 0)} other session${Number(payload.revokedCount || 0) === 1 ? '' : 's'} revoked.`);
       await load();
     } catch (revokeError) {
       setError(revokeError instanceof Error ? revokeError.message : 'Unable to revoke session.');
@@ -93,7 +107,7 @@ export default function AccountSecurityPage() {
         <div>
           <span>ACCOUNT SECURITY</span>
           <h1>Sessions, devices and recovery activity</h1>
-          <p>Review where your account is signed in and revoke access you no longer recognize.</p>
+          <p>Review where your account is signed in, identify dormant access and revoke sessions you no longer trust.</p>
         </div>
         <button type="button" onClick={() => void load()} disabled={Boolean(busy)}>
           <RefreshCw className={busy === 'refresh' ? styles.spin : ''} size={17} /> Refresh
@@ -108,25 +122,30 @@ export default function AccountSecurityPage() {
       ) : (
         <>
           <section className={styles.summary}>
-            <article><ShieldCheck /><div><strong>{data.sessions.length}</strong><span>Active sessions</span></div></article>
-            <article><Laptop /><div><strong>{otherSessions.length}</strong><span>Other devices</span></div></article>
-            <article><KeyRound /><div><strong>{data.events.length}</strong><span>Recent security events</span></div></article>
+            <article><ShieldCheck /><div><strong>{data.summary.active}</strong><span>Active sessions</span></div></article>
+            <article><ShieldAlert /><div><strong>{data.summary.needsReview}</strong><span>Need review</span></div></article>
+            <article><AlertTriangle /><div><strong>{data.summary.highRisk}</strong><span>High-risk sessions</span></div></article>
           </section>
 
           <section className={styles.panel}>
             <div className={styles.panelTitle}>
-              <div><h2>Active sessions</h2><p>Your current browser is protected from individual revocation.</p></div>
-              <button type="button" className={styles.danger} disabled={!otherSessions.length || Boolean(busy)} onClick={() => void revoke('revoke_others')}>
-                <LogOut size={16} /> Revoke all other sessions
-              </button>
+              <div><h2>Active sessions</h2><p>Risk is based on inactivity and session age. Your current browser cannot be revoked here.</p></div>
+              <div>
+                <button type="button" disabled={!data.summary.highRisk || Boolean(busy)} onClick={() => void revoke('revoke_stale')}>
+                  <ShieldAlert size={16} /> Clean up 30+ day sessions
+                </button>
+                <button type="button" className={styles.danger} disabled={!otherSessions.length || Boolean(busy)} onClick={() => void revoke('revoke_others')}>
+                  <LogOut size={16} /> Revoke all other sessions
+                </button>
+              </div>
             </div>
             <div className={styles.sessions}>
               {data.sessions.map((session) => (
                 <article key={session.id} className={session.current ? styles.current : ''}>
                   <span className={styles.device}>{/mobile|android|ios/i.test(session.client) ? <Smartphone /> : <Laptop />}</span>
                   <div className={styles.sessionCopy}>
-                    <div><strong>{session.client}</strong>{session.current ? <em>Current session</em> : null}</div>
-                    <p>Last active {formatDate(session.lastSeenAt)}</p>
+                    <div><strong>{session.client}</strong>{session.current ? <em>Current session</em> : <em>{riskLabel(session.risk)}</em>}</div>
+                    <p>{session.risk.reason} · Last active {formatDate(session.lastSeenAt)}</p>
                     <small>Started {formatDate(session.createdAt)} · Expires {formatDate(session.expiresAt)}</small>
                   </div>
                   {!session.current ? (

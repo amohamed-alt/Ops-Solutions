@@ -42,6 +42,8 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'invalid_session_id', message: 'Session ID is invalid.' }, { status: 400 });
     }
     path += `/${encodeURIComponent(sessionId)}`;
+  } else if (action === 'revoke_stale') {
+    path += '/stale?days=30';
   } else if (action !== 'revoke_others') {
     return NextResponse.json({ error: 'invalid_security_action', message: 'Choose a supported session action.' }, { status: 400 });
   }

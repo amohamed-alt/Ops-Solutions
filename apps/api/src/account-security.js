@@ -2,6 +2,9 @@ import { hashValue } from './crypto.js';
 
 const SESSION_KEY_PATTERN = /^[0-9a-f]{64}$/i;
 const EVENT_LIMIT = 30;
+const DEFAULT_STALE_DAYS = 30;
+const MIN_STALE_DAYS = 7;
+const MAX_STALE_DAYS = 180;
 
 function sessionTokenFromRequest(request) {
   const value = request.headers['x-session-token'];
@@ -24,36 +27,78 @@ function clientLabel(userAgent) {
   return 'Web browser';
 }
 
-export function serializeSession(row) {
+function ageInDays(value, now) {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return Number.POSITIVE_INFINITY;
+  return Math.max(0, Math.floor((now.getTime() - timestamp) / 86_400_000));
+}
+
+export function classifySessionRisk(row, now = new Date()) {
+  if (row.current_session) return { level: 'trusted', reason: 'Current session', dormantDays: 0 };
+  const dormantDays = ageInDays(row.last_seen_at ?? row.created_at, now);
+  const ageDays = ageInDays(row.created_at, now);
+  if (dormantDays >= 30) return { level: 'high', reason: `Inactive for ${dormantDays} days`, dormantDays };
+  if (dormantDays >= 14 || ageDays >= 90) return {
+    level: 'review',
+    reason: dormantDays >= 14 ? `Inactive for ${dormantDays} days` : `Session is ${ageDays} days old`,
+    dormantDays
+  };
+  return { level: 'normal', reason: 'Recently active', dormantDays };
+}
+
+export function serializeSession(row, now = new Date()) {
+  const risk = classifySessionRisk(row, now);
   return {
     id: row.session_key,
     current: Boolean(row.current_session),
     client: clientLabel(row.user_agent),
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
-    expiresAt: row.expires_at
+    expiresAt: row.expires_at,
+    risk
   };
 }
 
 export async function ensureAccountSecuritySchema(postgres) {
   await postgres.query(`
+    BEGIN;
+    SELECT pg_advisory_xact_lock(hashtextextended('ops-solutions:account-security-schema', 0));
     CREATE TABLE IF NOT EXISTS account_security_events (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
       action TEXT NOT NULL,
       metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
       ip_hash CHAR(64),
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      CHECK (action IN (
-        'session.revoked',
-        'sessions.revoked_others',
-        'password.reset_completed',
-        'password.reset_requested',
-        'password.reset_delivery_failed'
-      ))
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    DO $$
+    DECLARE
+      current_definition TEXT;
+    BEGIN
+      SELECT pg_get_constraintdef(oid)
+        INTO current_definition
+      FROM pg_constraint
+      WHERE conrelid = 'account_security_events'::regclass
+        AND conname = 'account_security_events_action_check';
+
+      IF current_definition IS NULL OR POSITION('sessions.revoked_stale' IN current_definition) = 0 THEN
+        ALTER TABLE account_security_events
+          DROP CONSTRAINT IF EXISTS account_security_events_action_check;
+        ALTER TABLE account_security_events
+          ADD CONSTRAINT account_security_events_action_check CHECK (action IN (
+            'session.revoked',
+            'sessions.revoked_others',
+            'sessions.revoked_stale',
+            'password.reset_completed',
+            'password.reset_requested',
+            'password.reset_delivery_failed'
+          ));
+      END IF;
+    END
+    $$;
     CREATE INDEX IF NOT EXISTS account_security_events_user_created_idx
       ON account_security_events(user_id, created_at DESC);
+    COMMIT;
   `);
 }
 
@@ -63,6 +108,12 @@ async function writeSecurityEvent(postgres, request, userId, action, metadata = 
      VALUES ($1, $2, $3::jsonb, $4)`,
     [userId, action, JSON.stringify(metadata), request.ip ? hashValue(request.ip) : null]
   );
+}
+
+function staleDaysFromRequest(request) {
+  const parsed = Number.parseInt(String(request.query?.days ?? DEFAULT_STALE_DAYS), 10);
+  if (!Number.isInteger(parsed) || parsed < MIN_STALE_DAYS || parsed > MAX_STALE_DAYS) return null;
+  return parsed;
 }
 
 export function registerAccountSecurityRoutes(app, { postgres }) {
@@ -113,8 +164,14 @@ export function registerAccountSecurityRoutes(app, { postgres }) {
         [userId, EVENT_LIMIT]
       )
     ]);
+    const sessions = sessionsResult.rows.map((row) => serializeSession(row));
     return {
-      sessions: sessionsResult.rows.map(serializeSession),
+      sessions,
+      summary: {
+        active: sessions.length,
+        needsReview: sessions.filter((session) => ['review', 'high'].includes(session.risk.level)).length,
+        highRisk: sessions.filter((session) => session.risk.level === 'high').length
+      },
       events: eventsResult.rows.map((row) => ({
         id: row.id,
         action: row.action,
@@ -149,6 +206,30 @@ export function registerAccountSecurityRoutes(app, { postgres }) {
       lastSeenAt: result.rows[0].last_seen_at
     });
     return reply.code(204).send();
+  });
+
+  app.delete('/api/v1/customer/security/sessions/stale', { preHandler: requireAccountSession }, async (request, reply) => {
+    const staleDays = staleDaysFromRequest(request);
+    if (staleDays === null) {
+      return reply.code(400).send({
+        error: 'invalid_stale_days',
+        message: `Stale session age must be between ${MIN_STALE_DAYS} and ${MAX_STALE_DAYS} days.`
+      });
+    }
+    const { user_id: userId, tokenHash } = request.accountSecurity;
+    const result = await postgres.query(
+      `DELETE FROM user_sessions
+       WHERE user_id = $1
+         AND token_hash <> $2
+         AND COALESCE(last_seen_at, created_at) < NOW() - ($3::integer * INTERVAL '1 day')
+       RETURNING created_at, last_seen_at`,
+      [userId, tokenHash, staleDays]
+    );
+    await writeSecurityEvent(postgres, request, userId, 'sessions.revoked_stale', {
+      revokedCount: result.rowCount,
+      staleDays
+    });
+    return { revokedCount: result.rowCount, staleDays };
   });
 
   app.delete('/api/v1/customer/security/sessions', { preHandler: requireAccountSession }, async (request) => {
