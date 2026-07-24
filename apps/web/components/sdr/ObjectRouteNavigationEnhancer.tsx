@@ -15,6 +15,7 @@ const OBJECT_ROUTES = [
 const OPERATIONS_ROUTES = [
   ['/dashboard/retention-budget', 'Retention Budget', 'R'],
   ['/settings/reports', 'Scheduled Reports', 'S'],
+  ['/settings/alerts', 'Operational Alerts', '!'],
   ['/settings/billing', 'Plans & Usage', '$']
 ] as const;
 
