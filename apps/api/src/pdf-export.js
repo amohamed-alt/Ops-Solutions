@@ -1,5 +1,3 @@
-import { buildRevenueCsvExport } from './report-exports.js';
-
 const MAX_PDF_BYTES = 5 * 1024 * 1024;
 const PAGE_WIDTH = 612;
 const PAGE_HEIGHT = 792;
@@ -69,25 +67,21 @@ function wrapText(value, max = MAX_LINE_CHARACTERS) {
   const lines = [];
   let current = '';
   for (const word of words) {
-    if (!current) {
-      current = word.slice(0, max);
-      if (word.length > max) lines.push(current);
-    } else if (`${current} ${word}`.length <= max) {
-      current += ` ${word}`;
-    } else {
+    const clipped = word.slice(0, max);
+    if (!current) current = clipped;
+    else if (`${current} ${clipped}`.length <= max) current += ` ${clipped}`;
+    else {
       lines.push(current);
-      current = word.slice(0, max);
+      current = clipped;
     }
   }
-  if (current && lines.at(-1) !== current) lines.push(current);
+  if (current) lines.push(current);
   return lines;
 }
 
 function reportLines(csv) {
-  const rows = parseCsv(csv);
   const lines = [];
-  for (let index = 0; index < rows.length; index += 1) {
-    const row = rows[index];
+  for (const [index, row] of parseCsv(csv).entries()) {
     const first = ascii(row[0]);
     if (index === 0) {
       lines.push({ text: first || 'Ops Intelligence Executive Report', style: 'title' });
@@ -136,15 +130,10 @@ function pageStream(lines, pageNumber, pageCount) {
     const title = line.style === 'title';
     const section = line.style === 'section';
     const size = title ? 18 : section ? 12 : 9;
-    if (section) {
-      commands.push('0.86 0.94 0.92 rg', `${MARGIN - 6} ${y - 5} ${PAGE_WIDTH - MARGIN * 2 + 12} 20 re f`);
-    }
-    commands.push('BT');
-    commands.push(`/${title || section ? 'F2' : 'F1'} ${size} Tf`);
+    if (section) commands.push('0.86 0.94 0.92 rg', `${MARGIN - 6} ${y - 5} ${PAGE_WIDTH - MARGIN * 2 + 12} 20 re f`);
+    commands.push('BT', `/${title || section ? 'F2' : 'F1'} ${size} Tf`);
     commands.push(section ? '0.05 0.35 0.32 rg' : title ? '0.03 0.27 0.25 rg' : '0.12 0.22 0.22 rg');
-    commands.push(`${MARGIN} ${y} Td`);
-    commands.push(`(${pdfEscape(line.text)}) Tj`);
-    commands.push('ET');
+    commands.push(`${MARGIN} ${y} Td`, `(${pdfEscape(line.text)}) Tj`, 'ET');
     y -= title ? 28 : section ? 24 : LINE_HEIGHT;
   }
   commands.push('BT', '/F1 8 Tf', '0.35 0.45 0.45 rg', `${MARGIN} 24 Td`, `(Ops Intelligence - Page ${pageNumber} of ${pageCount}) Tj`, 'ET');
@@ -169,7 +158,6 @@ function buildPdfBuffer(pages) {
     objects.push(`<< /Length ${Buffer.byteLength(stream, 'binary')} >>\nstream\n${stream}\nendstream`);
   }
   objects[2] = `<< /Type /Pages /Count ${pageIds.length} /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] >>`;
-
   let output = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
   const offsets = [0];
   for (let id = 1; id < objects.length; id += 1) {
@@ -195,11 +183,11 @@ export function buildRevenuePdf(csv) {
 }
 
 export async function buildRevenuePdfExport(postgres, workspace, query) {
+  const { buildRevenueCsvExport } = await import('./report-exports.js');
   const source = await buildRevenueCsvExport(postgres, workspace, query);
-  const artifact = buildRevenuePdf(source.csv);
   return {
     ...source,
-    artifact,
+    artifact: buildRevenuePdf(source.csv),
     contentType: 'application/pdf',
     fileName: source.fileName.replace(/\.csv$/i, '.pdf')
   };
