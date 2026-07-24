@@ -55,7 +55,8 @@ test('registers protected list and revocation routes with scoped SQL', async () 
   await list.handler(request);
   const sessionQuery = queries.find((entry) => entry.text.includes('ORDER BY current_session DESC'));
   assert.match(sessionQuery.text, /WHERE s\.user_id = \$1/);
-  assert.doesNotMatch(sessionQuery.text, /SELECT .*token_hash.*user_agent/s);
+  assert.match(sessionQuery.text, /digest\(s\.token_hash/);
+  assert.doesNotMatch(sessionQuery.text, /AS token_hash|ip_hash/);
 });
 
 test('individual revocation cannot remove the current session', async () => {
