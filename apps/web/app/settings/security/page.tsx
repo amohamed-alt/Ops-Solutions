@@ -6,7 +6,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import styles from './security.module.css';
 
-type SessionRisk = { level: 'trusted' | 'normal' | 'review' | 'high'; reason: string; dormantDays: number };
+type SessionRisk = {
+  level: 'trusted' | 'normal' | 'review' | 'high';
+  reason: string;
+  dormantDays: number;
+  familiarDevice: boolean;
+  explicitlyTrusted: boolean;
+};
 type Session = {
   id: string;
   current: boolean;
@@ -14,6 +20,8 @@ type Session = {
   createdAt: string;
   lastSeenAt: string;
   expiresAt: string;
+  familiarDevice: boolean;
+  explicitlyTrusted: boolean;
   risk: SessionRisk;
 };
 
@@ -26,7 +34,7 @@ type SecurityEvent = {
 
 type SecurityPayload = {
   sessions: Session[];
-  summary: { active: number; needsReview: number; highRisk: number };
+  summary: { active: number; needsReview: number; highRisk: number; unfamiliarDevices: number; trustedDevices: number };
   events: SecurityEvent[];
 };
 
@@ -39,6 +47,7 @@ function eventLabel(action: string) {
     'session.revoked': 'A session was revoked',
     'sessions.revoked_others': 'Other sessions were revoked',
     'sessions.revoked_stale': 'Dormant sessions were cleaned up',
+    'device.trusted': 'A device was marked as trusted',
     'password.reset_completed': 'Password was reset',
     'password.reset_requested': 'Password recovery was requested',
     'password.reset_delivery_failed': 'Password recovery email failed'
@@ -77,6 +86,27 @@ export default function AccountSecurityPage() {
   useEffect(() => { void load(); }, [load]);
 
   const otherSessions = useMemo(() => data?.sessions.filter((session) => !session.current) ?? [], [data]);
+
+  async function trustCurrentDevice() {
+    if (busy) return;
+    setBusy('trust-current');
+    setMessage('');
+    setError('');
+    try {
+      const response = await fetch('/api/customer/security', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'trust_current_device' })
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || 'Unable to trust this device.');
+      setMessage('This device is now trusted for future sign-ins.');
+      await load();
+    } catch (trustError) {
+      setError(trustError instanceof Error ? trustError.message : 'Unable to trust this device.');
+      setBusy('');
+    }
+  }
 
   async function revoke(action: 'revoke_session' | 'revoke_others' | 'revoke_stale', sessionId?: string) {
     if (busy) return;
@@ -129,7 +159,7 @@ export default function AccountSecurityPage() {
 
           <section className={styles.panel}>
             <div className={styles.panelTitle}>
-              <div><h2>Active sessions</h2><p>Risk is based on inactivity and session age. Your current browser cannot be revoked here.</p></div>
+              <div><h2>Active sessions</h2><p>Risk combines device familiarity, inactivity and session age. Your current browser cannot be revoked here.</p></div>
               <div>
                 <button type="button" disabled={!data.summary.highRisk || Boolean(busy)} onClick={() => void revoke('revoke_stale')}>
                   <ShieldAlert size={16} /> Clean up 30+ day sessions
@@ -148,7 +178,11 @@ export default function AccountSecurityPage() {
                     <p>{session.risk.reason} · Last active {formatDate(session.lastSeenAt)}</p>
                     <small>Started {formatDate(session.createdAt)} · Expires {formatDate(session.expiresAt)}</small>
                   </div>
-                  {!session.current ? (
+                  {session.current && !session.explicitlyTrusted ? (
+                    <button type="button" disabled={Boolean(busy)} onClick={() => void trustCurrentDevice()}>
+                      {busy === 'trust-current' ? <LoaderCircle className={styles.spin} size={16} /> : <ShieldCheck size={16} />} Trust this device
+                    </button>
+                  ) : !session.current ? (
                     <button type="button" disabled={Boolean(busy)} onClick={() => void revoke('revoke_session', session.id)}>
                       {busy === session.id ? <LoaderCircle className={styles.spin} size={16} /> : <LogOut size={16} />} Revoke
                     </button>
