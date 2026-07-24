@@ -1,5 +1,8 @@
+import { assertBillingQuota, recordBillingUsage, registerBillingRoutes } from './billing.js';
 import { buildWorkspaceSlug, normalizeCompanyName, workspaceLimit } from './customer-workspaces.js';
+import { buildRevenuePdfExport } from './pdf-export.js';
 import { buildRevenueReportingPack, normalizeReportingFilters } from './revenue-reporting.js';
+import { registerRetentionBudgetRoutes } from './retention-budget.js';
 import {
   formatReportCurrency,
   formatReportDateTime,
@@ -191,6 +194,15 @@ function sendCsv(reply, result) {
     .send(result.csv);
 }
 
+function sendPdf(reply, result) {
+  return reply
+    .header('content-type', 'application/pdf')
+    .header('content-disposition', `attachment; filename="${result.fileName}"`)
+    .header('cache-control', 'private, no-store, max-age=0')
+    .header('x-content-type-options', 'nosniff')
+    .send(result.artifact);
+}
+
 export async function enforceCustomerRateLimit(redis, workspaceId, userId, now = Date.now()) {
   const bucket = Math.floor(now / 60_000);
   const key = `rate:revenue-export:${workspaceId}:${userId}:${bucket}`;
@@ -219,6 +231,10 @@ export function registerReportExportRoutes(app, { postgres, requireAdmin, requir
     const workspace = await requireWorkspace(request.params.workspaceId);
     return sendCsv(reply, await buildRevenueCsvExport(postgres, workspace, request.query));
   });
+  app.get('/api/v1/workspaces/:workspaceId/analytics/revenue/export.pdf', { preHandler: requireAdmin }, async (request, reply) => {
+    const workspace = await requireWorkspace(request.params.workspaceId);
+    return sendPdf(reply, await buildRevenuePdfExport(postgres, workspace, request.query));
+  });
 }
 
 export function registerCustomerReportExportRoutes(app, {
@@ -228,6 +244,9 @@ export function registerCustomerReportExportRoutes(app, {
   requireWorkspace,
   writeAudit
 }) {
+  registerBillingRoutes(app, { postgres, requireViewer, writeAudit });
+  registerRetentionBudgetRoutes(app, { postgres, requireViewer, writeAudit });
+
   app.post(
     '/api/v1/customer/workspaces/:workspaceId/companies',
     { preHandler: requireViewer },
@@ -301,36 +320,43 @@ export function registerCustomerReportExportRoutes(app, {
     }
   );
 
+  async function customerExport(request, reply, format) {
+    const workspace = await requireWorkspace(request.params.workspaceId);
+    await assertBillingQuota(postgres, workspace.id, 'monthlyExports', 1);
+    const rateLimit = await enforceCustomerRateLimit(redis, workspace.id, request.customer.user.id);
+    const result = format === 'pdf'
+      ? await buildRevenuePdfExport(postgres, workspace, request.query)
+      : await buildRevenueCsvExport(postgres, workspace, request.query);
+    await recordBillingUsage(postgres, workspace.id, 'monthly_exports', 1);
+    await writeAudit(request, {
+      workspaceId: workspace.id,
+      actorUserId: request.customer.user.id,
+      action: 'report.exported',
+      targetType: 'revenue_report',
+      metadata: {
+        format,
+        from: result.report.filters.from,
+        to: result.report.filters.to,
+        viewName: result.viewName,
+        currency: result.preferences.currency,
+        timezone: result.preferences.timezone,
+        locale: result.preferences.locale
+      }
+    });
+    reply
+      .header('x-rate-limit-limit', String(rateLimit.limit))
+      .header('x-rate-limit-remaining', String(rateLimit.remaining));
+    return format === 'pdf' ? sendPdf(reply, result) : sendCsv(reply, result);
+  }
+
   app.get(
     '/api/v1/customer/workspaces/:workspaceId/exports/revenue.csv',
     { preHandler: requireViewer },
-    async (request, reply) => {
-      const workspace = await requireWorkspace(request.params.workspaceId);
-      const rateLimit = await enforceCustomerRateLimit(
-        redis,
-        workspace.id,
-        request.customer.user.id
-      );
-      const result = await buildRevenueCsvExport(postgres, workspace, request.query);
-      await writeAudit(request, {
-        workspaceId: workspace.id,
-        actorUserId: request.customer.user.id,
-        action: 'report.exported',
-        targetType: 'revenue_report',
-        metadata: {
-          format: 'csv',
-          from: result.report.filters.from,
-          to: result.report.filters.to,
-          viewName: result.viewName,
-          currency: result.preferences.currency,
-          timezone: result.preferences.timezone,
-          locale: result.preferences.locale
-        }
-      });
-      reply
-        .header('x-rate-limit-limit', String(rateLimit.limit))
-        .header('x-rate-limit-remaining', String(rateLimit.remaining));
-      return sendCsv(reply, result);
-    }
+    (request, reply) => customerExport(request, reply, 'csv')
+  );
+  app.get(
+    '/api/v1/customer/workspaces/:workspaceId/exports/revenue.pdf',
+    { preHandler: requireViewer },
+    (request, reply) => customerExport(request, reply, 'pdf')
   );
 }
