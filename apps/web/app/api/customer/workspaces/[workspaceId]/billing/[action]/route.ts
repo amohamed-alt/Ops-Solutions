@@ -20,10 +20,11 @@ async function forward(request: NextRequest, context: { params: Promise<{ worksp
     return NextResponse.json({ error: 'workspace_role_required', message: 'Admin or owner access is required.' }, { status: 403 });
   }
   try {
+    const hasBody = action === 'subscription';
     const response = await fetch(`${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/billing/${operation.target}`, {
       method: operation.method,
-      headers: customerHeaders(request),
-      body: action === 'subscription' ? await request.text() : undefined,
+      headers: customerHeaders(request, hasBody ? { 'content-type': request.headers.get('content-type') || 'application/json' } : {}),
+      body: hasBody ? await request.text() : undefined,
       cache: 'no-store',
       signal: AbortSignal.timeout(20_000)
     });
