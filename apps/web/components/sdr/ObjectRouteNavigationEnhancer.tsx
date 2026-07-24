@@ -29,6 +29,12 @@ export function ObjectRouteNavigationEnhancer() {
       heading.textContent = 'OBJECT DASHBOARDS';
       group.append(heading);
 
+      const allObjects = document.createElement('a');
+      allObjects.href = '/dashboard/all-objects';
+      allObjects.className = 'object-route-nav-link object-route-nav-all';
+      allObjects.innerHTML = '<span aria-hidden="true">∞</span><b>All CRM Objects</b><i aria-hidden="true">›</i>';
+      group.append(allObjects);
+
       for (const [type, label] of OBJECT_ROUTES) {
         const link = document.createElement('a');
         link.href = `/dashboard/objects/${type}`;
