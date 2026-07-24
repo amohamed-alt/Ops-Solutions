@@ -45,11 +45,15 @@ test('creates an idempotent tenant-owned preferences schema', async () => {
   assert.match(queries[0], /CHECK \(appearance IN/);
 });
 
-test('registers viewer reads and server-enforced admin writes', async () => {
+test('registers public password recovery plus viewer reads and server-enforced admin writes', async () => {
   const routes = [];
   const app = {
     get(path, options, handler) { routes.push({ method: 'GET', path, options, handler }); },
-    put(path, options, handler) { routes.push({ method: 'PUT', path, options, handler }); }
+    put(path, options, handler) { routes.push({ method: 'PUT', path, options, handler }); },
+    post(path, options, handler) {
+      if (typeof options === 'function') routes.push({ method: 'POST', path, options: null, handler: options });
+      else routes.push({ method: 'POST', path, options, handler });
+    }
   };
   const requireViewer = [() => undefined, () => undefined];
   const postgres = { async query() { return { rowCount: 1, rows: [{ workspace_id: 'w', name: 'Acme', slug: 'acme' }] }; } };
@@ -60,10 +64,13 @@ test('registers viewer reads and server-enforced admin writes', async () => {
     writeAudit: async () => undefined
   });
   assert.deepEqual(routes.map((route) => `${route.method} ${route.path}`), [
+    'POST /api/v1/auth/password/forgot',
+    'POST /api/v1/auth/password/reset',
     'GET /api/v1/customer/workspaces/:workspaceId/preferences',
     'PUT /api/v1/customer/workspaces/:workspaceId/preferences'
   ]);
-  assert.ok(routes.every((route) => route.options.preHandler === requireViewer));
+  const protectedRoutes = routes.filter((route) => route.path.includes('/customer/workspaces/'));
+  assert.ok(protectedRoutes.every((route) => route.options.preHandler === requireViewer));
   const put = routes.find((route) => route.method === 'PUT');
   const reply = { status: 200, code(value) { this.status = value; return this; }, send(payload) { this.payload = payload; return payload; } };
   await put.handler({ workspaceMembership: { role: 'viewer' }, params: { workspaceId: 'w' } }, reply);
