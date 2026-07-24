@@ -60,18 +60,19 @@ test('session cap deletes only deterministic overflow hashes for the selected us
   const postgres = {
     async query(text, values) {
       queries.push({ text, values });
-      if (text.includes('ORDER BY last_seen_at')) return { rowCount: 2, rows: [{ token_hash: 'a'.repeat(64) }, { token_hash: 'b'.repeat(64) }] };
+      if (text.includes('ORDER BY COALESCE')) return { rowCount: 2, rows: [{ token_hash: 'a'.repeat(64) }, { token_hash: 'b'.repeat(64) }] };
       return { rowCount: 2, rows: [] };
     }
   };
   const result = await enforceSessionCap(postgres, USER_ID, 2, { dryRun: false });
   assert.equal(result.revoked, 2);
+  assert.match(queries[0].text, /COALESCE\(last_seen_at, created_at\) DESC/);
   assert.match(queries[0].text, /token_hash DESC/);
   assert.match(queries[1].text, /user_id = \$1 AND token_hash = ANY/);
   assert.equal(queries[1].values[0], USER_ID);
 });
 
-test('fleet cap dry-run returns aggregate candidates without exposing session hashes', async () => {
+test('fleet cap dry-run matches apply eligibility and does not expose session hashes', async () => {
   let captured;
   const postgres = {
     async query(text, values) {
@@ -82,6 +83,9 @@ test('fleet cap dry-run returns aggregate candidates without exposing session ha
   const result = await enforceAllSessionCaps(postgres, { maxActiveSessions: 5, dryRun: true });
   assert.deepEqual(result, { dryRun: true, cap: 5, candidateSessions: 12, affectedUsers: 4, revoked: 0 });
   assert.match(captured.text, /ROW_NUMBER\(\) OVER/);
+  assert.match(captured.text, /JOIN app_users u ON u\.id = s\.user_id/);
+  assert.match(captured.text, /u\.status = 'active'/);
+  assert.match(captured.text, /COALESCE\(s\.last_seen_at, s\.created_at\) DESC/);
   assert.doesNotMatch(JSON.stringify(result), /token_hash/);
 });
 
@@ -97,6 +101,7 @@ test('fleet cap apply is bounded, replica-safe and deletes only ranked overflow 
   assert.deepEqual(result, { dryRun: false, cap: 4, batchLimit: 25, revoked: 9, affectedUsers: 3 });
   assert.match(captured.text, /pg_advisory_xact_lock/);
   assert.match(captured.text, /u\.status = 'active'/);
+  assert.match(captured.text, /COALESCE\(s\.last_seen_at, s\.created_at\) DESC/);
   assert.match(captured.text, /LIMIT \$2/);
   assert.match(captured.text, /DELETE FROM user_sessions/);
   assert.deepEqual(captured.values, [4, 25]);
