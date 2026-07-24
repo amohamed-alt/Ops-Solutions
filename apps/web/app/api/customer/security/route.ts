@@ -28,6 +28,34 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export async function POST(request: NextRequest) {
+  const context = await getCustomerContext(request);
+  if (!context) return NextResponse.json({ error: 'session_required', message: 'Sign in to continue.' }, { status: 401 });
+
+  const body = await request.json().catch(() => ({}));
+  if (String(body.action ?? '').trim() !== 'trust_current_device') {
+    return NextResponse.json({ error: 'invalid_security_action', message: 'Choose a supported device action.' }, { status: 400 });
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/api/v1/customer/security/devices/trust-current`, {
+      method: 'POST',
+      headers: customerHeaders(request),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(12_000)
+    });
+    return NextResponse.json(await readJson(response), {
+      status: response.status,
+      headers: { 'cache-control': 'no-store, max-age=0' }
+    });
+  } catch (error) {
+    return NextResponse.json({
+      error: 'device_trust_failed',
+      message: error instanceof Error ? error.message : 'Unable to trust the current device.'
+    }, { status: 503 });
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   const context = await getCustomerContext(request);
   if (!context) return NextResponse.json({ error: 'session_required', message: 'Sign in to continue.' }, { status: 401 });
