@@ -1,6 +1,7 @@
 import { DashboardProductShell } from '@/components/sdr/DashboardProductShell';
 import { ObjectIntelligenceWorkspace } from '@/components/sdr/ObjectIntelligenceWorkspace';
 import { ObjectRouteNavigationEnhancer } from '@/components/sdr/ObjectRouteNavigationEnhancer';
+import { PdfSnapshotAction } from '@/components/sdr/PdfSnapshotAction';
 import '@/components/sdr/dashboard-layout-fix.css';
 import '@/components/sdr/dashboard-saas-refresh.css';
 import '@/components/sdr/object-route-navigation.css';
@@ -19,6 +20,7 @@ export default function DashboardPage() {
       <DashboardProductShell />
       <ObjectIntelligenceWorkspace />
       <ObjectRouteNavigationEnhancer />
+      <PdfSnapshotAction />
     </>
   );
 }

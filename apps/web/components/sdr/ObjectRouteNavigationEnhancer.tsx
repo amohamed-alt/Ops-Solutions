@@ -12,6 +12,20 @@ const OBJECT_ROUTES = [
   ['tickets', 'Tickets']
 ] as const;
 
+const OPERATIONS_ROUTES = [
+  ['/dashboard/retention-budget', 'Retention Budget', 'R'],
+  ['/settings/reports', 'Scheduled Reports', 'S'],
+  ['/settings/billing', 'Plans & Usage', '$']
+] as const;
+
+function navLink(href: string, label: string, glyph: string, className = 'object-route-nav-link') {
+  const link = document.createElement('a');
+  link.href = href;
+  link.className = className;
+  link.innerHTML = `<span aria-hidden="true">${glyph}</span><b>${label}</b><i aria-hidden="true">›</i>`;
+  return link;
+}
+
 export function ObjectRouteNavigationEnhancer() {
   useEffect(() => {
     let createdGroup: HTMLElement | null = null;
@@ -24,24 +38,21 @@ export function ObjectRouteNavigationEnhancer() {
       group.className = 'object-route-nav-group';
       group.dataset.objectRouteGroup = 'true';
 
-      const heading = document.createElement('span');
-      heading.className = 'object-route-nav-heading';
-      heading.textContent = 'OBJECT DASHBOARDS';
-      group.append(heading);
-
-      const allObjects = document.createElement('a');
-      allObjects.href = '/dashboard/all-objects';
-      allObjects.className = 'object-route-nav-link object-route-nav-all';
-      allObjects.innerHTML = '<span aria-hidden="true">∞</span><b>All CRM Objects</b><i aria-hidden="true">›</i>';
-      group.append(allObjects);
+      const objectHeading = document.createElement('span');
+      objectHeading.className = 'object-route-nav-heading';
+      objectHeading.textContent = 'OBJECT DASHBOARDS';
+      group.append(objectHeading);
+      group.append(navLink('/dashboard/all-objects', 'All CRM Objects', '∞', 'object-route-nav-link object-route-nav-all'));
 
       for (const [type, label] of OBJECT_ROUTES) {
-        const link = document.createElement('a');
-        link.href = `/dashboard/objects/${type}`;
-        link.className = 'object-route-nav-link';
-        link.innerHTML = `<span aria-hidden="true">${label.charAt(0)}</span><b>${label}</b><i aria-hidden="true">›</i>`;
-        group.append(link);
+        group.append(navLink(`/dashboard/objects/${type}`, label, label.charAt(0)));
       }
+
+      const operationsHeading = document.createElement('span');
+      operationsHeading.className = 'object-route-nav-heading';
+      operationsHeading.textContent = 'OPERATIONS';
+      group.append(operationsHeading);
+      for (const [href, label, glyph] of OPERATIONS_ROUTES) group.append(navLink(href, label, glyph));
 
       nav.append(group);
       createdGroup = group;

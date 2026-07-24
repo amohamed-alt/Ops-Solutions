@@ -112,15 +112,16 @@ test('enforces a Redis-backed per-user and workspace export limit', async () => 
   );
 });
 
-test('registers admin, customer export and self-service workspace routes', () => {
+test('registers export, billing, retention and self-service workspace routes', () => {
   const routes = [];
+  const hooks = [];
+  const add = (method) => (path, options, handler) => routes.push({ method, path, options, handler });
   const app = {
-    get(path, options, handler) {
-      routes.push({ method: 'GET', path, options, handler });
-    },
-    post(path, options, handler) {
-      routes.push({ method: 'POST', path, options, handler });
-    }
+    get: add('GET'),
+    post: add('POST'),
+    patch: add('PATCH'),
+    delete: add('DELETE'),
+    addHook(name, handler) { hooks.push({ name, handler }); }
   };
   const requireAdmin = () => undefined;
   const requireViewer = [() => undefined, () => undefined];
@@ -135,12 +136,20 @@ test('registers admin, customer export and self-service workspace routes', () =>
     requireViewer,
     writeAudit: async () => undefined
   });
-  assert.deepEqual(routes.map((route) => `${route.method} ${route.path}`), [
+  const registered = new Set(routes.map((route) => `${route.method} ${route.path}`));
+  for (const expected of [
     'GET /api/v1/workspaces/:workspaceId/analytics/revenue/export.csv',
+    'GET /api/v1/workspaces/:workspaceId/analytics/revenue/export.pdf',
     'POST /api/v1/customer/workspaces/:workspaceId/companies',
-    'GET /api/v1/customer/workspaces/:workspaceId/exports/revenue.csv'
-  ]);
-  assert.equal(routes[0].options.preHandler, requireAdmin);
-  assert.equal(routes[1].options.preHandler, requireViewer);
-  assert.equal(routes[2].options.preHandler, requireViewer);
+    'GET /api/v1/customer/workspaces/:workspaceId/exports/revenue.csv',
+    'GET /api/v1/customer/workspaces/:workspaceId/exports/revenue.pdf',
+    'GET /api/v1/customer/workspaces/:workspaceId/billing',
+    'GET /api/v1/customer/workspaces/:workspaceId/retention-budget/report',
+    'POST /api/v1/customer/workspaces/:workspaceId/retention-budget/imports'
+  ]) {
+    assert.ok(registered.has(expected), `Missing route: ${expected}`);
+  }
+  assert.equal(hooks.filter((hook) => hook.name === 'onReady').length, 1);
+  assert.equal(routes.find((route) => route.path.endsWith('export.csv'))?.options.preHandler, requireAdmin);
+  assert.equal(routes.find((route) => route.path.endsWith('exports/revenue.pdf'))?.options.preHandler, requireViewer);
 });

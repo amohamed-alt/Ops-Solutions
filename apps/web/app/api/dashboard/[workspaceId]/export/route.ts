@@ -13,7 +13,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   try {
     const incoming = new URL(request.url);
-    const target = new URL(`${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/exports/revenue.csv`);
+    const format = incoming.searchParams.get('format') === 'pdf' ? 'pdf' : 'csv';
+    const target = new URL(`${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/exports/revenue.${format}`);
     for (const [key, value] of incoming.searchParams.entries()) {
       if (ALLOWED_FILTERS.has(key)) target.searchParams.set(key, value);
     }
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const response = await fetch(target, {
       headers: customerHeaders(request),
       cache: 'no-store',
-      signal: AbortSignal.timeout(60_000)
+      signal: AbortSignal.timeout(format === 'pdf' ? 90_000 : 60_000)
     });
 
     if (!response.ok) {
@@ -32,12 +33,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       return NextResponse.json(payload, { status: response.status });
     }
 
-    const csv = await response.arrayBuffer();
-    return new NextResponse(csv, {
+    const artifact = await response.arrayBuffer();
+    const defaultType = format === 'pdf' ? 'application/pdf' : 'text/csv; charset=utf-8';
+    const defaultFile = format === 'pdf' ? 'revenue-report.pdf' : 'revenue-report.csv';
+    return new NextResponse(artifact, {
       status: 200,
       headers: {
-        'content-type': response.headers.get('content-type') || 'text/csv; charset=utf-8',
-        'content-disposition': response.headers.get('content-disposition') || 'attachment; filename="revenue-report.csv"',
+        'content-type': response.headers.get('content-type') || defaultType,
+        'content-disposition': response.headers.get('content-disposition') || `attachment; filename="${defaultFile}"`,
         'cache-control': 'private, no-store, max-age=0',
         'x-content-type-options': 'nosniff',
         'x-rate-limit-limit': response.headers.get('x-rate-limit-limit') || '5',
