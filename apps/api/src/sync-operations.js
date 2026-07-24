@@ -7,7 +7,11 @@ import {
   registerSyncOperationsRoutes as registerBaseSyncOperationsRoutes,
   validateHubSpotV3Signature
 } from './sync-operations-base.js';
-import { registerRevenueReportingRoutes } from './scoped-revenue-reporting.js';
+import {
+  clearWorkspaceReportCache,
+  registerRevenueReportingRoutes
+} from './scoped-revenue-reporting.js';
+import { startReportCacheInvalidationSubscriber } from './report-cache-invalidation.js';
 
 const LEGACY_REVENUE_ROUTES = new Set([
   '/api/v1/workspaces/:workspaceId/analytics/revenue',
@@ -36,7 +40,21 @@ export function registerSyncOperationsRoutes(app, dependencies) {
     requireAdmin: dependencies.requireAdmin,
     requireWorkspace: dependencies.requireWorkspace
   });
-  return result;
+
+  const invalidationSubscriber = startReportCacheInvalidationSubscriber({
+    redisUrl: dependencies.redisUrl,
+    clearWorkspace: clearWorkspaceReportCache,
+    log: app.log
+  });
+
+  return {
+    async close() {
+      await Promise.allSettled([
+        Promise.resolve(result?.close?.()),
+        invalidationSubscriber.close()
+      ]);
+    }
+  };
 }
 
 export {
