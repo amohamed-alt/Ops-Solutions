@@ -1,8 +1,16 @@
-import { assertBillingQuota, recordBillingUsage, registerBillingRoutes } from './billing.js';
+import {
+  assertBillingQuota,
+  ensureBillingSchema,
+  recordBillingUsage,
+  registerBillingRoutes
+} from './billing.js';
 import { buildWorkspaceSlug, normalizeCompanyName, workspaceLimit } from './customer-workspaces.js';
 import { buildRevenuePdfExport } from './pdf-export.js';
 import { buildRevenueReportingPack, normalizeReportingFilters } from './revenue-reporting.js';
-import { registerRetentionBudgetRoutes } from './retention-budget.js';
+import {
+  ensureRetentionBudgetSchema,
+  registerRetentionBudgetRoutes
+} from './retention-budget.js';
 import {
   formatReportCurrency,
   formatReportDateTime,
@@ -244,6 +252,13 @@ export function registerCustomerReportExportRoutes(app, {
   requireWorkspace,
   writeAudit
 }) {
+  app.addHook('onReady', async () => {
+    await Promise.all([
+      ensureBillingSchema(postgres),
+      ensureRetentionBudgetSchema(postgres)
+    ]);
+  });
+
   registerBillingRoutes(app, { postgres, requireViewer, writeAudit });
   registerRetentionBudgetRoutes(app, { postgres, requireViewer, writeAudit });
 
