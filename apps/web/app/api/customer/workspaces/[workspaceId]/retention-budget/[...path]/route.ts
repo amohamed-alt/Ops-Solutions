@@ -23,10 +23,11 @@ async function forward(
     const incoming = new URL(request.url);
     const target = new URL(`${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/retention-budget/${path.map(encodeURIComponent).join('/')}`);
     for (const [key, value] of incoming.searchParams.entries()) target.searchParams.set(key, value);
+    const hasBody = method !== 'GET';
     const response = await fetch(target, {
       method,
-      headers: customerHeaders(request),
-      body: method === 'GET' ? undefined : await request.text(),
+      headers: customerHeaders(request, hasBody ? { 'content-type': request.headers.get('content-type') || 'application/json' } : {}),
+      body: hasBody ? await request.text() : undefined,
       cache: 'no-store',
       signal: AbortSignal.timeout(method === 'GET' ? 60_000 : 180_000)
     });
