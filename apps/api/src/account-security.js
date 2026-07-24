@@ -61,6 +61,8 @@ export function serializeSession(row, now = new Date()) {
 
 export async function ensureAccountSecuritySchema(postgres) {
   await postgres.query(`
+    BEGIN;
+    SELECT pg_advisory_xact_lock(hashtextextended('ops-solutions:account-security-schema', 0));
     CREATE TABLE IF NOT EXISTS account_security_events (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id UUID NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
@@ -69,17 +71,34 @@ export async function ensureAccountSecuritySchema(postgres) {
       ip_hash CHAR(64),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-    ALTER TABLE account_security_events DROP CONSTRAINT IF EXISTS account_security_events_action_check;
-    ALTER TABLE account_security_events ADD CONSTRAINT account_security_events_action_check CHECK (action IN (
-      'session.revoked',
-      'sessions.revoked_others',
-      'sessions.revoked_stale',
-      'password.reset_completed',
-      'password.reset_requested',
-      'password.reset_delivery_failed'
-    ));
+    DO $$
+    DECLARE
+      current_definition TEXT;
+    BEGIN
+      SELECT pg_get_constraintdef(oid)
+        INTO current_definition
+      FROM pg_constraint
+      WHERE conrelid = 'account_security_events'::regclass
+        AND conname = 'account_security_events_action_check';
+
+      IF current_definition IS NULL OR POSITION('sessions.revoked_stale' IN current_definition) = 0 THEN
+        ALTER TABLE account_security_events
+          DROP CONSTRAINT IF EXISTS account_security_events_action_check;
+        ALTER TABLE account_security_events
+          ADD CONSTRAINT account_security_events_action_check CHECK (action IN (
+            'session.revoked',
+            'sessions.revoked_others',
+            'sessions.revoked_stale',
+            'password.reset_completed',
+            'password.reset_requested',
+            'password.reset_delivery_failed'
+          ));
+      END IF;
+    END
+    $$;
     CREATE INDEX IF NOT EXISTS account_security_events_user_created_idx
       ON account_security_events(user_id, created_at DESC);
+    COMMIT;
   `);
 }
 
