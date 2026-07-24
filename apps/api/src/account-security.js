@@ -34,16 +34,28 @@ function ageInDays(value, now) {
 }
 
 export function classifySessionRisk(row, now = new Date()) {
-  if (row.current_session) return { level: 'trusted', reason: 'Current session', dormantDays: 0 };
   const dormantDays = ageInDays(row.last_seen_at ?? row.created_at, now);
   const ageDays = ageInDays(row.created_at, now);
-  if (dormantDays >= 30) return { level: 'high', reason: `Inactive for ${dormantDays} days`, dormantDays };
-  if (dormantDays >= 14 || ageDays >= 90) return {
-    level: 'review',
-    reason: dormantDays >= 14 ? `Inactive for ${dormantDays} days` : `Session is ${ageDays} days old`,
-    dormantDays
-  };
-  return { level: 'normal', reason: 'Recently active', dormantDays };
+  const familiarDevice = row.known_device !== false;
+
+  if (row.current_session && familiarDevice) {
+    return { level: 'trusted', reason: 'Current session on a familiar device', dormantDays, familiarDevice };
+  }
+  if (!familiarDevice && ageDays <= 7) {
+    return { level: 'review', reason: 'New device or browser', dormantDays, familiarDevice };
+  }
+  if (dormantDays >= 30) {
+    return { level: 'high', reason: `Inactive for ${dormantDays} days`, dormantDays, familiarDevice };
+  }
+  if (dormantDays >= 14 || ageDays >= 90) {
+    return {
+      level: 'review',
+      reason: dormantDays >= 14 ? `Inactive for ${dormantDays} days` : `Session is ${ageDays} days old`,
+      dormantDays,
+      familiarDevice
+    };
+  }
+  return { level: 'normal', reason: familiarDevice ? 'Recently active' : 'Unrecognized device history', dormantDays, familiarDevice };
 }
 
 export function serializeSession(row, now = new Date()) {
@@ -55,6 +67,7 @@ export function serializeSession(row, now = new Date()) {
     createdAt: row.created_at,
     lastSeenAt: row.last_seen_at,
     expiresAt: row.expires_at,
+    familiarDevice: risk.familiarDevice,
     risk
   };
 }
@@ -98,6 +111,8 @@ export async function ensureAccountSecuritySchema(postgres) {
     $$;
     CREATE INDEX IF NOT EXISTS account_security_events_user_created_idx
       ON account_security_events(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS user_sessions_device_familiarity_idx
+      ON user_sessions(user_id, user_agent, ip_hash, created_at DESC);
     COMMIT;
   `);
 }
@@ -148,7 +163,16 @@ export function registerAccountSecurityRoutes(app, { postgres }) {
       postgres.query(
         `SELECT ${sessionKeyExpression('s')} AS session_key,
                 (s.token_hash = $2) AS current_session,
-                s.user_agent, s.created_at, s.last_seen_at, s.expires_at
+                s.user_agent, s.created_at, s.last_seen_at, s.expires_at,
+                EXISTS (
+                  SELECT 1
+                  FROM user_sessions prior
+                  WHERE prior.user_id = s.user_id
+                    AND prior.token_hash <> s.token_hash
+                    AND prior.created_at < s.created_at
+                    AND prior.user_agent IS NOT DISTINCT FROM s.user_agent
+                    AND prior.ip_hash IS NOT DISTINCT FROM s.ip_hash
+                ) AS known_device
          FROM user_sessions s
          WHERE s.user_id = $1 AND s.expires_at > NOW()
          ORDER BY current_session DESC, s.last_seen_at DESC, s.created_at DESC
@@ -170,7 +194,8 @@ export function registerAccountSecurityRoutes(app, { postgres }) {
       summary: {
         active: sessions.length,
         needsReview: sessions.filter((session) => ['review', 'high'].includes(session.risk.level)).length,
-        highRisk: sessions.filter((session) => session.risk.level === 'high').length
+        highRisk: sessions.filter((session) => session.risk.level === 'high').length,
+        unfamiliarDevices: sessions.filter((session) => !session.familiarDevice).length
       },
       events: eventsResult.rows.map((row) => ({
         id: row.id,
