@@ -22,10 +22,11 @@ async function forward(
   try {
     const suffix = path.length ? `/${path.map(encodeURIComponent).join('/')}` : '';
     const target = `${API_URL}/api/v1/customer/workspaces/${encodeURIComponent(workspaceId)}/alerts${suffix}`;
+    const hasBody = ['POST', 'PATCH'].includes(method) && path.at(-1) !== 'test';
     const response = await fetch(target, {
       method,
-      headers: customerHeaders(request),
-      body: ['POST', 'PATCH'].includes(method) ? await request.text() : undefined,
+      headers: customerHeaders(request, hasBody ? { 'content-type': request.headers.get('content-type') || 'application/json' } : {}),
+      body: hasBody ? await request.text() : undefined,
       cache: 'no-store',
       signal: AbortSignal.timeout(path.at(-1) === 'test' ? 180_000 : 60_000)
     });
