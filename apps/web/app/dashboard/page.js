@@ -1,7 +1,9 @@
 import { DashboardProductShell } from '@/components/sdr/DashboardProductShell';
 import { ObjectIntelligenceWorkspace } from '@/components/sdr/ObjectIntelligenceWorkspace';
+import { ObjectRouteNavigationEnhancer } from '@/components/sdr/ObjectRouteNavigationEnhancer';
 import '@/components/sdr/dashboard-layout-fix.css';
 import '@/components/sdr/dashboard-saas-refresh.css';
+import '@/components/sdr/object-route-navigation.css';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +18,7 @@ export default function DashboardPage() {
     <>
       <DashboardProductShell />
       <ObjectIntelligenceWorkspace />
+      <ObjectRouteNavigationEnhancer />
     </>
   );
 }
