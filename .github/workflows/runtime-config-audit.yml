@@ -44,7 +44,7 @@ jobs:
             if (key === 'API_INTERNAL_URL') return `${key}=http://api:3001`;
             if (key === 'DATABASE_URL') return `${key}=postgresql://ops:synthetic-password@postgres:5432/ops`;
             if (key === 'REDIS_URL') return `${key}=redis://redis:6379`;
-            if (/^(DEMO_MODE|DISABLE_AUTH)$/.test(key)) return `${key}=false`;
+            if (/^(DEMO_MODE|DISABLE_AUTH|NEXT_TELEMETRY_DISABLED)$/.test(key)) return `${key}=false`;
             if (/PORT$/.test(key)) return `${key}=3000`;
             if (/^(LOG_LEVEL)$/.test(key)) return `${key}=info`;
             if (/^(EMAIL_PROVIDER)$/.test(key)) return `${key}=disabled`;
