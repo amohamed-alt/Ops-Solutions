@@ -83,7 +83,7 @@ export async function evaluateWorkspaceOnboardingReadiness(postgres, workspaceId
       [workspaceId]
     ),
     postgres.query(
-      `SELECT status,mode,records_processed,started_at,completed_at,error
+      `SELECT status,mode,summary,started_at,completed_at,error
        FROM sync_runs WHERE workspace_id=$1
        ORDER BY started_at DESC LIMIT 1`,
       [workspaceId]
@@ -103,7 +103,7 @@ export async function evaluateWorkspaceOnboardingReadiness(postgres, workspaceId
     ),
     postgres.query(
       `SELECT COUNT(*)::int AS audit_count,MAX(created_at) AS latest_audit_at
-       FROM workspace_audit_logs WHERE workspace_id=$1`,
+       FROM audit_events WHERE workspace_id=$1`,
       [workspaceId]
     )
   ]);
@@ -122,6 +122,7 @@ export async function evaluateWorkspaceOnboardingReadiness(postgres, workspaceId
   const membership = membershipResult.rows[0] ?? {};
   const audit = auditResult.rows[0] ?? {};
   const freshnessAgeHours = hoursSince(records.newest_sync, now);
+  const syncSummary = latestSync?.summary && typeof latestSync.summary === 'object' ? latestSync.summary : {};
 
   const checks = [
     check(
@@ -162,7 +163,7 @@ export async function evaluateWorkspaceOnboardingReadiness(postgres, workspaceId
       latestSync?.status === 'completed' && asNumber(records.record_count) > 0 ? 'pass' : 'blocked',
       latestSync ? `Latest sync is ${latestSync.status} with ${asNumber(records.record_count)} mirrored records.` : 'No synchronization run was found.',
       'Run an initial sync and resolve any failed object or permission errors.',
-      { status: latestSync?.status ?? null, mode: latestSync?.mode ?? null, recordsProcessed: asNumber(latestSync?.records_processed), completedAt: iso(latestSync?.completed_at), mirroredRecords: asNumber(records.record_count) }
+      { status: latestSync?.status ?? null, mode: latestSync?.mode ?? null, summary: syncSummary, completedAt: iso(latestSync?.completed_at), mirroredRecords: asNumber(records.record_count) }
     ),
     check(
       'data_freshness',
