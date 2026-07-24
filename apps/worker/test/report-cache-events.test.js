@@ -29,8 +29,8 @@ test('publishes bounded workspace-scoped invalidation events', async () => {
   assert.equal(redis.published[0].channel, REPORT_CACHE_INVALIDATION_CHANNEL);
   assert.equal(redis.published[0].payload.workspaceId, '123e4567-e89b-42d3-a456-426614174000');
   assert.deepEqual(redis.published[0].payload.objectTypes, ['contacts', 'deals']);
-  assert.throws(
-    () => publishReportCacheInvalidation(redis, { workspaceId: 'bad' }),
+  await assert.rejects(
+    publishReportCacheInvalidation(redis, { workspaceId: 'bad' }),
     /valid workspaceId/
   );
 });
