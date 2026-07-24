@@ -3,10 +3,12 @@ import test from 'node:test';
 
 import {
   evaluateWorkspaceOnboardingReadiness,
+  persistReadinessSnapshot,
   summarizeReadiness
 } from '../src/onboarding-readiness.js';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
+const USER_ID = '22222222-2222-4222-8222-222222222222';
 const NOW = new Date('2026-07-24T12:00:00.000Z');
 
 function fakePostgres(overrides = {}) {
@@ -64,6 +66,17 @@ function fakePostgres(overrides = {}) {
       if (!key) throw new Error(`Unexpected query: ${text}`);
       return responses[key];
     }
+  };
+}
+
+function readyReport(ready = true) {
+  return {
+    workspace: { id: WORKSPACE_ID, name: 'Acme Arabia', status: 'active' },
+    generatedAt: NOW.toISOString(),
+    policy: { freshnessHours: 24, requiredCoreObjects: ['contacts', 'companies', 'deals'] },
+    summary: { ready, score: ready ? 100 : 75, blockers: ready ? 0 : 2, warnings: 0 },
+    checks: [{ key: 'hubspot_connected', state: ready ? 'pass' : 'blocked' }],
+    nextActions: ready ? [] : [{ key: 'hubspot_connected', state: 'blocked', action: 'Connect HubSpot.' }]
   };
 }
 
@@ -136,4 +149,74 @@ test('readiness scoring never lets warnings masquerade as full completion', () =
     warnings: 1,
     blockers: 1
   });
+});
+
+test('persists a tenant-scoped snapshot and records blocked-to-ready transitions', async () => {
+  const queries = [];
+  const client = {
+    async query(sql, values) {
+      const text = String(sql);
+      queries.push({ sql: text, values });
+      if (text.includes('pg_advisory_xact_lock')) return { rowCount: 1, rows: [] };
+      if (text.includes('SELECT ready FROM onboarding_readiness_snapshots')) {
+        return { rowCount: 1, rows: [{ ready: false }] };
+      }
+      if (text.includes('INSERT INTO onboarding_readiness_snapshots')) {
+        return {
+          rowCount: 1,
+          rows: [{
+            id: '33333333-3333-4333-8333-333333333333',
+            workspace_id: WORKSPACE_ID,
+            ready: true,
+            score: 100,
+            blockers: 0,
+            warnings: 0,
+            previous_ready: false,
+            transitioned: true,
+            trigger_source: 'customer_api',
+            generated_at: NOW.toISOString(),
+            created_at: NOW.toISOString()
+          }]
+        };
+      }
+      throw new Error(`Unexpected query: ${text}`);
+    }
+  };
+
+  const snapshot = await persistReadinessSnapshot(client, readyReport(true), {
+    userId: USER_ID,
+    triggerSource: 'customer_api'
+  });
+  assert.equal(snapshot.transitioned, true);
+  assert.equal(snapshot.previous_ready, false);
+  const insert = queries.find((query) => query.sql.includes('INSERT INTO onboarding_readiness_snapshots'));
+  assert.equal(insert.values[0], WORKSPACE_ID);
+  assert.equal(insert.values[1], USER_ID);
+  assert.equal(insert.values[7], false);
+  assert.equal(insert.values[8], true);
+});
+
+test('first readiness snapshot does not create a false transition', async () => {
+  const client = {
+    async query(sql) {
+      const text = String(sql);
+      if (text.includes('pg_advisory_xact_lock')) return { rowCount: 1, rows: [] };
+      if (text.includes('SELECT ready FROM onboarding_readiness_snapshots')) return { rowCount: 0, rows: [] };
+      if (text.includes('INSERT INTO onboarding_readiness_snapshots')) {
+        return { rowCount: 1, rows: [{ previous_ready: null, transitioned: false }] };
+      }
+      throw new Error(`Unexpected query: ${text}`);
+    }
+  };
+  const snapshot = await persistReadinessSnapshot(client, readyReport(false));
+  assert.equal(snapshot.previous_ready, null);
+  assert.equal(snapshot.transitioned, false);
+});
+
+test('snapshot persistence rejects invalid actor identifiers before SQL', async () => {
+  const client = { query: async () => { throw new Error('SQL must not run'); } };
+  await assert.rejects(
+    persistReadinessSnapshot(client, readyReport(), { userId: 'not-a-user' }),
+    (error) => error.category === 'ONBOARDING_READINESS_INVALID'
+  );
 });
