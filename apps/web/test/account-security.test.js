@@ -12,22 +12,27 @@ test('account security proxy requires a customer session and keeps credentials s
   assert.match(source, /customerHeaders\(request\)/);
   assert.match(source, /api\/v1\/customer\/security/);
   assert.match(source, /trust-current/);
-  assert.match(source, /trust_current_device/);
+  assert.match(source, /rename_device/);
+  assert.match(source, /revoke_device/);
+  assert.match(source, /export async function PATCH/);
   assert.match(source, /cache-control.*no-store/si);
   assert.doesNotMatch(source, /ADMIN_API_KEY|process\.env\./);
 });
 
-test('account security UI supports device trust, session review and revocation', async () => {
+test('account security UI manages trusted devices and active sessions', async () => {
   const source = await readFile(pagePath, 'utf8');
   assert.match(source, /Sessions, devices and recovery activity/);
+  assert.match(source, /Trusted devices/);
   assert.match(source, /Trust this device/);
   assert.match(source, /trust_current_device/);
-  assert.match(source, /explicitlyTrusted/);
-  assert.match(source, /device\.trusted/);
+  assert.match(source, /rename_device/);
+  assert.match(source, /revoke_device/);
+  assert.match(source, /Remove trust/);
+  assert.match(source, /Existing sessions remain active but are reclassified immediately/);
+  assert.match(source, /device\.renamed/);
+  assert.match(source, /device\.revoked/);
   assert.match(source, /Revoke all other sessions/);
   assert.match(source, /Current session/);
-  assert.match(source, /revoke_session/);
-  assert.match(source, /revoke_others/);
   assert.match(source, /Reset password securely/);
   assert.match(source, /Loading account security/);
 });

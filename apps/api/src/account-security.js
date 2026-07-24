@@ -1,7 +1,10 @@
 import { hashValue } from './crypto.js';
 
 const SESSION_KEY_PATTERN = /^[0-9a-f]{64}$/i;
+const DEVICE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const EVENT_LIMIT = 30;
+const DEVICE_LIMIT = 50;
+const MAX_DEVICE_LABEL_LENGTH = 80;
 const DEFAULT_STALE_DAYS = 30;
 const MIN_STALE_DAYS = 7;
 const MAX_STALE_DAYS = 180;
@@ -29,6 +32,12 @@ function clientLabel(userAgent) {
   if (/chrome\//i.test(value)) return 'Google Chrome';
   if (/safari\//i.test(value)) return 'Apple Safari';
   return 'Web browser';
+}
+
+function normalizeDeviceLabel(value) {
+  const label = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (!label || label.length > MAX_DEVICE_LABEL_LENGTH || /[\u0000-\u001f\u007f]/.test(label)) return null;
+  return label;
 }
 
 function ageInDays(value, now) {
@@ -91,6 +100,17 @@ export function serializeSession(row, now = new Date()) {
   };
 }
 
+export function serializeTrustedDevice(row) {
+  return {
+    id: row.id,
+    label: row.label,
+    trustedAt: row.trusted_at,
+    lastSeenAt: row.last_seen_at,
+    activeSessions: Number(row.active_sessions ?? 0),
+    current: Boolean(row.current_device)
+  };
+}
+
 export async function ensureAccountSecuritySchema(postgres) {
   await postgres.query(`
     BEGIN;
@@ -122,7 +142,10 @@ export async function ensureAccountSecuritySchema(postgres) {
       WHERE conrelid = 'account_security_events'::regclass
         AND conname = 'account_security_events_action_check';
 
-      IF current_definition IS NULL OR POSITION('device.trusted' IN current_definition) = 0 THEN
+      IF current_definition IS NULL
+         OR POSITION('device.trusted' IN current_definition) = 0
+         OR POSITION('device.renamed' IN current_definition) = 0
+         OR POSITION('device.revoked' IN current_definition) = 0 THEN
         ALTER TABLE account_security_events
           DROP CONSTRAINT IF EXISTS account_security_events_action_check;
         ALTER TABLE account_security_events
@@ -131,6 +154,8 @@ export async function ensureAccountSecuritySchema(postgres) {
             'sessions.revoked_others',
             'sessions.revoked_stale',
             'device.trusted',
+            'device.renamed',
+            'device.revoked',
             'password.reset_completed',
             'password.reset_requested',
             'password.reset_delivery_failed'
@@ -190,27 +215,24 @@ export function registerAccountSecurityRoutes(app, { postgres }) {
 
   app.get('/api/v1/customer/security', { preHandler: requireAccountSession }, async (request) => {
     const { user_id: userId, tokenHash } = request.accountSecurity;
-    const [sessionsResult, eventsResult] = await Promise.all([
+    const [sessionsResult, devicesResult, eventsResult] = await Promise.all([
       postgres.query(
         `SELECT ${sessionKeyExpression('s')} AS session_key,
                 (s.token_hash = $2) AS current_session,
                 s.user_agent, s.created_at, s.last_seen_at, s.expires_at,
                 EXISTS (
-                  SELECT 1
-                  FROM account_trusted_devices trusted
+                  SELECT 1 FROM account_trusted_devices trusted
                   WHERE trusted.user_id = s.user_id
                     AND trusted.fingerprint_hash = ${deviceFingerprintExpression('s')}
                 ) AS explicitly_trusted,
                 (
                   EXISTS (
-                    SELECT 1
-                    FROM account_trusted_devices trusted
+                    SELECT 1 FROM account_trusted_devices trusted
                     WHERE trusted.user_id = s.user_id
                       AND trusted.fingerprint_hash = ${deviceFingerprintExpression('s')}
                   )
                   OR EXISTS (
-                    SELECT 1
-                    FROM user_sessions prior
+                    SELECT 1 FROM user_sessions prior
                     WHERE prior.user_id = s.user_id
                       AND prior.token_hash <> s.token_hash
                       AND prior.created_at < s.created_at
@@ -225,6 +247,20 @@ export function registerAccountSecurityRoutes(app, { postgres }) {
         [userId, tokenHash]
       ),
       postgres.query(
+        `SELECT trusted.id, trusted.label, trusted.trusted_at, trusted.last_seen_at,
+                COUNT(s.token_hash) FILTER (WHERE s.expires_at > NOW())::int AS active_sessions,
+                BOOL_OR(s.token_hash = $2 AND s.expires_at > NOW()) AS current_device
+         FROM account_trusted_devices trusted
+         LEFT JOIN user_sessions s
+           ON s.user_id = trusted.user_id
+          AND ${deviceFingerprintExpression('s')} = trusted.fingerprint_hash
+         WHERE trusted.user_id = $1
+         GROUP BY trusted.id
+         ORDER BY current_device DESC, trusted.last_seen_at DESC, trusted.trusted_at DESC
+         LIMIT $3`,
+        [userId, tokenHash, DEVICE_LIMIT]
+      ),
+      postgres.query(
         `SELECT id, action, metadata, created_at
          FROM account_security_events
          WHERE user_id = $1
@@ -234,14 +270,16 @@ export function registerAccountSecurityRoutes(app, { postgres }) {
       )
     ]);
     const sessions = sessionsResult.rows.map((row) => serializeSession(row));
+    const trustedDevices = devicesResult.rows.map((row) => serializeTrustedDevice(row));
     return {
       sessions,
+      trustedDevices,
       summary: {
         active: sessions.length,
         needsReview: sessions.filter((session) => ['review', 'high'].includes(session.risk.level)).length,
         highRisk: sessions.filter((session) => session.risk.level === 'high').length,
         unfamiliarDevices: sessions.filter((session) => !session.familiarDevice).length,
-        trustedDevices: sessions.filter((session) => session.explicitlyTrusted).length
+        trustedDevices: trustedDevices.length
       },
       events: eventsResult.rows.map((row) => ({
         id: row.id,
@@ -254,29 +292,70 @@ export function registerAccountSecurityRoutes(app, { postgres }) {
 
   app.post('/api/v1/customer/security/devices/trust-current', { preHandler: requireAccountSession }, async (request, reply) => {
     const { user_id: userId, tokenHash } = request.accountSecurity;
-    const result = await postgres.query(
-      `INSERT INTO account_trusted_devices(user_id, fingerprint_hash, label, trusted_at, last_seen_at)
-       SELECT s.user_id,
-              ${deviceFingerprintExpression('s')},
-              LEFT(COALESCE(NULLIF(s.user_agent, ''), 'Unknown browser'), 180),
-              NOW(),
-              NOW()
+    const sessionResult = await postgres.query(
+      `SELECT user_agent, ${deviceFingerprintExpression('s')} AS fingerprint_hash
        FROM user_sessions s
-       WHERE s.user_id = $1
-         AND s.token_hash = $2
-         AND s.expires_at > NOW()
-       ON CONFLICT (user_id, fingerprint_hash)
-       DO UPDATE SET last_seen_at = NOW(), label = EXCLUDED.label
-       RETURNING id, trusted_at`,
+       WHERE s.user_id = $1 AND s.token_hash = $2 AND s.expires_at > NOW()
+       LIMIT 1`,
       [userId, tokenHash]
     );
-    if (result.rowCount === 0) {
+    if (sessionResult.rowCount === 0) {
       return reply.code(404).send({ error: 'current_session_not_found', message: 'The current session is no longer active.' });
     }
-    await writeSecurityEvent(postgres, request, userId, 'device.trusted', {
-      trustedDeviceId: result.rows[0].id
-    });
+    const session = sessionResult.rows[0];
+    const result = await postgres.query(
+      `INSERT INTO account_trusted_devices(user_id, fingerprint_hash, label, trusted_at, last_seen_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (user_id, fingerprint_hash)
+       DO UPDATE SET last_seen_at = NOW()
+       RETURNING id, trusted_at`,
+      [userId, session.fingerprint_hash, clientLabel(session.user_agent)]
+    );
+    await writeSecurityEvent(postgres, request, userId, 'device.trusted', { trustedDeviceId: result.rows[0].id });
     return reply.code(201).send({ trusted: true, trustedAt: result.rows[0].trusted_at });
+  });
+
+  app.patch('/api/v1/customer/security/devices/:deviceId', { preHandler: requireAccountSession }, async (request, reply) => {
+    const deviceId = String(request.params.deviceId ?? '').trim();
+    const label = normalizeDeviceLabel(request.body?.label);
+    if (!DEVICE_ID_PATTERN.test(deviceId)) {
+      return reply.code(400).send({ error: 'invalid_device_id', message: 'Trusted device ID is invalid.' });
+    }
+    if (!label) {
+      return reply.code(400).send({ error: 'invalid_device_label', message: `Device name must be between 1 and ${MAX_DEVICE_LABEL_LENGTH} characters.` });
+    }
+    const { user_id: userId } = request.accountSecurity;
+    const result = await postgres.query(
+      `UPDATE account_trusted_devices
+       SET label = $3
+       WHERE id = $1 AND user_id = $2
+       RETURNING id, label`,
+      [deviceId, userId, label]
+    );
+    if (result.rowCount === 0) {
+      return reply.code(404).send({ error: 'trusted_device_not_found', message: 'Trusted device was not found.' });
+    }
+    await writeSecurityEvent(postgres, request, userId, 'device.renamed', { trustedDeviceId: deviceId });
+    return { id: result.rows[0].id, label: result.rows[0].label };
+  });
+
+  app.delete('/api/v1/customer/security/devices/:deviceId', { preHandler: requireAccountSession }, async (request, reply) => {
+    const deviceId = String(request.params.deviceId ?? '').trim();
+    if (!DEVICE_ID_PATTERN.test(deviceId)) {
+      return reply.code(400).send({ error: 'invalid_device_id', message: 'Trusted device ID is invalid.' });
+    }
+    const { user_id: userId } = request.accountSecurity;
+    const result = await postgres.query(
+      `DELETE FROM account_trusted_devices trusted
+       WHERE trusted.id = $1 AND trusted.user_id = $2
+       RETURNING trusted.id, trusted.label`,
+      [deviceId, userId]
+    );
+    if (result.rowCount === 0) {
+      return reply.code(404).send({ error: 'trusted_device_not_found', message: 'Trusted device was not found.' });
+    }
+    await writeSecurityEvent(postgres, request, userId, 'device.revoked', { trustedDeviceId: deviceId });
+    return reply.code(204).send();
   });
 
   app.delete('/api/v1/customer/security/sessions/:sessionId', { preHandler: requireAccountSession }, async (request, reply) => {
@@ -294,25 +373,16 @@ export function registerAccountSecurityRoutes(app, { postgres }) {
       [userId, sessionId, tokenHash]
     );
     if (result.rowCount === 0) {
-      return reply.code(404).send({
-        error: 'session_not_found',
-        message: 'The session was not found or is the session currently in use.'
-      });
+      return reply.code(404).send({ error: 'session_not_found', message: 'The session was not found or is the session currently in use.' });
     }
-    await writeSecurityEvent(postgres, request, userId, 'session.revoked', {
-      sessionId,
-      lastSeenAt: result.rows[0].last_seen_at
-    });
+    await writeSecurityEvent(postgres, request, userId, 'session.revoked', { sessionId, lastSeenAt: result.rows[0].last_seen_at });
     return reply.code(204).send();
   });
 
   app.delete('/api/v1/customer/security/sessions/stale', { preHandler: requireAccountSession }, async (request, reply) => {
     const staleDays = staleDaysFromRequest(request);
     if (staleDays === null) {
-      return reply.code(400).send({
-        error: 'invalid_stale_days',
-        message: `Stale session age must be between ${MIN_STALE_DAYS} and ${MAX_STALE_DAYS} days.`
-      });
+      return reply.code(400).send({ error: 'invalid_stale_days', message: `Stale session age must be between ${MIN_STALE_DAYS} and ${MAX_STALE_DAYS} days.` });
     }
     const { user_id: userId, tokenHash } = request.accountSecurity;
     const result = await postgres.query(
@@ -323,24 +393,17 @@ export function registerAccountSecurityRoutes(app, { postgres }) {
        RETURNING created_at, last_seen_at`,
       [userId, tokenHash, staleDays]
     );
-    await writeSecurityEvent(postgres, request, userId, 'sessions.revoked_stale', {
-      revokedCount: result.rowCount,
-      staleDays
-    });
+    await writeSecurityEvent(postgres, request, userId, 'sessions.revoked_stale', { revokedCount: result.rowCount, staleDays });
     return { revokedCount: result.rowCount, staleDays };
   });
 
   app.delete('/api/v1/customer/security/sessions', { preHandler: requireAccountSession }, async (request) => {
     const { user_id: userId, tokenHash } = request.accountSecurity;
     const result = await postgres.query(
-      `DELETE FROM user_sessions
-       WHERE user_id = $1 AND token_hash <> $2
-       RETURNING token_hash`,
+      `DELETE FROM user_sessions WHERE user_id = $1 AND token_hash <> $2 RETURNING token_hash`,
       [userId, tokenHash]
     );
-    await writeSecurityEvent(postgres, request, userId, 'sessions.revoked_others', {
-      revokedCount: result.rowCount
-    });
+    await writeSecurityEvent(postgres, request, userId, 'sessions.revoked_others', { revokedCount: result.rowCount });
     return { revokedCount: result.rowCount };
   });
 
