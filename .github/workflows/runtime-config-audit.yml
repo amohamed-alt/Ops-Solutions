@@ -1,0 +1,90 @@
+name: Runtime Configuration Audit
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '41 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Validate configuration contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Build safe synthetic runtime environment
+        run: |
+          set -Eeuo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const source = fs.readFileSync('.env.example', 'utf8').split(/\r?\n/);
+          const output = source.map((line) => {
+            const match = /^([A-Za-z_][A-Za-z0-9_]*)=/.exec(line.trim());
+            if (!match) return line;
+            const key = match[1];
+            if (key === 'NODE_ENV') return `${key}=production`;
+            if (key === 'APP_URL') return `${key}=https://ops.example.test`;
+            if (key === 'HUBSPOT_REDIRECT_URI') return `${key}=https://ops.example.test/api/v1/hubspot/oauth/callback`;
+            if (key === 'API_INTERNAL_URL') return `${key}=http://api:3001`;
+            if (key === 'DATABASE_URL') return `${key}=postgresql://ops:synthetic-password@postgres:5432/ops`;
+            if (key === 'REDIS_URL') return `${key}=redis://redis:6379`;
+            if (/^(DEMO_MODE|DISABLE_AUTH|NEXT_TELEMETRY_DISABLED)$/.test(key)) return `${key}=false`;
+            if (/PORT$/.test(key)) return `${key}=3000`;
+            if (/^(LOG_LEVEL)$/.test(key)) return `${key}=info`;
+            if (/^(EMAIL_PROVIDER)$/.test(key)) return `${key}=disabled`;
+            if (/URL|URI/.test(key)) return `${key}=https://configuration-audit.example.test/resource`;
+            if (/SECRET|TOKEN|PASSWORD|PRIVATE|ENCRYPTION|API_KEY|SSH_KEY/.test(key)) return `${key}=${'x'.repeat(64)}`;
+            return `${key}=synthetic-ci-value`;
+          });
+          fs.writeFileSync('/tmp/ops-runtime.env', output.join('\n'), { mode: 0o600 });
+          NODE
+          chmod 600 /tmp/ops-runtime.env
+
+      - name: Generate secret-safe audit result
+        id: audit
+        continue-on-error: true
+        run: |
+          set +e
+          node scripts/runtime-config-audit.mjs \
+            --env-file /tmp/ops-runtime.env \
+            --template-file .env.example \
+            --format json > /tmp/runtime-config-audit.json
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat /tmp/runtime-config-audit.json
+          exit "$code"
+
+      - name: Upload audit diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-config-audit-${{ github.run_id }}
+          path: /tmp/runtime-config-audit.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce healthy configuration contract
+        run: |
+          set -Eeuo pipefail
+          node -e "const r=require('/tmp/runtime-config-audit.json'); if(r.status!=='healthy') process.exit(1); if(JSON.stringify(r).includes('synthetic-password')) process.exit(1)"
+          test "${{ steps.audit.outputs.exit_code }}" = "0"
+
+      - name: Remove synthetic environment
+        if: always()
+        run: rm -f /tmp/ops-runtime.env /tmp/runtime-config-audit.json
