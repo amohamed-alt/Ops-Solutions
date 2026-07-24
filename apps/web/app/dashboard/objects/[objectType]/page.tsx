@@ -1,14 +1,20 @@
 import { notFound } from 'next/navigation';
 
-import {
-  OBJECT_DASHBOARD_TYPES,
-  ObjectDashboardPageClient,
-  type ObjectDashboardType
-} from '@/components/sdr/ObjectDashboardPageClient';
+import { ObjectDashboardPageClient } from '@/components/sdr/ObjectDashboardPageClient';
 
 export const dynamic = 'force-dynamic';
 
-const TYPE_SET = new Set<string>(OBJECT_DASHBOARD_TYPES);
+type ObjectDashboardType = 'contacts' | 'companies' | 'deals' | 'calls' | 'meetings' | 'tasks' | 'tickets';
+
+const TYPE_SET = new Set<string>([
+  'contacts',
+  'companies',
+  'deals',
+  'calls',
+  'meetings',
+  'tasks',
+  'tickets'
+]);
 
 function isObjectDashboardType(value: string): value is ObjectDashboardType {
   return TYPE_SET.has(value);
