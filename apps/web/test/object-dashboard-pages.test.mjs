@@ -42,7 +42,7 @@ test('command center links to the object pages without removing the embedded rep
   assert.match(dashboard, /ObjectIntelligenceWorkspace/);
   assert.match(dashboard, /ObjectRouteNavigationEnhancer/);
   assert.match(dashboard, /object-route-navigation\.css/);
-  assert.match(navigation, /data-object-route-group/);
+  assert.match(navigation, /dataset\.objectRouteGroup/);
   assert.match(navigation, /\/dashboard\/objects\/\$\{type\}/);
 });
 
