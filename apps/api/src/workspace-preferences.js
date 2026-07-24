@@ -95,7 +95,7 @@ export function registerWorkspacePreferencesRoutes(app, { postgres, withTransact
   const basePath = '/api/v1/customer/workspaces/:workspaceId/preferences';
 
   registerPasswordRecoveryRoutes(app, { postgres, withTransaction });
-  registerAccountSecurityRoutes(app, { postgres });
+  if (typeof app.addHook === 'function') registerAccountSecurityRoutes(app, { postgres });
 
   app.get(basePath, { preHandler: requireViewer }, async (request) => {
     await schemaReady;
