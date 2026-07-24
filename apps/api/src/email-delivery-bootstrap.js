@@ -1,18 +1,26 @@
 import { postgres } from './database.js';
 import { getEmailDeliveryConfiguration, startEmailDeliveryLoop } from './email-delivery.js';
+import { startNewDeviceNotificationLoop } from './new-device-notifications.js';
 
 const delivery = getEmailDeliveryConfiguration(process.env);
-const stop = delivery.configured
+const stopScheduledReports = delivery.configured
   ? startEmailDeliveryLoop(postgres)
+  : () => undefined;
+const stopNewDeviceNotifications = delivery.configured
+  ? startNewDeviceNotificationLoop(postgres)
   : () => undefined;
 
 if (!delivery.configured) {
   console.info(JSON.stringify({
     level: 'info',
-    event: 'scheduled_report_delivery_disabled',
+    event: 'email_delivery_disabled',
     provider: delivery.provider,
-    missing: delivery.missing
+    missing: delivery.missing,
+    features: ['scheduled_reports', 'new_device_security_notifications']
   }));
 }
 
-process.once('beforeExit', stop);
+process.once('beforeExit', () => {
+  stopScheduledReports();
+  stopNewDeviceNotifications();
+});
