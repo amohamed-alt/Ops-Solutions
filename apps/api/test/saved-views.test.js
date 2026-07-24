@@ -164,10 +164,10 @@ test('updates and deletes only the requesting user view', async () => {
   assert.deepEqual(deleteQuery.values, [VIEW_ID, 'workspace-id', 'user-id']);
 });
 
-test('registers viewer-protected preferences and saved view lifecycle routes', () => {
+test('registers public recovery plus viewer-protected preferences and saved view lifecycle routes', () => {
   const routes = [];
   const app = Object.fromEntries(['get', 'put', 'post', 'patch', 'delete'].map((method) => [method, (path, options, handler) => {
-    routes.push({ method, path, options, handler });
+    routes.push({ method, path, options: typeof options === 'function' ? null : options, handler: typeof options === 'function' ? options : handler });
   }]));
   const requireViewer = [() => undefined, () => undefined];
   registerSavedViewRoutes(app, {
@@ -177,6 +177,8 @@ test('registers viewer-protected preferences and saved view lifecycle routes', (
     writeAudit: async () => undefined
   });
   assert.deepEqual(routes.map(({ method, path }) => `${method.toUpperCase()} ${path}`), [
+    'POST /api/v1/auth/password/forgot',
+    'POST /api/v1/auth/password/reset',
     'GET /api/v1/customer/workspaces/:workspaceId/preferences',
     'PUT /api/v1/customer/workspaces/:workspaceId/preferences',
     'GET /api/v1/customer/workspaces/:workspaceId/saved-views',
@@ -185,7 +187,8 @@ test('registers viewer-protected preferences and saved view lifecycle routes', (
     'POST /api/v1/customer/workspaces/:workspaceId/saved-views/:viewId/duplicate',
     'DELETE /api/v1/customer/workspaces/:workspaceId/saved-views/:viewId'
   ]);
-  assert.ok(routes.every((route) => route.options.preHandler === requireViewer));
+  const protectedRoutes = routes.filter((route) => route.path.includes('/customer/workspaces/'));
+  assert.ok(protectedRoutes.every((route) => route.options.preHandler === requireViewer));
 });
 
 test('saved view database migration has an explicit rollback', () => {
