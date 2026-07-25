@@ -9,6 +9,14 @@ async function source(url) {
   return readFile(url, 'utf8');
 }
 
+function sectionBetween(sourceText, startMarker, endMarker) {
+  const start = sourceText.indexOf(startMarker);
+  const end = sourceText.indexOf(endMarker, start + startMarker.length);
+  assert.notEqual(start, -1, `Missing start marker: ${startMarker}`);
+  assert.notEqual(end, -1, `Missing end marker: ${endMarker}`);
+  return sourceText.slice(start, end);
+}
+
 test('readiness incident inbox exposes operational filters and server-side sorting', async () => {
   const page = await source(pageUrl);
   assert.match(page, /incidentStatus/);
@@ -24,10 +32,16 @@ test('readiness incident inbox exposes operational filters and server-side sorti
 
 test('incident filters remain URL-persisted without exposing cursor state', async () => {
   const page = await source(pageUrl);
+  const urlPersistenceEffect = sectionBetween(
+    page,
+    "useEffect(()=>{if(!filtersReady)return;const url=new URL(window.location.href)",
+    "useEffect(()=>{const controller=new AbortController()",
+  );
+
   assert.match(page, /new URLSearchParams\(window\.location\.search\)/);
-  assert.match(page, /window\.history\.replaceState/);
-  assert.match(page, /params\.delete\('incidentPage'\)/);
-  assert.doesNotMatch(page, /params\.set\('cursor'|nextIncidentCursor.*replaceState/);
+  assert.match(urlPersistenceEffect, /window\.history\.replaceState/);
+  assert.match(urlPersistenceEffect, /params\.delete\('incidentPage'\)/);
+  assert.doesNotMatch(urlPersistenceEffect, /cursor|nextIncidentCursor/);
   assert.doesNotMatch(page, /localStorage.*incidentStatus|localStorage.*incidentSeverity/);
 });
 
@@ -44,7 +58,7 @@ test('incident inbox consumes bounded opaque cursor pages', async () => {
 
 test('dead-letter navigation focuses only incidents present in the loaded tenant result set', async () => {
   const page = await source(pageUrl);
-  const openIncident = page.slice(page.indexOf('const openIncident='), page.indexOf('const summary='));
+  const openIncident = sectionBetween(page, 'const openIncident=', 'const summary=');
   assert.match(openIncident, /incidentRefs\.current\[incidentId\]/);
   assert.match(openIncident, /currently loaded result set/);
   assert.match(openIncident, /prefers-reduced-motion/);
