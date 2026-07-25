@@ -18,24 +18,14 @@ export function normalizeDeadLetterOptions(input = {}) {
   const deliveryId = input.deliveryId ? String(input.deliveryId).trim() : null;
   const apply = input.apply === true || input.apply === 'true';
 
-  if (!['status', 'requeue'].includes(action)) {
-    throw new TypeError('action must be status or requeue');
-  }
+  if (!['status', 'requeue'].includes(action)) throw new TypeError('action must be status or requeue');
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX_LIMIT) {
     throw new TypeError(`limit must be an integer between 1 and ${MAX_LIMIT}`);
   }
-  if (workspaceId && !UUID_PATTERN.test(workspaceId)) {
-    throw new TypeError('workspaceId must be a valid UUID');
-  }
-  if (deliveryId && !UUID_PATTERN.test(deliveryId)) {
-    throw new TypeError('deliveryId must be a valid UUID');
-  }
-  if (action === 'requeue' && !workspaceId) {
-    throw new TypeError('workspaceId is required for requeue');
-  }
-  if (action === 'requeue' && !deliveryId) {
-    throw new TypeError('deliveryId is required for requeue');
-  }
+  if (workspaceId && !UUID_PATTERN.test(workspaceId)) throw new TypeError('workspaceId must be a valid UUID');
+  if (deliveryId && !UUID_PATTERN.test(deliveryId)) throw new TypeError('deliveryId must be a valid UUID');
+  if (action === 'requeue' && !workspaceId) throw new TypeError('workspaceId is required for requeue');
+  if (action === 'requeue' && !deliveryId) throw new TypeError('deliveryId is required for requeue');
 
   return { action, limit, workspaceId, deliveryId, apply };
 }
@@ -60,9 +50,22 @@ export async function getReadinessDeliveryDeadLetterStatus(db, options = {}) {
            d.created_at,
            d.updated_at,
            left(coalesce(d.error,''), 240) AS error,
-           w.name AS workspace_name
+           w.name AS workspace_name,
+           i.status AS incident_status,
+           i.severity AS incident_severity,
+           i.occurrences AS incident_occurrences,
+           i.score AS incident_score,
+           i.blockers AS incident_blockers,
+           i.warnings AS incident_warnings,
+           i.first_detected_at AS incident_first_detected_at,
+           i.last_detected_at AS incident_last_detected_at,
+           i.acknowledged_at AS incident_acknowledged_at,
+           i.resolved_at AS incident_resolved_at
     FROM readiness_regression_deliveries d
     JOIN workspaces w ON w.id=d.workspace_id
+    LEFT JOIN readiness_regression_incidents i
+      ON i.id=d.incident_id
+     AND i.workspace_id=d.workspace_id
     WHERE d.status='failed'
       AND d.attempts >= ${MAX_ATTEMPTS}
       ${workspaceFilter}
@@ -102,7 +105,20 @@ export async function getReadinessDeliveryDeadLetterStatus(db, options = {}) {
       error: safeText(row.error, 240),
       nextAttemptAt: row.next_attempt_at,
       createdAt: row.created_at,
-      updatedAt: row.updated_at
+      updatedAt: row.updated_at,
+      incident: row.incident_id ? {
+        id: row.incident_id,
+        status: row.incident_status || 'unknown',
+        severity: safeText(row.incident_severity, 40) || 'unknown',
+        occurrences: Number(row.incident_occurrences || 0),
+        score: Number(row.incident_score || 0),
+        blockers: Number(row.incident_blockers || 0),
+        warnings: Number(row.incident_warnings || 0),
+        firstDetectedAt: row.incident_first_detected_at,
+        lastDetectedAt: row.incident_last_detected_at,
+        acknowledgedAt: row.incident_acknowledged_at,
+        resolvedAt: row.incident_resolved_at
+      } : null
     }))
   };
 }
@@ -185,9 +201,7 @@ export async function requeueReadinessDelivery(db, options = {}) {
 
 export async function runReadinessDeliveryDeadLetterOperation(db, options = {}) {
   const normalized = normalizeDeadLetterOptions(options);
-  if (normalized.action === 'requeue') {
-    return requeueReadinessDelivery(db, normalized);
-  }
+  if (normalized.action === 'requeue') return requeueReadinessDelivery(db, normalized);
   return getReadinessDeliveryDeadLetterStatus(db, normalized);
 }
 
