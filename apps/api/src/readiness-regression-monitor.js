@@ -103,7 +103,7 @@ export function classifyReadinessSnapshot(row) {
   };
 }
 
-async function persistWorkspaceState(db, row, classification, cooldownMinutes) {
+export async function persistWorkspaceState(db, row, classification, cooldownMinutes) {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
@@ -115,7 +115,7 @@ async function persistWorkspaceState(db, row, classification, cooldownMinutes) {
          SET status='resolved', resolved_at=NOW(), resolved_by='system', updated_at=NOW(),
              latest_snapshot_id=$2, last_detected_at=$3
          WHERE workspace_id=$1 AND status IN ('open','acknowledged')
-         RETURNING id, workspace_id, status, occurrences, resolved_at`,
+         RETURNING id, workspace_id, status, occurrences, resolved_at, latest_snapshot_id`,
         [row.workspace_id, row.snapshot_id, row.created_at]
       );
       await client.query('COMMIT');
@@ -124,7 +124,7 @@ async function persistWorkspaceState(db, row, classification, cooldownMinutes) {
 
     if (!classification.transitionedToBlocked) {
       const existing = await client.query(
-        `SELECT id, status, occurrences, last_notified_at
+        `SELECT id, status, occurrences, last_notified_at, latest_snapshot_id
          FROM readiness_regression_incidents WHERE workspace_id=$1`,
         [row.workspace_id]
       );
@@ -144,10 +144,24 @@ async function persistWorkspaceState(db, row, classification, cooldownMinutes) {
          resolved_at=NULL, resolved_by=NULL,
          occurrences=readiness_regression_incidents.occurrences + 1,
          updated_at=NOW()
+       WHERE readiness_regression_incidents.latest_snapshot_id IS DISTINCT FROM EXCLUDED.latest_snapshot_id
        RETURNING id,workspace_id,status,severity,first_detected_at,last_detected_at,
-                 last_notified_at,occurrences,created_at,updated_at`,
+                 last_notified_at,occurrences,created_at,updated_at,latest_snapshot_id`,
       [row.workspace_id, classification.severity, row.snapshot_id, row.created_at]
     );
+
+    if (!upserted.rowCount) {
+      const existing = await client.query(
+        `SELECT id,workspace_id,status,severity,first_detected_at,last_detected_at,
+                last_notified_at,occurrences,created_at,updated_at,latest_snapshot_id
+         FROM readiness_regression_incidents
+         WHERE workspace_id=$1`,
+        [row.workspace_id]
+      );
+      await client.query('COMMIT');
+      return { action: 'unchanged', incident: existing.rows[0] ?? null, shouldNotify: false };
+    }
+
     const incident = upserted.rows[0];
     const lastNotifiedAt = incident.last_notified_at ? new Date(incident.last_notified_at).getTime() : null;
     const shouldNotify = lastNotifiedAt === null || Date.now() - lastNotifiedAt >= cooldownMinutes * 60_000;
@@ -187,6 +201,7 @@ export async function evaluateReadinessRegressions(db, options = {}) {
       opened: results.filter((item) => item.action === 'opened').length,
       reopened: results.filter((item) => item.action === 'reopened').length,
       resolved: results.filter((item) => item.action === 'resolved').length,
+      unchanged: results.filter((item) => item.action === 'unchanged').length,
       notificationCandidates: results.filter((item) => item.shouldNotify).length
     },
     results
