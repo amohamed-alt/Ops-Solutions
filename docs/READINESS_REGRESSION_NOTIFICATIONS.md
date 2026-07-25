@@ -9,6 +9,8 @@ This runbook covers durable email delivery for onboarding-readiness regressions 
 - `last_notified_at` is updated only after a regression email is successfully delivered.
 - Recovery emails are created from resolved incidents and are independently idempotent.
 - Delivery failures use bounded exponential retry and stop after five attempts.
+- Claims left in `sending` after a worker crash are recovered after a bounded stale window.
+- The provider idempotency key remains stable across retries, limiting duplicate sends after ambiguous failures.
 - Email provider outages never remove or resolve the underlying incident.
 - Recipients are resolved at send time from active workspace owners and admins only.
 - Queries and updates remain scoped by both workspace and incident/delivery identifiers.
@@ -22,13 +24,34 @@ Preview current incidents first:
 bash scripts/readiness-regression-monitor.sh --action status --limit 200
 ```
 
-Process up to 50 due notifications:
+Process up to 50 due notifications and recover claims older than 30 minutes:
 
 ```bash
-bash scripts/readiness-regression-notifications.sh --limit 50
+bash scripts/readiness-regression-notifications.sh --limit 50 --stale-minutes 30
 ```
 
-The command returns only aggregate counts and provider-neutral failure messages. It does not print recipient lists or provider credentials.
+The command returns only aggregate counts, including recovered claims, and provider-neutral failure messages. It does not print recipient lists or provider credentials.
+
+## Scheduled production operation
+
+`install-ops-monitoring.sh` installs `ops-solutions-monitor-readiness-notifications.timer`. It runs hourly after readiness evaluation and incident materialization, using the same monitoring state and lock boundaries as the other production checks.
+
+Defaults:
+
+```text
+OPS_READINESS_NOTIFICATION_LIMIT=100
+OPS_READINESS_NOTIFICATION_STALE_MINUTES=30
+```
+
+Allowed ranges are 1–200 deliveries and 5–1440 stale minutes. The monitoring result is written atomically to `readiness-notifications-latest.json`, with bounded JSONL history, and appears in `scripts/ops-monitoring-status.sh`.
+
+Install or refresh timers on the VPS:
+
+```bash
+sudo bash scripts/install-ops-monitoring.sh
+systemctl status ops-solutions-monitor-readiness-notifications.timer
+journalctl -u ops-solutions-monitor@readiness-notifications.service --since '2 hours ago'
+```
 
 ## Email configuration
 
@@ -41,19 +64,27 @@ Delivery uses the existing Resend/Postmark adapter and the same environment vari
 - `kind`: `regression` or `recovery`
 - `status`: `pending`, `sending`, `delivered`, or `failed`
 - `attempts` and `next_attempt_at`: retry control
+- `claimed_at`: crash-recovery boundary for in-flight sends
 - `recipients`: the recipient snapshot used for that attempt
 - `provider_message_id`: delivery traceability
 
-The unique constraint on `(incident_id, snapshot_id, kind)` is the final duplicate-delivery boundary.
+The unique constraint on `(incident_id, snapshot_id, kind)` is the final duplicate-delivery boundary. A partial index on `claimed_at` keeps stale-claim reconciliation bounded.
 
 ## Operational response
 
 1. Check the readiness incident and latest snapshot.
 2. Confirm that the workspace has at least one active owner or admin.
 3. Confirm Resend or Postmark configuration through the existing runtime configuration audit.
-4. Re-run the processor after fixing the provider or membership issue.
-5. Do not manually edit `last_notified_at`; successful delivery updates it atomically.
+4. Inspect the readiness-notifications monitoring state and systemd journal.
+5. Re-run the processor after fixing the provider or membership issue.
+6. Do not manually edit `last_notified_at`; successful delivery updates it atomically.
 
 ## Rollback
 
-Stopping the notification processor is safe. Existing incidents and queued deliveries remain in PostgreSQL. Removing the feature does not require dropping the table; retained rows provide an audit trail and can be resumed after redeployment.
+Disable only the delivery timer while retaining durable state:
+
+```bash
+sudo systemctl disable --now ops-solutions-monitor-readiness-notifications.timer
+```
+
+Existing incidents and queued deliveries remain in PostgreSQL. Removing the feature does not require dropping the table; retained rows provide an audit trail and can be resumed after redeployment.
