@@ -9,12 +9,13 @@ import {
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const DELIVERY_ID = '22222222-2222-4222-8222-222222222222';
+const INCIDENT_ID = '33333333-3333-4333-8333-333333333333';
 
 function deadLetterRow(overrides = {}) {
   return {
     id: DELIVERY_ID,
     workspace_id: WORKSPACE_ID,
-    incident_id: '33333333-3333-4333-8333-333333333333',
+    incident_id: INCIDENT_ID,
     snapshot_id: '44444444-4444-4444-8444-444444444444',
     kind: 'regression',
     status: 'failed',
@@ -24,6 +25,16 @@ function deadLetterRow(overrides = {}) {
     updated_at: new Date('2026-07-25T00:00:00Z'),
     error: 'provider unavailable',
     workspace_name: 'Acme',
+    incident_status: 'acknowledged',
+    incident_severity: 'critical',
+    incident_occurrences: 2,
+    incident_score: 42,
+    incident_blockers: 3,
+    incident_warnings: 1,
+    incident_first_detected_at: new Date('2026-07-23T00:00:00Z'),
+    incident_last_detected_at: new Date('2026-07-25T00:00:00Z'),
+    incident_acknowledged_at: new Date('2026-07-25T01:00:00Z'),
+    incident_resolved_at: null,
     ...overrides
   };
 }
@@ -43,30 +54,52 @@ test('normalizes safe dead-letter operation bounds', () => {
   assert.throws(() => normalizeDeadLetterOptions({ action: 'requeue', workspaceId: WORKSPACE_ID }), /deliveryId is required/);
 });
 
-test('returns bounded fleet status without recipient or credential data', async () => {
+test('returns bounded fleet status with safe correlated incident context', async () => {
   const calls = [];
   const db = {
     query: async (sql, parameters) => {
       calls.push({ sql, parameters });
       if (sql.includes('SELECT count(*)')) {
-        return {
-          rowCount: 1,
-          rows: [{ total: 1, regression: 1, recovery: 0, oldest_updated_at: null, newest_updated_at: null }]
-        };
+        return { rowCount: 1, rows: [{ total: 1, regression: 1, recovery: 0 }] };
       }
       return { rowCount: 1, rows: [deadLetterRow()] };
     }
   };
 
   const result = await getReadinessDeliveryDeadLetterStatus(db, { limit: 25 });
+  const delivery = result.deliveries[0];
   assert.equal(result.scope, 'fleet');
   assert.equal(result.summary.total, 1);
-  assert.equal(result.deliveries[0].id, DELIVERY_ID);
-  assert.equal(result.deliveries[0].error, 'provider unavailable');
-  assert.equal('recipients' in result.deliveries[0], false);
-  assert.ok(calls[0].sql.includes("status='failed'"));
-  assert.ok(calls[0].sql.includes('attempts >= 5'));
+  assert.equal(delivery.id, DELIVERY_ID);
+  assert.equal(delivery.error, 'provider unavailable');
+  assert.deepEqual(delivery.incident, {
+    id: INCIDENT_ID,
+    status: 'acknowledged',
+    severity: 'critical',
+    occurrences: 2,
+    score: 42,
+    blockers: 3,
+    warnings: 1,
+    firstDetectedAt: new Date('2026-07-23T00:00:00Z'),
+    lastDetectedAt: new Date('2026-07-25T00:00:00Z'),
+    acknowledgedAt: new Date('2026-07-25T01:00:00Z'),
+    resolvedAt: null
+  });
+  assert.equal('recipients' in delivery, false);
+  assert.ok(calls[0].sql.includes('LEFT JOIN readiness_regression_incidents i'));
+  assert.ok(calls[0].sql.includes('i.workspace_id=d.workspace_id'));
+  assert.ok(calls[0].sql.includes("d.status='failed'"));
   assert.equal(calls[0].parameters[0], 25);
+});
+
+test('returns null incident context when an historical incident row is unavailable', async () => {
+  const db = {
+    query: async (sql) => sql.includes('SELECT count(*)')
+      ? { rowCount: 1, rows: [{ total: 1, regression: 1, recovery: 0 }] }
+      : { rowCount: 1, rows: [deadLetterRow({ incident_id: null })] }
+  };
+  const result = await getReadinessDeliveryDeadLetterStatus(db, { limit: 10 });
+  assert.equal(result.deliveries[0].incident, null);
 });
 
 test('scopes dead-letter status to one workspace', async () => {
@@ -98,11 +131,8 @@ test('dry-run locks an eligible delivery but does not update it', async () => {
   };
 
   const result = await requeueReadinessDelivery({ connect: async () => client }, {
-    action: 'requeue',
-    workspaceId: WORKSPACE_ID,
-    deliveryId: DELIVERY_ID
+    action: 'requeue', workspaceId: WORKSPACE_ID, deliveryId: DELIVERY_ID
   });
-
   assert.equal(result.dryRun, true);
   assert.equal(result.eligible, true);
   assert.equal(result.requeued, false);
@@ -117,10 +147,7 @@ test('apply resets only the exact exhausted workspace delivery', async () => {
       calls.push({ sql, parameters });
       if (sql.includes('SELECT id,workspace_id')) return { rowCount: 1, rows: [deadLetterRow()] };
       if (sql.includes("SET status='pending'")) {
-        return {
-          rowCount: 1,
-          rows: [{ id: DELIVERY_ID, workspace_id: WORKSPACE_ID, kind: 'regression', status: 'pending', attempts: 0 }]
-        };
+        return { rowCount: 1, rows: [{ id: DELIVERY_ID, workspace_id: WORKSPACE_ID, kind: 'regression', status: 'pending', attempts: 0 }] };
       }
       return { rowCount: 0, rows: [] };
     },
@@ -128,12 +155,8 @@ test('apply resets only the exact exhausted workspace delivery', async () => {
   };
 
   const result = await requeueReadinessDelivery({ connect: async () => client }, {
-    action: 'requeue',
-    workspaceId: WORKSPACE_ID,
-    deliveryId: DELIVERY_ID,
-    apply: true
+    action: 'requeue', workspaceId: WORKSPACE_ID, deliveryId: DELIVERY_ID, apply: true
   });
-
   assert.equal(result.requeued, true);
   const update = calls.find((call) => call.sql.includes("SET status='pending'"));
   assert.deepEqual(update.parameters, [DELIVERY_ID, WORKSPACE_ID]);
