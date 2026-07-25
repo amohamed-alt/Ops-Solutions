@@ -39,11 +39,16 @@ test('returns explicit not-found and not-eligible outcomes', async () => {
   assert.match(text, /reply\.code\(409\)/);
 });
 
-test('does not serialize recipients, message bodies, credentials, tokens, or session data', async () => {
+test('serializes bounded incident context without sensitive delivery data', async () => {
   const text = await source();
   const serializer = text.slice(text.indexOf('function serializeDeadLetterResult'), text.indexOf('async function withDatabaseTransaction'));
   assert.doesNotMatch(serializer, /recipient|email_body|provider_message_id|access_token|refresh_token|client_secret|session|ip_address/i);
   assert.match(serializer, /incidentId/);
   assert.match(serializer, /snapshotId/);
   assert.match(serializer, /attempts/);
+  assert.match(serializer, /incident: delivery\.incident/);
+  assert.match(serializer, /status: delivery\.incident\.status/);
+  assert.match(serializer, /occurrences: delivery\.incident\.occurrences/);
+  assert.match(serializer, /blockers: delivery\.incident\.blockers/);
+  assert.match(serializer, /resolvedAt: delivery\.incident\.resolvedAt/);
 });

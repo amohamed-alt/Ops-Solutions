@@ -109,7 +109,20 @@ function serializeDeadLetterResult(result) {
       error: delivery.error,
       nextAttemptAt: delivery.nextAttemptAt,
       createdAt: delivery.createdAt,
-      updatedAt: delivery.updatedAt
+      updatedAt: delivery.updatedAt,
+      incident: delivery.incident ? {
+        id: delivery.incident.id,
+        status: delivery.incident.status,
+        severity: delivery.incident.severity,
+        occurrences: delivery.incident.occurrences,
+        score: delivery.incident.score,
+        blockers: delivery.incident.blockers,
+        warnings: delivery.incident.warnings,
+        firstDetectedAt: delivery.incident.firstDetectedAt,
+        lastDetectedAt: delivery.incident.lastDetectedAt,
+        acknowledgedAt: delivery.incident.acknowledgedAt,
+        resolvedAt: delivery.incident.resolvedAt
+      } : null
     }))
   };
 }
