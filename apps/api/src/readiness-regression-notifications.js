@@ -6,6 +6,7 @@ import { recordBillingUsage } from './billing.js';
 
 const MIGRATION_LOCK = 812341292;
 const DEFAULT_LIMIT = 50;
+const DEFAULT_STALE_MINUTES = 30;
 const MAX_ATTEMPTS = 5;
 
 function safeText(value, max = 1000) {
@@ -23,10 +24,14 @@ function escapeHtml(value) {
 
 export function normalizeNotificationOptions(input = {}) {
   const limit = Number(input.limit ?? DEFAULT_LIMIT);
+  const staleMinutes = Number(input.staleMinutes ?? DEFAULT_STALE_MINUTES);
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
     throw new TypeError('limit must be an integer between 1 and 200');
   }
-  return { limit };
+  if (!Number.isInteger(staleMinutes) || staleMinutes < 5 || staleMinutes > 1440) {
+    throw new TypeError('staleMinutes must be an integer between 5 and 1440');
+  }
+  return { limit, staleMinutes };
 }
 
 export async function ensureReadinessNotificationSchema(db) {
@@ -56,6 +61,9 @@ export async function ensureReadinessNotificationSchema(db) {
       CREATE INDEX IF NOT EXISTS readiness_regression_deliveries_due_idx
         ON readiness_regression_deliveries(next_attempt_at, created_at)
         WHERE status IN ('pending','failed');
+      CREATE INDEX IF NOT EXISTS readiness_regression_deliveries_sending_idx
+        ON readiness_regression_deliveries(claimed_at, created_at)
+        WHERE status='sending';
       CREATE INDEX IF NOT EXISTS readiness_regression_deliveries_workspace_idx
         ON readiness_regression_deliveries(workspace_id, created_at DESC);
     `);
@@ -63,6 +71,23 @@ export async function ensureReadinessNotificationSchema(db) {
     await client.query(`SELECT pg_advisory_unlock(${MIGRATION_LOCK})`).catch(() => undefined);
     client.release();
   }
+}
+
+export async function recoverStaleReadinessDeliveries(db, { staleMinutes = DEFAULT_STALE_MINUTES } = {}) {
+  const normalized = normalizeNotificationOptions({ limit: 1, staleMinutes });
+  const result = await db.query(`
+    UPDATE readiness_regression_deliveries
+    SET status='failed',
+        error='stale_claim_recovered',
+        next_attempt_at=NOW(),
+        updated_at=NOW()
+    WHERE status='sending'
+      AND claimed_at IS NOT NULL
+      AND claimed_at <= NOW()-($1 || ' minutes')::interval
+      AND attempts < ${MAX_ATTEMPTS}
+    RETURNING id
+  `, [String(normalized.staleMinutes)]);
+  return result.rowCount;
 }
 
 export async function enqueueReadinessIncidentDeliveries(db) {
@@ -212,6 +237,8 @@ export async function deliverReadinessNotification(db, delivery, {
 
 export async function processReadinessNotifications(db, options = {}) {
   const normalized = normalizeNotificationOptions(options);
+  await ensureReadinessNotificationSchema(db);
+  const recovered = await recoverStaleReadinessDeliveries(db, normalized);
   const enqueued = await enqueueReadinessIncidentDeliveries(db);
   let delivered = 0;
   let failed = 0;
@@ -224,14 +251,16 @@ export async function processReadinessNotifications(db, options = {}) {
     else if (result.skipped) skipped += 1;
     else failed += 1;
   }
-  return { enqueued, delivered, failed, skipped };
+  return { recovered, enqueued, delivered, failed, skipped };
 }
 
 async function main() {
   const limitIndex = process.argv.indexOf('--limit');
+  const staleIndex = process.argv.indexOf('--stale-minutes');
   const limit = limitIndex >= 0 ? process.argv[limitIndex + 1] : undefined;
+  const staleMinutes = staleIndex >= 0 ? process.argv[staleIndex + 1] : undefined;
   try {
-    process.stdout.write(`${JSON.stringify(await processReadinessNotifications(postgres, { limit }), null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify(await processReadinessNotifications(postgres, { limit, staleMinutes }), null, 2)}\n`);
   } finally {
     await postgres.end();
   }
