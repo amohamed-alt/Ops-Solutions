@@ -9,7 +9,7 @@ async function source(url) {
   return readFile(url, 'utf8');
 }
 
-test('readiness incident inbox exposes operational filters and deterministic sorting', async () => {
+test('readiness incident inbox exposes operational filters and server-side sorting', async () => {
   const page = await source(pageUrl);
   assert.match(page, /incidentStatus/);
   assert.match(page, /incidentSeverity/);
@@ -18,33 +18,35 @@ test('readiness incident inbox exposes operational filters and deterministic sor
   assert.match(page, /blockers_desc/);
   assert.match(page, /score_asc/);
   assert.match(page, /occurrences_desc/);
-  assert.match(page, /filteredIncidents/);
+  assert.match(page, /incidentQuery/);
+  assert.doesNotMatch(page, /filteredIncidents/);
 });
 
-test('incident filters and page are persisted in the URL without navigation', async () => {
+test('incident filters remain URL-persisted without exposing cursor state', async () => {
   const page = await source(pageUrl);
   assert.match(page, /new URLSearchParams\(window\.location\.search\)/);
   assert.match(page, /window\.history\.replaceState/);
-  assert.match(page, /incidentPage/);
-  assert.match(page, /params\.delete\(key\)/);
+  assert.match(page, /params\.delete\('incidentPage'\)/);
+  assert.doesNotMatch(page, /params\.set\('cursor'|nextIncidentCursor.*replaceState/);
   assert.doesNotMatch(page, /localStorage.*incidentStatus|localStorage.*incidentSeverity/);
 });
 
-test('incident inbox paginates bounded data and resets invalid pages', async () => {
+test('incident inbox consumes bounded opaque cursor pages', async () => {
   const page = await source(pageUrl);
   assert.match(page, /INCIDENT_PAGE_SIZE=10/);
-  assert.match(page, /readiness-incidents\?limit=200/);
-  assert.match(page, /Math\.ceil\(filteredIncidents\.length\/INCIDENT_PAGE_SIZE\)/);
-  assert.match(page, /if\(incidentPage>incidentPageCount\)setIncidentPage\(incidentPageCount\)/);
-  assert.match(page, /aria-label="Readiness incident pages"/);
+  assert.match(page, /pageInfo:\{limit:number;offset:number;hasNextPage:boolean;nextCursor:string\|null\}/);
+  assert.match(page, /setNextIncidentCursor\(page\.pageInfo\?\.nextCursor\|\|null\)/);
+  assert.match(page, /loadIncidents\(workspaceId,\{append:true,cursor:nextIncidentCursor\}\)/);
+  assert.match(page, /aria-label="Readiness incident pagination"/);
+  assert.doesNotMatch(page, /readiness-incidents\?limit=200/);
+  assert.doesNotMatch(page, /Math\.ceil\(filteredIncidents\.length/);
 });
 
-test('dead-letter navigation clears filters before focusing a correlated incident', async () => {
+test('dead-letter navigation focuses only incidents present in the loaded tenant result set', async () => {
   const page = await source(pageUrl);
   const openIncident = page.slice(page.indexOf('const openIncident='), page.indexOf('const summary='));
-  assert.match(openIncident, /setStatusFilter\('all'\)/);
-  assert.match(openIncident, /setSeverityFilter\('all'\)/);
-  assert.match(openIncident, /setMinimumBlockers\(0\)/);
+  assert.match(openIncident, /incidentRefs\.current\[incidentId\]/);
+  assert.match(openIncident, /currently loaded result set/);
   assert.match(openIncident, /prefers-reduced-motion/);
   assert.match(openIncident, /target\.focus/);
 });
