@@ -2,322 +2,49 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, CircleDashed, Clock3, ExternalLink, History, Inbox, LoaderCircle, MailWarning, RefreshCw, Rocket, RotateCcw, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowDownToLine, ArrowLeft, CheckCircle2, CircleDashed, Clock3, ExternalLink, History, Inbox, LoaderCircle, MailWarning, RefreshCw, Rocket, RotateCcw, ShieldCheck } from 'lucide-react';
 import styles from './readiness.module.css';
 
-type Workspace = { id: string; name: string; role: 'owner' | 'admin' | 'viewer' };
-type ReadinessCheck = {
-  key: string;
-  label: string;
-  state: 'pass' | 'warning' | 'blocked';
-  blocking: boolean;
-  detail: string;
-  action: string;
-  evidence?: Record<string, unknown>;
-};
-type ReadinessReport = {
-  workspace: { id: string; name: string; portalId?: number | null };
-  policy: { freshnessHours: number; requiredObjects: string[] };
-  summary: { ready: boolean; score: number; pass: number; warning: number; blockers: number; total: number };
-  checks: ReadinessCheck[];
-  nextActions: Array<{ key: string; label: string; action: string }>;
-  generatedAt: string;
-  snapshot?: ReadinessSnapshot;
-};
-type ReadinessSnapshot = {
-  id: string;
-  ready: boolean;
-  score: number;
-  blockers: number;
-  warnings: number;
-  previousReady: boolean | null;
-  transitioned: boolean;
-  triggerSource: string;
-  generatedAt: string;
-  createdAt: string;
-};
-type ReadinessIncident = {
-  id: string;
-  status: 'open' | 'acknowledged' | 'resolved';
-  severity: string;
-  firstDetectedAt: string;
-  lastDetectedAt: string;
-  lastNotifiedAt?: string | null;
-  acknowledgedAt?: string | null;
-  resolvedAt?: string | null;
-  note?: string | null;
-  occurrences: number;
-  score: number;
-  blockers: number;
-  warnings: number;
-  snapshotGeneratedAt: string;
-};
-type DeadLetterDelivery = {
-  id: string;
-  incidentId: string;
-  snapshotId: string;
-  kind: 'regression' | 'recovery' | string;
-  attempts: number;
-  error?: string | null;
-  nextAttemptAt?: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-type HistoryResponse = { results: ReadinessSnapshot[] };
-type IncidentResponse = { results: ReadinessIncident[] };
-type DeadLetterResponse = {
-  maxAttempts: number;
-  summary: { total?: number; regression?: number; recovery?: number };
-  deliveries: DeadLetterDelivery[];
-};
+type Workspace={id:string;name:string;role:'owner'|'admin'|'viewer'};
+type ReadinessCheck={key:string;label:string;state:'pass'|'warning'|'blocked';blocking:boolean;detail:string;action:string;evidence?:Record<string,unknown>};
+type ReadinessSnapshot={id:string;ready:boolean;score:number;blockers:number;warnings:number;previousReady:boolean|null;transitioned:boolean;triggerSource:string;generatedAt:string;createdAt:string};
+type ReadinessReport={workspace:{id:string;name:string;portalId?:number|null};policy:{freshnessHours:number;requiredObjects:string[]};summary:{ready:boolean;score:number;pass:number;warning:number;blockers:number;total:number};checks:ReadinessCheck[];nextActions:Array<{key:string;label:string;action:string}>;generatedAt:string;snapshot?:ReadinessSnapshot};
+type ReadinessIncident={id:string;status:'open'|'acknowledged'|'resolved';severity:string;firstDetectedAt:string;lastDetectedAt:string;lastNotifiedAt?:string|null;acknowledgedAt?:string|null;resolvedAt?:string|null;note?:string|null;occurrences:number;score:number;blockers:number;warnings:number;snapshotGeneratedAt:string};
+type DeliveryIncident={id:string;status:string;severity:string;occurrences:number;score:number;blockers:number;warnings:number;firstDetectedAt?:string|null;lastDetectedAt?:string|null;acknowledgedAt?:string|null;resolvedAt?:string|null};
+type DeadLetterDelivery={id:string;incidentId:string;snapshotId:string;kind:'regression'|'recovery'|string;attempts:number;error?:string|null;nextAttemptAt?:string|null;createdAt:string;updatedAt:string;incident?:DeliveryIncident|null};
+type HistoryResponse={results:ReadinessSnapshot[]};type IncidentResponse={results:ReadinessIncident[]};type DeadLetterResponse={maxAttempts:number;summary:{total?:number;regression?:number;recovery?:number};deliveries:DeadLetterDelivery[]};
 
-const REQUEST_TIMEOUT_MS = 12_000;
-const CHECK_LINKS: Record<string, string> = {
-  workspace_active: '/settings/team',
-  hubspot_connected: '/onboarding',
-  schema_discovered: '/settings/mappings',
-  semantic_mappings: '/settings/mappings',
-  initial_sync: '/settings/data-sla',
-  data_freshness: '/settings/data-sla',
-  workspace_ownership: '/settings/team',
-  auditability: '/settings/audit'
-};
+const REQUEST_TIMEOUT_MS=12_000;
+const CHECK_LINKS:Record<string,string>={workspace_active:'/settings/team',hubspot_connected:'/onboarding',schema_discovered:'/settings/mappings',semantic_mappings:'/settings/mappings',initial_sync:'/settings/data-sla',data_freshness:'/settings/data-sla',workspace_ownership:'/settings/team',auditability:'/settings/audit'};
 
-async function json<T>(url: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(url, { cache: 'no-store', ...init });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || payload.error || `Request failed with ${response.status}.`);
-  return payload as T;
-}
+async function json<T>(url:string,init:RequestInit={}):Promise<T>{const response=await fetch(url,{cache:'no-store',...init});const payload=await response.json().catch(()=>({}));if(!response.ok)throw new Error(payload.message||payload.error||`Request failed with ${response.status}.`);return payload as T}
+function formatDate(value:string|null|undefined){if(!value)return 'Not recorded';const date=new Date(value);return Number.isNaN(date.getTime())?'Not recorded':date.toLocaleString()}
 
-function formatDate(value: string | null | undefined) {
-  if (!value) return 'Not recorded';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Not recorded' : date.toLocaleString();
-}
+export default function ReadinessPage(){
+ const [workspaces,setWorkspaces]=useState<Workspace[]>([]),[workspaceId,setWorkspaceId]=useState(''),[report,setReport]=useState<ReadinessReport|null>(null),[history,setHistory]=useState<ReadinessSnapshot[]>([]),[incidents,setIncidents]=useState<ReadinessIncident[]>([]),[deadLetters,setDeadLetters]=useState<DeadLetterDelivery[]>([]);
+ const [loading,setLoading]=useState(true),[recording,setRecording]=useState(false),[updatingIncidentId,setUpdatingIncidentId]=useState(''),[updatingDeliveryId,setUpdatingDeliveryId]=useState(''),[focusedIncidentId,setFocusedIncidentId]=useState('');
+ const [previewedDeliveryIds,setPreviewedDeliveryIds]=useState<Set<string>>(()=>new Set()),[incidentNote,setIncidentNote]=useState<Record<string,string>>({}),[error,setError]=useState('');
+ const requestRef=useRef<AbortController|null>(null),incidentRefs=useRef<Record<string,HTMLElement|null>>({});
+ const workspace=useMemo(()=>workspaces.find(item=>item.id===workspaceId)??null,[workspaces,workspaceId]);const canManage=workspace?.role==='owner'||workspace?.role==='admin';
 
-export default function ReadinessPage() {
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [workspaceId, setWorkspaceId] = useState('');
-  const [report, setReport] = useState<ReadinessReport | null>(null);
-  const [history, setHistory] = useState<ReadinessSnapshot[]>([]);
-  const [incidents, setIncidents] = useState<ReadinessIncident[]>([]);
-  const [deadLetters, setDeadLetters] = useState<DeadLetterDelivery[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [recording, setRecording] = useState(false);
-  const [updatingIncidentId, setUpdatingIncidentId] = useState('');
-  const [updatingDeliveryId, setUpdatingDeliveryId] = useState('');
-  const [previewedDeliveryIds, setPreviewedDeliveryIds] = useState<Set<string>>(() => new Set());
-  const [incidentNote, setIncidentNote] = useState<Record<string, string>>({});
-  const [error, setError] = useState('');
-  const requestRef = useRef<AbortController | null>(null);
-  const workspace = useMemo(() => workspaces.find((item) => item.id === workspaceId) ?? null, [workspaces, workspaceId]);
-  const canManage = workspace?.role === 'owner' || workspace?.role === 'admin';
+ const load=useCallback(async(id:string)=>{requestRef.current?.abort();const controller=new AbortController();requestRef.current=controller;const timeout=window.setTimeout(()=>controller.abort(),REQUEST_TIMEOUT_MS);setLoading(true);setError('');setPreviewedDeliveryIds(new Set());setFocusedIncidentId('');try{const[readiness,snapshots,incidentRows,failedDeliveries]=await Promise.all([json<ReadinessReport>(`/api/customer/workspaces/${id}/onboarding-readiness`,{signal:controller.signal}),json<HistoryResponse>(`/api/customer/workspaces/${id}/onboarding-readiness/history?limit=20`,{signal:controller.signal}),json<IncidentResponse>(`/api/customer/workspaces/${id}/readiness-incidents?limit=50`,{signal:controller.signal}),json<DeadLetterResponse>(`/api/customer/workspaces/${id}/readiness-delivery-dead-letters?limit=50`,{signal:controller.signal})]);if(controller.signal.aborted)return;setReport(readiness);setHistory(snapshots.results||[]);setIncidents(incidentRows.results||[]);setDeadLetters(failedDeliveries.deliveries||[]);window.localStorage.setItem('ops:last-dashboard-workspace',id)}catch(reason){setError(controller.signal.aborted?'Readiness evaluation timed out. Retry after confirming the API and database are healthy.':reason instanceof Error?reason.message:'Unable to load onboarding readiness.')}finally{window.clearTimeout(timeout);if(requestRef.current===controller){requestRef.current=null;setLoading(false)}}},[]);
+ const recordEvaluation=useCallback(async()=>{if(!workspaceId||!canManage||recording)return;setRecording(true);setError('');try{const next=await json<ReadinessReport>(`/api/customer/workspaces/${workspaceId}/onboarding-readiness`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({freshnessHours:report?.policy.freshnessHours??24})});setReport(next);await load(workspaceId)}catch(reason){setError(reason instanceof Error?reason.message:'Unable to record readiness evaluation.')}finally{setRecording(false)}},[workspaceId,canManage,recording,report?.policy.freshnessHours,load]);
+ const updateIncident=useCallback(async(incidentId:string,action:'acknowledge'|'resolve')=>{if(!workspaceId||!canManage||updatingIncidentId)return;setUpdatingIncidentId(incidentId);setError('');try{await json<ReadinessIncident>(`/api/customer/workspaces/${workspaceId}/readiness-incidents/${incidentId}/${action}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({note:incidentNote[incidentId]||''})});setIncidentNote(current=>({...current,[incidentId]:''}));await load(workspaceId)}catch(reason){setError(reason instanceof Error?reason.message:'Unable to update readiness incident.')}finally{setUpdatingIncidentId('')}},[workspaceId,canManage,updatingIncidentId,incidentNote,load]);
+ const requeueDelivery=useCallback(async(deliveryId:string,apply:boolean)=>{if(!workspaceId||!canManage||updatingDeliveryId)return;setUpdatingDeliveryId(deliveryId);setError('');try{await json(`/api/customer/workspaces/${workspaceId}/readiness-delivery-dead-letters/${deliveryId}/requeue`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({apply})});if(!apply)setPreviewedDeliveryIds(current=>new Set(current).add(deliveryId));else await load(workspaceId)}catch(reason){setError(reason instanceof Error?reason.message:'Unable to validate or retry the failed notification.')}finally{setUpdatingDeliveryId('')}},[workspaceId,canManage,updatingDeliveryId,load]);
+ const openIncident=useCallback((incidentId:string)=>{const target=incidentRefs.current[incidentId];if(!target){setError('The correlated incident is no longer available in the current bounded inbox. Refresh or review the incident history.');return}setFocusedIncidentId(incidentId);target.scrollIntoView({behavior:'smooth',block:'center'});target.focus({preventScroll:true});window.setTimeout(()=>setFocusedIncidentId(current=>current===incidentId?'':current),3500)},[]);
 
-  const load = useCallback(async (id: string) => {
-    requestRef.current?.abort();
-    const controller = new AbortController();
-    requestRef.current = controller;
-    const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-    setLoading(true);
-    setError('');
-    setPreviewedDeliveryIds(new Set());
+ useEffect(()=>{const controller=new AbortController();json<{workspaces:Workspace[]}>('/api/customer/auth/session',{signal:controller.signal}).then(payload=>{const rows=payload.workspaces||[],remembered=window.localStorage.getItem('ops:last-dashboard-workspace')||'',selected=rows.find(item=>item.id===remembered)||rows[0];setWorkspaces(rows);setWorkspaceId(selected?.id||'');if(!selected)setLoading(false)}).catch(reason=>{if(!controller.signal.aborted){setError(reason instanceof Error?reason.message:'Unable to load workspace access.');setLoading(false)}});return()=>controller.abort()},[]);
+ useEffect(()=>{if(workspaceId)void load(workspaceId);return()=>requestRef.current?.abort()},[workspaceId,load]);
+ const summary=report?.summary??{ready:false,score:0,pass:0,warning:0,blockers:0,total:0},latestTransition=history.find(item=>item.transitioned),activeIncidents=incidents.filter(item=>item.status!=='resolved');
 
-    try {
-      const [readiness, snapshots, incidentRows, failedDeliveries] = await Promise.all([
-        json<ReadinessReport>(`/api/customer/workspaces/${id}/onboarding-readiness`, { signal: controller.signal }),
-        json<HistoryResponse>(`/api/customer/workspaces/${id}/onboarding-readiness/history?limit=20`, { signal: controller.signal }),
-        json<IncidentResponse>(`/api/customer/workspaces/${id}/readiness-incidents?limit=50`, { signal: controller.signal }),
-        json<DeadLetterResponse>(`/api/customer/workspaces/${id}/readiness-delivery-dead-letters?limit=50`, { signal: controller.signal })
-      ]);
-      if (controller.signal.aborted) return;
-      setReport(readiness);
-      setHistory(snapshots.results || []);
-      setIncidents(incidentRows.results || []);
-      setDeadLetters(failedDeliveries.deliveries || []);
-      window.localStorage.setItem('ops:last-dashboard-workspace', id);
-    } catch (reason) {
-      if (controller.signal.aborted) {
-        setError('Readiness evaluation timed out. Retry after confirming the API and database are healthy.');
-      } else {
-        setError(reason instanceof Error ? reason.message : 'Unable to load onboarding readiness.');
-      }
-    } finally {
-      window.clearTimeout(timeout);
-      if (requestRef.current === controller) {
-        requestRef.current = null;
-        setLoading(false);
-      }
-    }
-  }, []);
-
-  const recordEvaluation = useCallback(async () => {
-    if (!workspaceId || !canManage || recording) return;
-    setRecording(true);
-    setError('');
-    try {
-      const next = await json<ReadinessReport>(`/api/customer/workspaces/${workspaceId}/onboarding-readiness`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ freshnessHours: report?.policy.freshnessHours ?? 24 })
-      });
-      setReport(next);
-      await load(workspaceId);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Unable to record readiness evaluation.');
-    } finally {
-      setRecording(false);
-    }
-  }, [workspaceId, canManage, recording, report?.policy.freshnessHours, load]);
-
-  const updateIncident = useCallback(async (incidentId: string, action: 'acknowledge' | 'resolve') => {
-    if (!workspaceId || !canManage || updatingIncidentId) return;
-    setUpdatingIncidentId(incidentId);
-    setError('');
-    try {
-      await json<ReadinessIncident>(`/api/customer/workspaces/${workspaceId}/readiness-incidents/${incidentId}/${action}`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ note: incidentNote[incidentId] || '' })
-      });
-      setIncidentNote((current) => ({ ...current, [incidentId]: '' }));
-      await load(workspaceId);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Unable to update readiness incident.');
-    } finally {
-      setUpdatingIncidentId('');
-    }
-  }, [workspaceId, canManage, updatingIncidentId, incidentNote, load]);
-
-  const requeueDelivery = useCallback(async (deliveryId: string, apply: boolean) => {
-    if (!workspaceId || !canManage || updatingDeliveryId) return;
-    setUpdatingDeliveryId(deliveryId);
-    setError('');
-    try {
-      await json(`/api/customer/workspaces/${workspaceId}/readiness-delivery-dead-letters/${deliveryId}/requeue`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ apply })
-      });
-      if (!apply) {
-        setPreviewedDeliveryIds((current) => new Set(current).add(deliveryId));
-      } else {
-        await load(workspaceId);
-      }
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Unable to validate or retry the failed notification.');
-    } finally {
-      setUpdatingDeliveryId('');
-    }
-  }, [workspaceId, canManage, updatingDeliveryId, load]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    json<{ workspaces: Workspace[] }>('/api/customer/auth/session', { signal: controller.signal })
-      .then((payload) => {
-        const rows = payload.workspaces || [];
-        const remembered = window.localStorage.getItem('ops:last-dashboard-workspace') || '';
-        const selected = rows.find((item) => item.id === remembered) || rows[0];
-        setWorkspaces(rows);
-        setWorkspaceId(selected?.id || '');
-        if (!selected) setLoading(false);
-      })
-      .catch((reason) => {
-        if (!controller.signal.aborted) {
-          setError(reason instanceof Error ? reason.message : 'Unable to load workspace access.');
-          setLoading(false);
-        }
-      });
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    if (workspaceId) void load(workspaceId);
-    return () => requestRef.current?.abort();
-  }, [workspaceId, load]);
-
-  const summary = report?.summary ?? { ready: false, score: 0, pass: 0, warning: 0, blockers: 0, total: 0 };
-  const latestTransition = history.find((item) => item.transitioned);
-  const activeIncidents = incidents.filter((item) => item.status !== 'resolved');
-
-  return <main className={styles.shell}>
-    <header className={styles.topbar}>
-      <Link href="/dashboard"><ArrowLeft size={16}/>Dashboard</Link>
-      <div><Rocket size={20}/><span><small>OPS SOLUTIONS</small><strong>Onboarding Readiness</strong></span></div>
-      <label><span>Company</span><select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} disabled={!workspaces.length}>{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-    </header>
-
-    <section className={styles.hero}>
-      <div><span>PRODUCTION GATE</span><h1>One canonical view of every onboarding blocker.</h1><p>HubSpot connection, discovery, mappings, synchronization, freshness, ownership and auditability are evaluated by the tenant-scoped API and preserved as an operational history.</p></div>
-      <article className={`${styles.score} ${summary.ready ? styles.ready : styles.notReady}`}>
-        <ShieldCheck/><small>READINESS SCORE</small><strong>{loading ? '—' : `${summary.score}%`}</strong>
-        <span>{summary.ready ? 'Production ready' : `${summary.blockers} blocker${summary.blockers === 1 ? '' : 's'} remaining`} · {summary.warning} warning{summary.warning === 1 ? '' : 's'}</span>
-        {report?.generatedAt ? <small>Live evaluation {formatDate(report.generatedAt)}</small> : null}
-      </article>
-    </section>
-
-    {error ? <div className={styles.error} role="alert"><AlertTriangle size={18}/>{error}</div> : null}
-    {!loading && !workspaces.length ? <div className={styles.error}><AlertTriangle size={18}/>No company workspace is assigned to this account.</div> : null}
-
-    <section className={styles.actions}>
-      <div>
-        <button onClick={() => workspaceId && load(workspaceId)} disabled={loading || !workspaceId}>{loading ? <LoaderCircle className={styles.spin}/> : <RefreshCw size={16}/>}Refresh live status</button>
-        {canManage ? <button className={styles.secondaryButton} onClick={recordEvaluation} disabled={recording || loading}>{recording ? <LoaderCircle className={styles.spin}/> : <History size={16}/>}Record evaluation</button> : null}
-      </div>
-      <Link href="/dashboard">Open dashboard <ExternalLink size={15}/></Link>
-    </section>
-
-    <section className={styles.grid} aria-busy={loading} aria-live="polite">
-      {(report?.checks || []).map((item) => <article key={item.key} className={`${styles.card} ${styles[item.state]}`}>
-        <div className={styles.icon}>{item.state === 'pass' ? <CheckCircle2/> : item.state === 'warning' ? <CircleDashed/> : <AlertTriangle/>}</div>
-        <div><small>{item.state.toUpperCase()}</small><h2>{item.label}</h2><p>{item.detail}</p>{item.state !== 'pass' ? <p className={styles.actionText}>{item.action}</p> : null}{CHECK_LINKS[item.key] ? <Link href={CHECK_LINKS[item.key]}>Resolve or review <ExternalLink size={14}/></Link> : null}</div>
-      </article>)}
-    </section>
-
-    <section className={styles.historySection}>
-      <div className={styles.sectionHeading}><div><small>OPERATIONS INBOX</small><h2>Readiness incidents</h2><p>Durable regressions are visible to the whole workspace and remain open until recovery or an explicit operational resolution.</p></div><span className={styles.incidentCount}>{activeIncidents.length} active</span></div>
-      {!incidents.length ? <div className={styles.empty}><Inbox/><div><strong>No readiness incidents</strong><p>This workspace has no recorded production-readiness regression.</p></div></div> : <div className={styles.incidentList}>
-        {incidents.map((incident) => <article key={incident.id} className={`${styles.incidentCard} ${styles[`incident_${incident.status}`]}`}>
-          <div className={styles.incidentHeader}><div><span>{incident.status.replaceAll('_', ' ').toUpperCase()}</span><h3>{incident.blockers} blockers · score {incident.score}%</h3></div><strong>{incident.occurrences} occurrence{incident.occurrences === 1 ? '' : 's'}</strong></div>
-          <p>First detected {formatDate(incident.firstDetectedAt)} · last detected {formatDate(incident.lastDetectedAt)}</p>
-          {incident.note ? <blockquote>{incident.note}</blockquote> : null}
-          {canManage && incident.status !== 'resolved' ? <div className={styles.incidentActions}>
-            <input value={incidentNote[incident.id] || ''} onChange={(event) => setIncidentNote((current) => ({ ...current, [incident.id]: event.target.value }))} placeholder="Optional operational note" maxLength={1000}/>
-            {incident.status === 'open' ? <button className={styles.secondaryButton} onClick={() => updateIncident(incident.id, 'acknowledge')} disabled={Boolean(updatingIncidentId)}>{updatingIncidentId === incident.id ? <LoaderCircle className={styles.spin}/> : null}Acknowledge</button> : null}
-            <button onClick={() => updateIncident(incident.id, 'resolve')} disabled={Boolean(updatingIncidentId)}>{updatingIncidentId === incident.id ? <LoaderCircle className={styles.spin}/> : null}Resolve</button>
-          </div> : null}
-        </article>)}
-      </div>}
-    </section>
-
-    <section className={styles.historySection}>
-      <div className={styles.sectionHeading}><div><small>DELIVERY RECOVERY</small><h2>Failed readiness notifications</h2><p>Exhausted notification deliveries remain visible until an owner or admin validates and explicitly schedules one safe retry.</p></div><span className={`${styles.incidentCount} ${deadLetters.length ? styles.dangerCount : ''}`}>{deadLetters.length} failed</span></div>
-      {!deadLetters.length ? <div className={styles.empty}><MailWarning/><div><strong>No exhausted notification deliveries</strong><p>Readiness regression and recovery notifications are within the retry policy.</p></div></div> : <div className={styles.incidentList}>
-        {deadLetters.map((delivery) => {
-          const previewed = previewedDeliveryIds.has(delivery.id);
-          const busy = updatingDeliveryId === delivery.id;
-          return <article key={delivery.id} className={styles.deliveryCard}>
-            <div className={styles.incidentHeader}><div><span>FAILED DELIVERY</span><h3>{delivery.kind.replaceAll('_', ' ')} notification</h3></div><strong>{delivery.attempts} attempts</strong></div>
-            <p>Created {formatDate(delivery.createdAt)} · last updated {formatDate(delivery.updatedAt)}</p>
-            {delivery.error ? <blockquote>{delivery.error}</blockquote> : null}
-            {canManage ? <div className={styles.deliveryActions}>
-              <button className={styles.secondaryButton} onClick={() => requeueDelivery(delivery.id, false)} disabled={Boolean(updatingDeliveryId)}>{busy ? <LoaderCircle className={styles.spin}/> : <ShieldCheck size={16}/>}Validate retry</button>
-              {previewed ? <button className={styles.dangerButton} onClick={() => requeueDelivery(delivery.id, true)} disabled={Boolean(updatingDeliveryId)}>{busy ? <LoaderCircle className={styles.spin}/> : <RotateCcw size={16}/>}Schedule one retry</button> : <span>Validation is required before retry.</span>}
-            </div> : <p className={styles.viewerNote}>Owner or admin access is required to retry this notification.</p>}
-          </article>;
-        })}
-      </div>}
-    </section>
-
-    <section className={styles.historySection}>
-      <div className={styles.sectionHeading}><div><small>IMMUTABLE HISTORY</small><h2>Readiness timeline</h2><p>Recorded evaluations provide evidence of when a company became ready or returned to a blocked state.</p></div>{latestTransition ? <span className={styles.transitionBadge}>Last transition {formatDate(latestTransition.createdAt)}</span> : null}</div>
-      {!history.length ? <div className={styles.empty}><Clock3/><div><strong>No evaluations recorded yet</strong><p>Owners and admins can record the current server-side evaluation to start the timeline.</p></div></div> : <div className={styles.timeline}>
-        {history.map((item) => <article key={item.id} className={styles.timelineItem}>
-          <span className={`${styles.timelineDot} ${item.ready ? styles.timelineReady : styles.timelineBlocked}`}/>
-          <div><strong>{item.ready ? 'Production ready' : 'Blocked'} · {item.score}%</strong><p>{item.blockers} blockers · {item.warnings} warnings · {item.triggerSource.replaceAll('_', ' ')}</p>{item.transitioned ? <em>{item.previousReady ? 'Moved from ready to blocked' : 'Moved from blocked to ready'}</em> : null}</div>
-          <time>{formatDate(item.createdAt)}</time>
-        </article>)}
-      </div>}
-    </section>
-  </main>;
+ return <main className={styles.shell}>
+  <header className={styles.topbar}><Link href="/dashboard"><ArrowLeft size={16}/>Dashboard</Link><div><Rocket size={20}/><span><small>OPS SOLUTIONS</small><strong>Onboarding Readiness</strong></span></div><label><span>Company</span><select value={workspaceId} onChange={event=>setWorkspaceId(event.target.value)} disabled={!workspaces.length}>{workspaces.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}</select></label></header>
+  <section className={styles.hero}><div><span>PRODUCTION GATE</span><h1>One canonical view of every onboarding blocker.</h1><p>HubSpot connection, discovery, mappings, synchronization, freshness, ownership and auditability are evaluated by the tenant-scoped API and preserved as an operational history.</p></div><article className={`${styles.score} ${summary.ready?styles.ready:styles.notReady}`}><ShieldCheck/><small>READINESS SCORE</small><strong>{loading?'—':`${summary.score}%`}</strong><span>{summary.ready?'Production ready':`${summary.blockers} blocker${summary.blockers===1?'':'s'} remaining`} · {summary.warning} warning{summary.warning===1?'':'s'}</span>{report?.generatedAt?<small>Live evaluation {formatDate(report.generatedAt)}</small>:null}</article></section>
+  {error?<div className={styles.error} role="alert"><AlertTriangle size={18}/>{error}</div>:null}{!loading&&!workspaces.length?<div className={styles.error}><AlertTriangle size={18}/>No company workspace is assigned to this account.</div>:null}
+  <section className={styles.actions}><div><button onClick={()=>workspaceId&&load(workspaceId)} disabled={loading||!workspaceId}>{loading?<LoaderCircle className={styles.spin}/>:<RefreshCw size={16}/>}Refresh live status</button>{canManage?<button className={styles.secondaryButton} onClick={recordEvaluation} disabled={recording||loading}>{recording?<LoaderCircle className={styles.spin}/>:<History size={16}/>}Record evaluation</button>:null}</div><Link href="/dashboard">Open dashboard <ExternalLink size={15}/></Link></section>
+  <section className={styles.grid} aria-busy={loading} aria-live="polite">{(report?.checks||[]).map(item=><article key={item.key} className={`${styles.card} ${styles[item.state]}`}><div className={styles.icon}>{item.state==='pass'?<CheckCircle2/>:item.state==='warning'?<CircleDashed/>:<AlertTriangle/>}</div><div><small>{item.state.toUpperCase()}</small><h2>{item.label}</h2><p>{item.detail}</p>{item.state!=='pass'?<p className={styles.actionText}>{item.action}</p>:null}{CHECK_LINKS[item.key]?<Link href={CHECK_LINKS[item.key]}>Resolve or review <ExternalLink size={14}/></Link>:null}</div></article>)}</section>
+  <section className={styles.historySection}><div className={styles.sectionHeading}><div><small>OPERATIONS INBOX</small><h2>Readiness incidents</h2><p>Durable regressions are visible to the whole workspace and remain open until recovery or an explicit operational resolution.</p></div><span className={styles.incidentCount}>{activeIncidents.length} active</span></div>{!incidents.length?<div className={styles.empty}><Inbox/><div><strong>No readiness incidents</strong><p>This workspace has no recorded production-readiness regression.</p></div></div>:<div className={styles.incidentList}>{incidents.map(incident=><article id={`readiness-incident-${incident.id}`} ref={node=>{incidentRefs.current[incident.id]=node}} tabIndex={-1} key={incident.id} className={`${styles.incidentCard} ${styles[`incident_${incident.status}`]} ${focusedIncidentId===incident.id?styles.focusedIncident:''}`}><div className={styles.incidentHeader}><div><span>{incident.status.replaceAll('_',' ').toUpperCase()}</span><h3>{incident.blockers} blockers · score {incident.score}%</h3></div><strong>{incident.occurrences} occurrence{incident.occurrences===1?'':'s'}</strong></div><p>First detected {formatDate(incident.firstDetectedAt)} · last detected {formatDate(incident.lastDetectedAt)}</p>{incident.note?<blockquote>{incident.note}</blockquote>:null}{canManage&&incident.status!=='resolved'?<div className={styles.incidentActions}><input value={incidentNote[incident.id]||''} onChange={event=>setIncidentNote(current=>({...current,[incident.id]:event.target.value}))} placeholder="Optional operational note" maxLength={1000}/>{incident.status==='open'?<button className={styles.secondaryButton} onClick={()=>updateIncident(incident.id,'acknowledge')} disabled={Boolean(updatingIncidentId)}>{updatingIncidentId===incident.id?<LoaderCircle className={styles.spin}/>:null}Acknowledge</button>:null}<button onClick={()=>updateIncident(incident.id,'resolve')} disabled={Boolean(updatingIncidentId)}>{updatingIncidentId===incident.id?<LoaderCircle className={styles.spin}/>:null}Resolve</button></div>:null}</article>)}</div>}</section>
+  <section className={styles.historySection}><div className={styles.sectionHeading}><div><small>DELIVERY RECOVERY</small><h2>Failed readiness notifications</h2><p>Exhausted deliveries include tenant-safe incident context so operators can validate business impact before scheduling one retry.</p></div><span className={`${styles.incidentCount} ${deadLetters.length?styles.dangerCount:''}`}>{deadLetters.length} failed</span></div>{!deadLetters.length?<div className={styles.empty}><MailWarning/><div><strong>No exhausted notification deliveries</strong><p>Readiness regression and recovery notifications are within the retry policy.</p></div></div>:<div className={styles.incidentList}>{deadLetters.map(delivery=>{const previewed=previewedDeliveryIds.has(delivery.id),busy=updatingDeliveryId===delivery.id,incident=delivery.incident;return <article key={delivery.id} className={styles.deliveryCard}><div className={styles.incidentHeader}><div><span>FAILED DELIVERY</span><h3>{delivery.kind.replaceAll('_',' ')} notification</h3></div><strong>{delivery.attempts} attempts</strong></div><p>Created {formatDate(delivery.createdAt)} · last updated {formatDate(delivery.updatedAt)}</p>{incident?<div className={styles.deliveryIncidentContext}><div><small>CORRELATED INCIDENT</small><strong>{incident.status.replaceAll('_',' ')} · {incident.severity}</strong><span>{incident.blockers} blockers · {incident.warnings} warnings · score {incident.score}% · {incident.occurrences} occurrence{incident.occurrences===1?'':'s'}</span></div><button className={styles.contextButton} onClick={()=>openIncident(incident.id)}><ArrowDownToLine size={16}/>Open incident</button></div>:<div className={styles.missingIncident}><AlertTriangle size={16}/><span>The historical incident is unavailable; retry controls remain scoped to this delivery.</span></div>}{delivery.error?<blockquote>{delivery.error}</blockquote>:null}{canManage?<div className={styles.deliveryActions}><button className={styles.secondaryButton} onClick={()=>requeueDelivery(delivery.id,false)} disabled={Boolean(updatingDeliveryId)}>{busy?<LoaderCircle className={styles.spin}/>:<ShieldCheck size={16}/>}Validate retry</button>{previewed?<button className={styles.dangerButton} onClick={()=>requeueDelivery(delivery.id,true)} disabled={Boolean(updatingDeliveryId)}>{busy?<LoaderCircle className={styles.spin}/>:<RotateCcw size={16}/>}Schedule one retry</button>:<span>Validation is required before retry.</span>}</div>:<p className={styles.viewerNote}>Owner or admin access is required to retry this notification.</p>}</article>})}</div>}</section>
+  <section className={styles.historySection}><div className={styles.sectionHeading}><div><small>IMMUTABLE HISTORY</small><h2>Readiness timeline</h2><p>Recorded evaluations provide evidence of when a company became ready or returned to a blocked state.</p></div>{latestTransition?<span className={styles.transitionBadge}>Last transition {formatDate(latestTransition.createdAt)}</span>:null}</div>{!history.length?<div className={styles.empty}><Clock3/><div><strong>No evaluations recorded yet</strong><p>Owners and admins can record the current server-side evaluation to start the timeline.</p></div></div>:<div className={styles.timeline}>{history.map(item=><article key={item.id} className={styles.timelineItem}><span className={`${styles.timelineDot} ${item.ready?styles.timelineReady:styles.timelineBlocked}`}/><div><strong>{item.ready?'Production ready':'Blocked'} · {item.score}%</strong><p>{item.blockers} blockers · {item.warnings} warnings · {item.triggerSource.replaceAll('_',' ')}</p>{item.transitioned?<em>{item.previousReady?'Moved from ready to blocked':'Moved from blocked to ready'}</em>:null}</div><time>{formatDate(item.createdAt)}</time></article>)}</div>}</section>
+ </main>
 }
