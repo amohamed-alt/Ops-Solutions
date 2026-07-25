@@ -12,7 +12,7 @@ state_dir = pathlib.Path(sys.argv[1])
 fmt = sys.argv[2]
 checks = []
 severity = 0
-for name in ('backup', 'sla', 'readiness', 'integrity'):
+for name in ('backup', 'sla', 'readiness', 'readiness-incidents', 'integrity'):
     path = state_dir / f'{name}-latest.json'
     if not path.exists():
         item = {'check': name, 'status': 'missing', 'exitCode': 3, 'completedAt': None}
