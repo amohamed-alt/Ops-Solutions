@@ -12,8 +12,8 @@ test('onboarding readiness cancels stale requests and bounds API latency', async
   assert.match(source, /REQUEST_TIMEOUT_MS\s*=\s*12_000/);
   assert.match(source, /requestRef\.current\?\.abort\(\)/);
   assert.match(source, /new AbortController\(\)/);
-  assert.match(source, /window\.setTimeout\(\(\) => controller\.abort\(\), REQUEST_TIMEOUT_MS\)/);
-  assert.match(source, /return \(\) => requestRef\.current\?\.abort\(\)/);
+  assert.match(source, /window\.setTimeout\(\(\)\s*=>\s*controller\.abort\(\),\s*REQUEST_TIMEOUT_MS\)/);
+  assert.match(source, /return\s*\(\)\s*=>\s*requestRef\.current\?\.abort\(\)/);
 });
 
 test('readiness UI uses canonical server evaluation and durable history', async () => {
@@ -21,7 +21,7 @@ test('readiness UI uses canonical server evaluation and durable history', async 
 
   assert.match(source, /onboarding-readiness`/);
   assert.match(source, /onboarding-readiness\/history\?limit=20/);
-  assert.match(source, /method: 'POST'/);
+  assert.match(source, /method\s*:\s*'POST'/);
   assert.match(source, /Record evaluation/);
   assert.match(source, /Readiness timeline/);
   assert.match(source, /item\.transitioned/);
@@ -46,7 +46,7 @@ test('readiness proxies enforce workspace membership and protect admin credentia
 test('readiness UI keeps tenant selection and accessible operational states', async () => {
   const source = await readFile(pageUrl, 'utf8');
 
-  assert.match(source, /localStorage\.setItem\('ops:last-dashboard-workspace', id\)/);
+  assert.match(source, /localStorage\.setItem\(\s*'ops:last-dashboard-workspace'\s*,\s*id\s*\)/);
   assert.match(source, /No company workspace is assigned to this account/);
   assert.doesNotMatch(source, /ADMIN_API_KEY|HUBSPOT_CLIENT_SECRET|access_token|refresh_token|DATABASE_URL/);
   assert.match(source, /aria-busy=\{loading\}/);
