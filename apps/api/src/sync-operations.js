@@ -19,9 +19,9 @@ import {
 } from './onboarding-readiness.js';
 import {
   ensureReadinessRegressionSchema,
-  listReadinessRegressionIncidents,
   transitionReadinessRegressionIncident
 } from './readiness-regression-monitor.js';
+import { listReadinessRegressionIncidentPage } from './readiness-incident-query.js';
 import {
   getReadinessDeliveryDeadLetterStatus,
   requeueReadinessDelivery
@@ -50,11 +50,6 @@ function withoutLegacyRevenueRoutes(app) {
 function boundedHistoryLimit(value) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(parsed) ? Math.max(1, Math.min(100, parsed)) : 30;
-}
-
-function boundedIncidentLimit(value) {
-  const parsed = Number.parseInt(String(value ?? ''), 10);
-  return Number.isFinite(parsed) ? Math.max(1, Math.min(200, parsed)) : 50;
 }
 
 function boundedDeliveryLimit(value) {
@@ -206,15 +201,31 @@ function registerReadinessIncidentRoutes(app, dependencies) {
   const basePath = '/api/v1/workspaces/:workspaceId/readiness-incidents';
   const schemaReady = ensureReadinessRegressionSchema(dependencies.postgres);
 
-  app.get(basePath, { preHandler: dependencies.requireAdmin }, async (request) => {
+  app.get(basePath, { preHandler: dependencies.requireAdmin }, async (request, reply) => {
     const workspace = await dependencies.requireWorkspace(request.params.workspaceId);
     await schemaReady;
-    const limit = boundedIncidentLimit(request.query?.limit);
-    const rows = await listReadinessRegressionIncidents(dependencies.postgres, {
-      workspaceId: workspace.id,
-      limit
-    });
-    return { results: rows.map(serializeReadinessIncident), limit };
+    try {
+      const page = await listReadinessRegressionIncidentPage(dependencies.postgres, {
+        workspaceId: workspace.id,
+        status: request.query?.status,
+        severity: request.query?.severity,
+        minimumBlockers: request.query?.minimumBlockers,
+        sort: request.query?.sort,
+        limit: request.query?.limit,
+        cursor: request.query?.cursor
+      });
+      return {
+        results: page.rows.map(serializeReadinessIncident),
+        total: page.total,
+        filters: page.filters,
+        pageInfo: page.pageInfo
+      };
+    } catch (error) {
+      if (error instanceof TypeError) {
+        return reply.code(400).send({ error: 'invalid_readiness_incident_query', message: error.message });
+      }
+      throw error;
+    }
   });
 
   for (const action of ['acknowledge', 'resolve']) {
