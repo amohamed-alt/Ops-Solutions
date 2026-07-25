@@ -22,6 +22,10 @@ import {
   listReadinessRegressionIncidents,
   transitionReadinessRegressionIncident
 } from './readiness-regression-monitor.js';
+import {
+  getReadinessDeliveryDeadLetterStatus,
+  requeueReadinessDelivery
+} from './readiness-delivery-dead-letter.js';
 
 const LEGACY_REVENUE_ROUTES = new Set([
   '/api/v1/workspaces/:workspaceId/analytics/revenue',
@@ -49,6 +53,11 @@ function boundedHistoryLimit(value) {
 }
 
 function boundedIncidentLimit(value) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(200, parsed)) : 50;
+}
+
+function boundedDeliveryLimit(value) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(parsed) ? Math.max(1, Math.min(200, parsed)) : 50;
 }
@@ -82,6 +91,26 @@ function serializeReadinessIncident(row) {
     snapshotGeneratedAt: row.snapshot_generated_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+function serializeDeadLetterResult(result) {
+  return {
+    scope: result.scope,
+    workspaceId: result.workspaceId,
+    maxAttempts: result.maxAttempts,
+    summary: result.summary,
+    deliveries: (result.deliveries || []).map((delivery) => ({
+      id: delivery.id,
+      incidentId: delivery.incidentId,
+      snapshotId: delivery.snapshotId,
+      kind: delivery.kind,
+      attempts: delivery.attempts,
+      error: delivery.error,
+      nextAttemptAt: delivery.nextAttemptAt,
+      createdAt: delivery.createdAt,
+      updatedAt: delivery.updatedAt
+    }))
   };
 }
 
@@ -191,6 +220,36 @@ function registerReadinessIncidentRoutes(app, dependencies) {
   }
 }
 
+function registerReadinessDeadLetterRoutes(app, dependencies) {
+  const basePath = '/api/v1/workspaces/:workspaceId/readiness-delivery-dead-letters';
+
+  app.get(basePath, { preHandler: dependencies.requireAdmin }, async (request) => {
+    const workspace = await dependencies.requireWorkspace(request.params.workspaceId);
+    const limit = boundedDeliveryLimit(request.query?.limit);
+    const result = await getReadinessDeliveryDeadLetterStatus(dependencies.postgres, {
+      workspaceId: workspace.id,
+      limit
+    });
+    return serializeDeadLetterResult(result);
+  });
+
+  app.post(`${basePath}/:deliveryId/requeue`, { preHandler: dependencies.requireAdmin }, async (request, reply) => {
+    const workspace = await dependencies.requireWorkspace(request.params.workspaceId);
+    const apply = request.body?.apply === true;
+    const result = await requeueReadinessDelivery(dependencies.postgres, {
+      workspaceId: workspace.id,
+      deliveryId: request.params.deliveryId,
+      apply
+    });
+    if (!result.found) return reply.code(404).send({ error: 'readiness_delivery_not_found' });
+    if (!result.eligible) return reply.code(409).send({ error: 'readiness_delivery_not_eligible', ...result });
+    return reply.code(apply ? 200 : 202).send({
+      ...result,
+      actor: requestActor(request)
+    });
+  });
+}
+
 export function registerSyncOperationsRoutes(app, dependencies) {
   const result = registerBaseSyncOperationsRoutes(withoutLegacyRevenueRoutes(app), dependencies);
   registerRevenueReportingRoutes(app, {
@@ -200,6 +259,7 @@ export function registerSyncOperationsRoutes(app, dependencies) {
   });
   registerReadinessOperationsRoutes(app, dependencies);
   registerReadinessIncidentRoutes(app, dependencies);
+  registerReadinessDeadLetterRoutes(app, dependencies);
 
   const invalidationSubscriber = startReportCacheInvalidationSubscriber({
     redisUrl: dependencies.redisUrl,
