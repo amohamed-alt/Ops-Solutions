@@ -21,7 +21,10 @@ import {
   ensureReadinessRegressionSchema,
   transitionReadinessRegressionIncident
 } from './readiness-regression-monitor.js';
-import { listReadinessRegressionIncidentPage } from './readiness-incident-query.js';
+import {
+  getReadinessRegressionIncident,
+  listReadinessRegressionIncidentPage
+} from './readiness-incident-query.js';
 import {
   getReadinessDeliveryDeadLetterStatus,
   requeueReadinessDelivery
@@ -223,6 +226,24 @@ function registerReadinessIncidentRoutes(app, dependencies) {
     } catch (error) {
       if (error instanceof TypeError) {
         return reply.code(400).send({ error: 'invalid_readiness_incident_query', message: error.message });
+      }
+      throw error;
+    }
+  });
+
+  app.get(`${basePath}/:incidentId`, { preHandler: dependencies.requireAdmin }, async (request, reply) => {
+    const workspace = await dependencies.requireWorkspace(request.params.workspaceId);
+    await schemaReady;
+    try {
+      const incident = await getReadinessRegressionIncident(dependencies.postgres, {
+        workspaceId: workspace.id,
+        incidentId: request.params.incidentId
+      });
+      if (!incident) return reply.code(404).send({ error: 'readiness_incident_not_found' });
+      return serializeReadinessIncident(incident);
+    } catch (error) {
+      if (error instanceof TypeError) {
+        return reply.code(400).send({ error: 'invalid_readiness_incident_id', message: error.message });
       }
       throw error;
     }
