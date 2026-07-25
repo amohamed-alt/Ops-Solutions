@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, CircleDashed, Clock3, ExternalLink, History, LoaderCircle, RefreshCw, Rocket, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, CircleDashed, Clock3, ExternalLink, History, Inbox, LoaderCircle, RefreshCw, Rocket, ShieldCheck } from 'lucide-react';
 import styles from './readiness.module.css';
 
 type Workspace = { id: string; name: string; role: 'owner' | 'admin' | 'viewer' };
@@ -36,7 +36,24 @@ type ReadinessSnapshot = {
   generatedAt: string;
   createdAt: string;
 };
+type ReadinessIncident = {
+  id: string;
+  status: 'open' | 'acknowledged' | 'resolved';
+  severity: string;
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  lastNotifiedAt?: string | null;
+  acknowledgedAt?: string | null;
+  resolvedAt?: string | null;
+  note?: string | null;
+  occurrences: number;
+  score: number;
+  blockers: number;
+  warnings: number;
+  snapshotGeneratedAt: string;
+};
 type HistoryResponse = { results: ReadinessSnapshot[] };
+type IncidentResponse = { results: ReadinessIncident[] };
 
 const REQUEST_TIMEOUT_MS = 12_000;
 const CHECK_LINKS: Record<string, string> = {
@@ -68,12 +85,15 @@ export default function ReadinessPage() {
   const [workspaceId, setWorkspaceId] = useState('');
   const [report, setReport] = useState<ReadinessReport | null>(null);
   const [history, setHistory] = useState<ReadinessSnapshot[]>([]);
+  const [incidents, setIncidents] = useState<ReadinessIncident[]>([]);
   const [loading, setLoading] = useState(true);
   const [recording, setRecording] = useState(false);
+  const [updatingIncidentId, setUpdatingIncidentId] = useState('');
+  const [incidentNote, setIncidentNote] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const requestRef = useRef<AbortController | null>(null);
   const workspace = useMemo(() => workspaces.find((item) => item.id === workspaceId) ?? null, [workspaces, workspaceId]);
-  const canRecord = workspace?.role === 'owner' || workspace?.role === 'admin';
+  const canManage = workspace?.role === 'owner' || workspace?.role === 'admin';
 
   const load = useCallback(async (id: string) => {
     requestRef.current?.abort();
@@ -84,13 +104,15 @@ export default function ReadinessPage() {
     setError('');
 
     try {
-      const [readiness, snapshots] = await Promise.all([
+      const [readiness, snapshots, incidentRows] = await Promise.all([
         json<ReadinessReport>(`/api/customer/workspaces/${id}/onboarding-readiness`, { signal: controller.signal }),
-        json<HistoryResponse>(`/api/customer/workspaces/${id}/onboarding-readiness/history?limit=20`, { signal: controller.signal })
+        json<HistoryResponse>(`/api/customer/workspaces/${id}/onboarding-readiness/history?limit=20`, { signal: controller.signal }),
+        json<IncidentResponse>(`/api/customer/workspaces/${id}/readiness-incidents?limit=50`, { signal: controller.signal })
       ]);
       if (controller.signal.aborted) return;
       setReport(readiness);
       setHistory(snapshots.results || []);
+      setIncidents(incidentRows.results || []);
       window.localStorage.setItem('ops:last-dashboard-workspace', id);
     } catch (reason) {
       if (controller.signal.aborted) {
@@ -108,7 +130,7 @@ export default function ReadinessPage() {
   }, []);
 
   const recordEvaluation = useCallback(async () => {
-    if (!workspaceId || !canRecord || recording) return;
+    if (!workspaceId || !canManage || recording) return;
     setRecording(true);
     setError('');
     try {
@@ -118,14 +140,32 @@ export default function ReadinessPage() {
         body: JSON.stringify({ freshnessHours: report?.policy.freshnessHours ?? 24 })
       });
       setReport(next);
-      const snapshots = await json<HistoryResponse>(`/api/customer/workspaces/${workspaceId}/onboarding-readiness/history?limit=20`);
-      setHistory(snapshots.results || []);
+      await load(workspaceId);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to record readiness evaluation.');
     } finally {
       setRecording(false);
     }
-  }, [workspaceId, canRecord, recording, report?.policy.freshnessHours]);
+  }, [workspaceId, canManage, recording, report?.policy.freshnessHours, load]);
+
+  const updateIncident = useCallback(async (incidentId: string, action: 'acknowledge' | 'resolve') => {
+    if (!workspaceId || !canManage || updatingIncidentId) return;
+    setUpdatingIncidentId(incidentId);
+    setError('');
+    try {
+      await json<ReadinessIncident>(`/api/customer/workspaces/${workspaceId}/readiness-incidents/${incidentId}/${action}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ note: incidentNote[incidentId] || '' })
+      });
+      setIncidentNote((current) => ({ ...current, [incidentId]: '' }));
+      await load(workspaceId);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to update readiness incident.');
+    } finally {
+      setUpdatingIncidentId('');
+    }
+  }, [workspaceId, canManage, updatingIncidentId, incidentNote, load]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -154,6 +194,7 @@ export default function ReadinessPage() {
 
   const summary = report?.summary ?? { ready: false, score: 0, pass: 0, warning: 0, blockers: 0, total: 0 };
   const latestTransition = history.find((item) => item.transitioned);
+  const activeIncidents = incidents.filter((item) => item.status !== 'resolved');
 
   return <main className={styles.shell}>
     <header className={styles.topbar}>
@@ -177,7 +218,7 @@ export default function ReadinessPage() {
     <section className={styles.actions}>
       <div>
         <button onClick={() => workspaceId && load(workspaceId)} disabled={loading || !workspaceId}>{loading ? <LoaderCircle className={styles.spin}/> : <RefreshCw size={16}/>}Refresh live status</button>
-        {canRecord ? <button className={styles.secondaryButton} onClick={recordEvaluation} disabled={recording || loading}>{recording ? <LoaderCircle className={styles.spin}/> : <History size={16}/>}Record evaluation</button> : null}
+        {canManage ? <button className={styles.secondaryButton} onClick={recordEvaluation} disabled={recording || loading}>{recording ? <LoaderCircle className={styles.spin}/> : <History size={16}/>}Record evaluation</button> : null}
       </div>
       <Link href="/dashboard">Open dashboard <ExternalLink size={15}/></Link>
     </section>
@@ -187,6 +228,22 @@ export default function ReadinessPage() {
         <div className={styles.icon}>{item.state === 'pass' ? <CheckCircle2/> : item.state === 'warning' ? <CircleDashed/> : <AlertTriangle/>}</div>
         <div><small>{item.state.toUpperCase()}</small><h2>{item.label}</h2><p>{item.detail}</p>{item.state !== 'pass' ? <p className={styles.actionText}>{item.action}</p> : null}{CHECK_LINKS[item.key] ? <Link href={CHECK_LINKS[item.key]}>Resolve or review <ExternalLink size={14}/></Link> : null}</div>
       </article>)}
+    </section>
+
+    <section className={styles.historySection}>
+      <div className={styles.sectionHeading}><div><small>OPERATIONS INBOX</small><h2>Readiness incidents</h2><p>Durable regressions are visible to the whole workspace and remain open until recovery or an explicit operational resolution.</p></div><span className={styles.incidentCount}>{activeIncidents.length} active</span></div>
+      {!incidents.length ? <div className={styles.empty}><Inbox/><div><strong>No readiness incidents</strong><p>This workspace has no recorded production-readiness regression.</p></div></div> : <div className={styles.incidentList}>
+        {incidents.map((incident) => <article key={incident.id} className={`${styles.incidentCard} ${styles[`incident_${incident.status}`]}`}>
+          <div className={styles.incidentHeader}><div><span>{incident.status.replaceAll('_', ' ').toUpperCase()}</span><h3>{incident.blockers} blockers · score {incident.score}%</h3></div><strong>{incident.occurrences} occurrence{incident.occurrences === 1 ? '' : 's'}</strong></div>
+          <p>First detected {formatDate(incident.firstDetectedAt)} · last detected {formatDate(incident.lastDetectedAt)}</p>
+          {incident.note ? <blockquote>{incident.note}</blockquote> : null}
+          {canManage && incident.status !== 'resolved' ? <div className={styles.incidentActions}>
+            <input value={incidentNote[incident.id] || ''} onChange={(event) => setIncidentNote((current) => ({ ...current, [incident.id]: event.target.value }))} placeholder="Optional operational note" maxLength={1000}/>
+            {incident.status === 'open' ? <button className={styles.secondaryButton} onClick={() => updateIncident(incident.id, 'acknowledge')} disabled={Boolean(updatingIncidentId)}>{updatingIncidentId === incident.id ? <LoaderCircle className={styles.spin}/> : null}Acknowledge</button> : null}
+            <button onClick={() => updateIncident(incident.id, 'resolve')} disabled={Boolean(updatingIncidentId)}>{updatingIncidentId === incident.id ? <LoaderCircle className={styles.spin}/> : null}Resolve</button>
+          </div> : null}
+        </article>)}
+      </div>}
     </section>
 
     <section className={styles.historySection}>
