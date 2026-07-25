@@ -12,30 +12,50 @@ async function source(url) {
   return readFile(url, 'utf8');
 }
 
+function section(text, startMarker, endMarker) {
+  const start = text.indexOf(startMarker);
+  assert.notEqual(start, -1, `Missing source marker: ${startMarker}`);
+  const end = text.indexOf(endMarker, start + startMarker.length);
+  assert.notEqual(end, -1, `Missing source marker: ${endMarker}`);
+  return text.slice(start, end);
+}
+
 test('incident detail proxy preserves tenant membership and bounded upstream behavior', async () => {
   const proxy = await source(detailProxyUrl);
-  assert.match(proxy, /requireCustomerWorkspace\(request, workspaceId\)/);
+  assert.match(proxy, /requireCustomerWorkspace\(request,\s*workspaceId\)/);
   assert.match(proxy, /encodeURIComponent\(workspaceId\)/);
   assert.match(proxy, /encodeURIComponent\(incidentId\)/);
-  assert.match(proxy, /cache: 'no-store'/);
+  assert.match(proxy, /cache:\s*'no-store'/);
   assert.match(proxy, /AbortSignal\.timeout\(20_000\)/);
-  assert.match(proxy, /status: 503/);
+  assert.match(proxy, /status:\s*503/);
   assert.doesNotMatch(proxy, /ADMIN_API_KEY|DATABASE_URL|RESEND_API_KEY|POSTMARK_SERVER_TOKEN/i);
 });
 
 test('dead-letter navigation fetches an incident outside the loaded cursor page', async () => {
   const page = await source(pageUrl);
-  assert.match(page, /incidentDetailRequestRef/);
-  assert.match(page, /readiness-incidents\/\$\{encodeURIComponent\(incidentId\)\}/);
-  assert.match(page, /current\.some\(item=>item\.id===incident\.id\)\?current:\[incident,\.\.\.current\]/);
-  assert.match(page, /requestAnimationFrame/);
-  assert.match(page, /focusIncident\(incident\.id\)/);
-  assert.match(page, /incidentDetailRequestRef\.current\?\.abort\(\)/);
+  const openIncident = section(page, 'const openIncident=', '\n\n useEffect');
+
+  assert.match(openIncident, /incidentDetailRequestRef/);
+  assert.match(openIncident, /readiness-incidents\/\$\{encodeURIComponent\(incidentId\)\}/);
+  assert.match(
+    openIncident,
+    /current\.some\(item\s*=>\s*item\.id\s*===\s*incident\.id\)\s*\?\s*current\s*:\s*\[incident,\s*\.\.\.current\]/
+  );
+  assert.match(openIncident, /requestAnimationFrame/);
+  assert.match(openIncident, /focusIncident\(incident\.id\)/);
+  assert.match(openIncident, /incidentDetailRequestRef\.current\?\.abort\(\)/);
   assert.match(page, /disabled=\{Boolean\(incidentDetailLoadingId\)\}/);
 });
 
 test('on-demand incident loading remains workspace-scoped and private', async () => {
   const page = await source(pageUrl);
-  assert.match(page, /\/api\/customer\/workspaces\/\$\{workspaceId\}\/readiness-incidents/);
-  assert.doesNotMatch(page, /recipient|emailBody|providerMessageId|accessToken|refreshToken|sessionToken|ipAddress/i);
+  const proxy = await source(detailProxyUrl);
+  const openIncident = section(page, 'const openIncident=', '\n\n useEffect');
+  const implementation = `${proxy}\n${openIncident}`;
+
+  assert.match(openIncident, /\/api\/customer\/workspaces\/\$\{workspaceId\}\/readiness-incidents/);
+  assert.doesNotMatch(
+    implementation,
+    /recipient|emailBody|providerMessageId|accessToken|refreshToken|sessionToken|ipAddress/i
+  );
 });
