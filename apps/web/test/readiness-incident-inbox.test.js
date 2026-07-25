@@ -23,7 +23,11 @@ test('readiness center renders a tenant incident inbox with lifecycle actions', 
 test('incident list proxy validates workspace access and bounds responses', async () => {
   const proxy = await source(listProxyUrl);
   assert.match(proxy, /requireCustomerWorkspace\(request, workspaceId\)/);
-  assert.match(proxy, /Math\.max\(1, Math\.min\(200, requestedLimit\)\)/);
+  assert.match(proxy, /boundedInteger\(request\.nextUrl\.searchParams\.get\('limit'\), 25, 1, 50\)/);
+  assert.match(proxy, /STATUS_VALUES/);
+  assert.match(proxy, /SEVERITY_VALUES/);
+  assert.match(proxy, /SORT_VALUES/);
+  assert.match(proxy, /cursor\.slice\(0, 2048\)/);
   assert.match(proxy, /cache: 'no-store'/);
   assert.match(proxy, /AbortSignal\.timeout\(20_000\)/);
 });
