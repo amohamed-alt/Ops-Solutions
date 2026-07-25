@@ -27,7 +27,8 @@ test('failed deliveries render safe correlated incident context and navigation',
   assert.match(page, /incident\.blockers/);
   assert.match(page, /incident\.occurrences/);
   assert.match(page, /openIncident\(incident\.id\)/);
-  assert.match(page, /scrollIntoView\(\{behavior:'smooth',block:'center'\}\)/);
+  assert.match(page, /window\.matchMedia\('\(prefers-reduced-motion: reduce\)'\)\.matches\?'auto':'smooth'/);
+  assert.match(page, /scrollIntoView\(\{behavior:/);
   assert.match(page, /tabIndex=\{-1\}/);
   assert.match(page, /The historical incident is unavailable/);
   assert.match(styles, /\.focusedIncident/);
