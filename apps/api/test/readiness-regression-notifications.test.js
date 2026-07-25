@@ -4,7 +4,8 @@ import test from 'node:test';
 import {
   buildReadinessIncidentMessage,
   claimReadinessDelivery,
-  normalizeNotificationOptions
+  normalizeNotificationOptions,
+  recoverStaleReadinessDeliveries
 } from '../src/readiness-regression-notifications.js';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
@@ -26,11 +27,31 @@ function deliveryRow(overrides = {}) {
   };
 }
 
-test('normalizes bounded delivery limits', () => {
-  assert.deepEqual(normalizeNotificationOptions({}), { limit: 50 });
-  assert.deepEqual(normalizeNotificationOptions({ limit: 200 }), { limit: 200 });
+test('normalizes bounded delivery limits and stale claim windows', () => {
+  assert.deepEqual(normalizeNotificationOptions({}), { limit: 50, staleMinutes: 30 });
+  assert.deepEqual(normalizeNotificationOptions({ limit: 200, staleMinutes: 1440 }), { limit: 200, staleMinutes: 1440 });
   assert.throws(() => normalizeNotificationOptions({ limit: 0 }), /between 1 and 200/);
   assert.throws(() => normalizeNotificationOptions({ limit: 201 }), /between 1 and 200/);
+  assert.throws(() => normalizeNotificationOptions({ staleMinutes: 4 }), /between 5 and 1440/);
+  assert.throws(() => normalizeNotificationOptions({ staleMinutes: 1441 }), /between 5 and 1440/);
+});
+
+test('recovers only stale retryable sending deliveries', async () => {
+  const calls = [];
+  const db = {
+    query: async (sql, parameters) => {
+      calls.push({ sql, parameters });
+      return { rowCount: 3, rows: [] };
+    }
+  };
+  const recovered = await recoverStaleReadinessDeliveries(db, { staleMinutes: 45 });
+  assert.equal(recovered, 3);
+  assert.equal(calls[0].parameters[0], '45');
+  assert.match(calls[0].sql, /status='sending'/);
+  assert.match(calls[0].sql, /claimed_at <= NOW\(\)-\(\$1 \|\| ' minutes'\)::interval/);
+  assert.match(calls[0].sql, /attempts < 5/);
+  assert.match(calls[0].sql, /error='stale_claim_recovered'/);
+  assert.match(calls[0].sql, /next_attempt_at=NOW\(\)/);
 });
 
 test('builds escaped tenant-safe regression and recovery messages', () => {

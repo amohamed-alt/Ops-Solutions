@@ -13,17 +13,19 @@ READINESS_CONCURRENCY="${OPS_READINESS_CONCURRENCY:-3}"
 READINESS_LIMIT="${OPS_READINESS_WORKSPACE_LIMIT:-10000}"
 READINESS_INCIDENT_LIMIT="${OPS_READINESS_INCIDENT_LIMIT:-500}"
 READINESS_INCIDENT_COOLDOWN_MINUTES="${OPS_READINESS_INCIDENT_COOLDOWN_MINUTES:-360}"
+READINESS_NOTIFICATION_LIMIT="${OPS_READINESS_NOTIFICATION_LIMIT:-100}"
+READINESS_NOTIFICATION_STALE_MINUTES="${OPS_READINESS_NOTIFICATION_STALE_MINUTES:-30}"
 
 usage() {
-  echo "Usage: $0 <backup|sla|integrity|readiness|readiness-incidents>" >&2
+  echo "Usage: $0 <backup|sla|integrity|readiness|readiness-incidents|readiness-notifications>" >&2
   exit 4
 }
 
-[[ "$ACTION" =~ ^(backup|sla|integrity|readiness|readiness-incidents)$ ]] || usage
+[[ "$ACTION" =~ ^(backup|sla|integrity|readiness|readiness-incidents|readiness-notifications)$ ]] || usage
 [[ "$DEPLOY_PATH" = /* ]] || { echo "OPS_DEPLOY_PATH must be absolute" >&2; exit 4; }
 [[ "$STATE_DIR" = /* ]] || { echo "OPS_MONITORING_STATE_DIR must be absolute" >&2; exit 4; }
 [[ "$LOCK_DIR" = /* ]] || { echo "OPS_MONITORING_LOCK_DIR must be absolute" >&2; exit 4; }
-for value in MAX_AGE_HOURS STALE_HOURS LIMIT READINESS_FRESHNESS_HOURS READINESS_CONCURRENCY READINESS_LIMIT READINESS_INCIDENT_LIMIT READINESS_INCIDENT_COOLDOWN_MINUTES; do
+for value in MAX_AGE_HOURS STALE_HOURS LIMIT READINESS_FRESHNESS_HOURS READINESS_CONCURRENCY READINESS_LIMIT READINESS_INCIDENT_LIMIT READINESS_INCIDENT_COOLDOWN_MINUTES READINESS_NOTIFICATION_LIMIT READINESS_NOTIFICATION_STALE_MINUTES; do
   [[ "${!value}" =~ ^[0-9]+$ ]] || { echo "$value must be numeric" >&2; exit 4; }
 done
 (( READINESS_FRESHNESS_HOURS >= 1 && READINESS_FRESHNESS_HOURS <= 168 )) || { echo "OPS_READINESS_FRESHNESS_HOURS must be between 1 and 168" >&2; exit 4; }
@@ -31,6 +33,8 @@ done
 (( READINESS_LIMIT >= 1 && READINESS_LIMIT <= 10000 )) || { echo "OPS_READINESS_WORKSPACE_LIMIT must be between 1 and 10000" >&2; exit 4; }
 (( READINESS_INCIDENT_LIMIT >= 1 && READINESS_INCIDENT_LIMIT <= 1000 )) || { echo "OPS_READINESS_INCIDENT_LIMIT must be between 1 and 1000" >&2; exit 4; }
 (( READINESS_INCIDENT_COOLDOWN_MINUTES >= 15 && READINESS_INCIDENT_COOLDOWN_MINUTES <= 10080 )) || { echo "OPS_READINESS_INCIDENT_COOLDOWN_MINUTES must be between 15 and 10080" >&2; exit 4; }
+(( READINESS_NOTIFICATION_LIMIT >= 1 && READINESS_NOTIFICATION_LIMIT <= 200 )) || { echo "OPS_READINESS_NOTIFICATION_LIMIT must be between 1 and 200" >&2; exit 4; }
+(( READINESS_NOTIFICATION_STALE_MINUTES >= 5 && READINESS_NOTIFICATION_STALE_MINUTES <= 1440 )) || { echo "OPS_READINESS_NOTIFICATION_STALE_MINUTES must be between 5 and 1440" >&2; exit 4; }
 
 command -v flock >/dev/null 2>&1 || { echo "flock is required" >&2; exit 4; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 4; }
@@ -70,6 +74,10 @@ case "$ACTION" in
     ;;
   readiness-incidents)
     bash scripts/readiness-regression-monitor.sh --action evaluate --format json --limit "$READINESS_INCIDENT_LIMIT" --cooldown-minutes "$READINESS_INCIDENT_COOLDOWN_MINUTES" >"$output_file" 2>"$error_file"
+    exit_code=$?
+    ;;
+  readiness-notifications)
+    bash scripts/readiness-regression-notifications.sh --limit "$READINESS_NOTIFICATION_LIMIT" --stale-minutes "$READINESS_NOTIFICATION_STALE_MINUTES" >"$output_file" 2>"$error_file"
     exit_code=$?
     ;;
 esac
