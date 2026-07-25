@@ -17,7 +17,7 @@ test('readiness center renders a tenant incident inbox with lifecycle actions', 
   assert.match(page, /Acknowledge/);
   assert.match(page, /Resolve/);
   assert.match(page, /readiness-incidents/);
-  assert.match(page, /workspace\?\.role === 'owner' \|\| workspace\?\.role === 'admin'/);
+  assert.match(page, /workspace\?\.role\s*===\s*'owner'\s*\|\|\s*workspace\?\.role\s*===\s*'admin'/);
 });
 
 test('incident list proxy validates workspace access and bounds responses', async () => {
