@@ -56,13 +56,22 @@ test('incident inbox consumes bounded opaque cursor pages', async () => {
   assert.doesNotMatch(page, /Math\.ceil\(filteredIncidents\.length/);
 });
 
-test('dead-letter navigation focuses only incidents present in the loaded tenant result set', async () => {
+test('dead-letter navigation focuses loaded incidents and fetches missing tenant incidents on demand', async () => {
   const page = await source(pageUrl);
-  const openIncident = sectionBetween(page, 'const openIncident=', 'const summary=');
-  assert.match(openIncident, /incidentRefs\.current\[incidentId\]/);
-  assert.match(openIncident, /currently loaded result set/);
-  assert.match(openIncident, /prefers-reduced-motion/);
-  assert.match(openIncident, /target\.focus/);
+  const focusIncident = sectionBetween(page, 'const focusIncident=', 'const openIncident=');
+  const openIncident = sectionBetween(page, 'const openIncident=', 'useEffect(()=>{const params=');
+
+  assert.match(focusIncident, /incidentRefs\.current\[incidentId\]/);
+  assert.match(focusIncident, /prefers-reduced-motion/);
+  assert.match(focusIncident, /target\.focus/);
+
+  assert.match(openIncident, /if\(focusIncident\(incidentId\)\)return/);
+  assert.match(openIncident, /incidentDetailRequestRef\.current\?\.abort\(\)/);
+  assert.match(openIncident, /readiness-incidents\/\$\{encodeURIComponent\(incidentId\)\}/);
+  assert.match(openIncident, /current\.some\(item=>item\.id===incident\.id\)/);
+  assert.match(openIncident, /requestAnimationFrame/);
+  assert.match(openIncident, /focusIncident\(incident\.id\)/);
+  assert.doesNotMatch(openIncident, /currently loaded result set/);
 });
 
 test('filter controls remain responsive and accessible', async () => {
