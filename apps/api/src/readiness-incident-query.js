@@ -6,6 +6,21 @@ const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 50;
 const MAX_OFFSET = 1_000_000;
 
+const INCIDENT_SELECT = `SELECT i.id,i.workspace_id,w.name AS workspace_name,i.status,i.severity,
+       i.first_snapshot_id,i.latest_snapshot_id,i.first_detected_at,i.last_detected_at,
+       i.last_notified_at,i.acknowledged_at,i.acknowledged_by,i.resolved_at,i.resolved_by,
+       i.note,i.occurrences,i.created_at,i.updated_at,
+       s.score,s.blockers,s.warnings,s.generated_at AS snapshot_generated_at
+FROM readiness_regression_incidents i
+JOIN workspaces w ON w.id=i.workspace_id
+JOIN onboarding_readiness_snapshots s ON s.id=i.latest_snapshot_id`;
+
+function requireUuid(value, field) {
+  const normalized = String(value ?? '').trim();
+  if (!UUID_PATTERN.test(normalized)) throw new TypeError(`${field} must be a valid UUID`);
+  return normalized;
+}
+
 function boundedInteger(value, fallback, minimum, maximum, field) {
   if (value === undefined || value === null || value === '') return fallback;
   const parsed = Number.parseInt(String(value), 10);
@@ -43,9 +58,7 @@ function filterFingerprint(options) {
 }
 
 export function normalizeReadinessIncidentQuery(input = {}) {
-  const workspaceId = String(input.workspaceId ?? '').trim();
-  if (!UUID_PATTERN.test(workspaceId)) throw new TypeError('workspaceId must be a valid UUID');
-
+  const workspaceId = requireUuid(input.workspaceId, 'workspaceId');
   const status = normalizeEnum(input.status, 'all', STATUS_FILTERS, 'status');
   const severity = normalizeEnum(input.severity, 'all', SEVERITY_FILTERS, 'severity');
   const sort = normalizeEnum(input.sort, 'activity_desc', SORTS, 'sort');
@@ -87,6 +100,18 @@ function buildWhere(options, values) {
   return where.join(' AND ');
 }
 
+export async function getReadinessRegressionIncident(db, input = {}) {
+  const workspaceId = requireUuid(input.workspaceId, 'workspaceId');
+  const incidentId = requireUuid(input.incidentId, 'incidentId');
+  const result = await db.query(
+    `${INCIDENT_SELECT}
+     WHERE i.workspace_id=$1 AND i.id=$2
+     LIMIT 1`,
+    [workspaceId, incidentId]
+  );
+  return result.rows[0] ?? null;
+}
+
 export async function listReadinessRegressionIncidentPage(db, input = {}) {
   const options = normalizeReadinessIncidentQuery(input);
   const values = [options.workspaceId];
@@ -104,14 +129,7 @@ export async function listReadinessRegressionIncidentPage(db, input = {}) {
   const limitParameter = `$${queryValues.length - 1}`;
   const offsetParameter = `$${queryValues.length}`;
   const result = await db.query(
-    `SELECT i.id,i.workspace_id,w.name AS workspace_name,i.status,i.severity,
-            i.first_snapshot_id,i.latest_snapshot_id,i.first_detected_at,i.last_detected_at,
-            i.last_notified_at,i.acknowledged_at,i.acknowledged_by,i.resolved_at,i.resolved_by,
-            i.note,i.occurrences,i.created_at,i.updated_at,
-            s.score,s.blockers,s.warnings,s.generated_at AS snapshot_generated_at
-     FROM readiness_regression_incidents i
-     JOIN workspaces w ON w.id=i.workspace_id
-     JOIN onboarding_readiness_snapshots s ON s.id=i.latest_snapshot_id
+    `${INCIDENT_SELECT}
      WHERE ${where}
      ORDER BY ${orderClause(options.sort)}
      LIMIT ${limitParameter} OFFSET ${offsetParameter}`,
