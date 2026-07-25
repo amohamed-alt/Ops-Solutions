@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, CheckCircle2, CircleDashed, Clock3, ExternalLink, History, Inbox, LoaderCircle, RefreshCw, Rocket, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, CircleDashed, Clock3, ExternalLink, History, Inbox, LoaderCircle, MailWarning, RefreshCw, Rocket, RotateCcw, ShieldCheck } from 'lucide-react';
 import styles from './readiness.module.css';
 
 type Workspace = { id: string; name: string; role: 'owner' | 'admin' | 'viewer' };
@@ -52,8 +52,24 @@ type ReadinessIncident = {
   warnings: number;
   snapshotGeneratedAt: string;
 };
+type DeadLetterDelivery = {
+  id: string;
+  incidentId: string;
+  snapshotId: string;
+  kind: 'regression' | 'recovery' | string;
+  attempts: number;
+  error?: string | null;
+  nextAttemptAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 type HistoryResponse = { results: ReadinessSnapshot[] };
 type IncidentResponse = { results: ReadinessIncident[] };
+type DeadLetterResponse = {
+  maxAttempts: number;
+  summary: { total?: number; regression?: number; recovery?: number };
+  deliveries: DeadLetterDelivery[];
+};
 
 const REQUEST_TIMEOUT_MS = 12_000;
 const CHECK_LINKS: Record<string, string> = {
@@ -70,7 +86,7 @@ const CHECK_LINKS: Record<string, string> = {
 async function json<T>(url: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(url, { cache: 'no-store', ...init });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.message || `Request failed with ${response.status}.`);
+  if (!response.ok) throw new Error(payload.message || payload.error || `Request failed with ${response.status}.`);
   return payload as T;
 }
 
@@ -86,9 +102,12 @@ export default function ReadinessPage() {
   const [report, setReport] = useState<ReadinessReport | null>(null);
   const [history, setHistory] = useState<ReadinessSnapshot[]>([]);
   const [incidents, setIncidents] = useState<ReadinessIncident[]>([]);
+  const [deadLetters, setDeadLetters] = useState<DeadLetterDelivery[]>([]);
   const [loading, setLoading] = useState(true);
   const [recording, setRecording] = useState(false);
   const [updatingIncidentId, setUpdatingIncidentId] = useState('');
+  const [updatingDeliveryId, setUpdatingDeliveryId] = useState('');
+  const [previewedDeliveryIds, setPreviewedDeliveryIds] = useState<Set<string>>(() => new Set());
   const [incidentNote, setIncidentNote] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const requestRef = useRef<AbortController | null>(null);
@@ -102,17 +121,20 @@ export default function ReadinessPage() {
     const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     setLoading(true);
     setError('');
+    setPreviewedDeliveryIds(new Set());
 
     try {
-      const [readiness, snapshots, incidentRows] = await Promise.all([
+      const [readiness, snapshots, incidentRows, failedDeliveries] = await Promise.all([
         json<ReadinessReport>(`/api/customer/workspaces/${id}/onboarding-readiness`, { signal: controller.signal }),
         json<HistoryResponse>(`/api/customer/workspaces/${id}/onboarding-readiness/history?limit=20`, { signal: controller.signal }),
-        json<IncidentResponse>(`/api/customer/workspaces/${id}/readiness-incidents?limit=50`, { signal: controller.signal })
+        json<IncidentResponse>(`/api/customer/workspaces/${id}/readiness-incidents?limit=50`, { signal: controller.signal }),
+        json<DeadLetterResponse>(`/api/customer/workspaces/${id}/readiness-delivery-dead-letters?limit=50`, { signal: controller.signal })
       ]);
       if (controller.signal.aborted) return;
       setReport(readiness);
       setHistory(snapshots.results || []);
       setIncidents(incidentRows.results || []);
+      setDeadLetters(failedDeliveries.deliveries || []);
       window.localStorage.setItem('ops:last-dashboard-workspace', id);
     } catch (reason) {
       if (controller.signal.aborted) {
@@ -166,6 +188,28 @@ export default function ReadinessPage() {
       setUpdatingIncidentId('');
     }
   }, [workspaceId, canManage, updatingIncidentId, incidentNote, load]);
+
+  const requeueDelivery = useCallback(async (deliveryId: string, apply: boolean) => {
+    if (!workspaceId || !canManage || updatingDeliveryId) return;
+    setUpdatingDeliveryId(deliveryId);
+    setError('');
+    try {
+      await json(`/api/customer/workspaces/${workspaceId}/readiness-delivery-dead-letters/${deliveryId}/requeue`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ apply })
+      });
+      if (!apply) {
+        setPreviewedDeliveryIds((current) => new Set(current).add(deliveryId));
+      } else {
+        await load(workspaceId);
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Unable to validate or retry the failed notification.');
+    } finally {
+      setUpdatingDeliveryId('');
+    }
+  }, [workspaceId, canManage, updatingDeliveryId, load]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -243,6 +287,25 @@ export default function ReadinessPage() {
             <button onClick={() => updateIncident(incident.id, 'resolve')} disabled={Boolean(updatingIncidentId)}>{updatingIncidentId === incident.id ? <LoaderCircle className={styles.spin}/> : null}Resolve</button>
           </div> : null}
         </article>)}
+      </div>}
+    </section>
+
+    <section className={styles.historySection}>
+      <div className={styles.sectionHeading}><div><small>DELIVERY RECOVERY</small><h2>Failed readiness notifications</h2><p>Exhausted notification deliveries remain visible until an owner or admin validates and explicitly schedules one safe retry.</p></div><span className={`${styles.incidentCount} ${deadLetters.length ? styles.dangerCount : ''}`}>{deadLetters.length} failed</span></div>
+      {!deadLetters.length ? <div className={styles.empty}><MailWarning/><div><strong>No exhausted notification deliveries</strong><p>Readiness regression and recovery notifications are within the retry policy.</p></div></div> : <div className={styles.incidentList}>
+        {deadLetters.map((delivery) => {
+          const previewed = previewedDeliveryIds.has(delivery.id);
+          const busy = updatingDeliveryId === delivery.id;
+          return <article key={delivery.id} className={styles.deliveryCard}>
+            <div className={styles.incidentHeader}><div><span>FAILED DELIVERY</span><h3>{delivery.kind.replaceAll('_', ' ')} notification</h3></div><strong>{delivery.attempts} attempts</strong></div>
+            <p>Created {formatDate(delivery.createdAt)} · last updated {formatDate(delivery.updatedAt)}</p>
+            {delivery.error ? <blockquote>{delivery.error}</blockquote> : null}
+            {canManage ? <div className={styles.deliveryActions}>
+              <button className={styles.secondaryButton} onClick={() => requeueDelivery(delivery.id, false)} disabled={Boolean(updatingDeliveryId)}>{busy ? <LoaderCircle className={styles.spin}/> : <ShieldCheck size={16}/>}Validate retry</button>
+              {previewed ? <button className={styles.dangerButton} onClick={() => requeueDelivery(delivery.id, true)} disabled={Boolean(updatingDeliveryId)}>{busy ? <LoaderCircle className={styles.spin}/> : <RotateCcw size={16}/>}Schedule one retry</button> : <span>Validation is required before retry.</span>}
+            </div> : <p className={styles.viewerNote}>Owner or admin access is required to retry this notification.</p>}
+          </article>;
+        })}
       </div>}
     </section>
 
