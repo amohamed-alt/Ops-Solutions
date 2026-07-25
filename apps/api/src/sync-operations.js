@@ -17,6 +17,11 @@ import {
   evaluateAndPersistReadiness,
   evaluateWorkspaceOnboardingReadiness
 } from './onboarding-readiness.js';
+import {
+  ensureReadinessRegressionSchema,
+  listReadinessRegressionIncidents,
+  transitionReadinessRegressionIncident
+} from './readiness-regression-monitor.js';
 
 const LEGACY_REVENUE_ROUTES = new Set([
   '/api/v1/workspaces/:workspaceId/analytics/revenue',
@@ -41,6 +46,43 @@ function withoutLegacyRevenueRoutes(app) {
 function boundedHistoryLimit(value) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(parsed) ? Math.max(1, Math.min(100, parsed)) : 30;
+}
+
+function boundedIncidentLimit(value) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(200, parsed)) : 50;
+}
+
+function requestActor(request) {
+  const candidate = request.admin?.id ?? request.user?.id ?? request.auth?.subject ?? 'admin_api';
+  return String(candidate).trim().slice(0, 160) || 'admin_api';
+}
+
+function serializeReadinessIncident(row) {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    workspaceName: row.workspace_name,
+    status: row.status,
+    severity: row.severity,
+    firstSnapshotId: row.first_snapshot_id,
+    latestSnapshotId: row.latest_snapshot_id,
+    firstDetectedAt: row.first_detected_at,
+    lastDetectedAt: row.last_detected_at,
+    lastNotifiedAt: row.last_notified_at,
+    acknowledgedAt: row.acknowledged_at,
+    acknowledgedBy: row.acknowledged_by,
+    resolvedAt: row.resolved_at,
+    resolvedBy: row.resolved_by,
+    note: row.note,
+    occurrences: row.occurrences,
+    score: row.score,
+    blockers: row.blockers,
+    warnings: row.warnings,
+    snapshotGeneratedAt: row.snapshot_generated_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
 }
 
 async function withDatabaseTransaction(postgres, callback) {
@@ -118,6 +160,37 @@ function registerReadinessOperationsRoutes(app, dependencies) {
   });
 }
 
+function registerReadinessIncidentRoutes(app, dependencies) {
+  const basePath = '/api/v1/workspaces/:workspaceId/readiness-incidents';
+  const schemaReady = ensureReadinessRegressionSchema(dependencies.postgres);
+
+  app.get(basePath, { preHandler: dependencies.requireAdmin }, async (request) => {
+    const workspace = await dependencies.requireWorkspace(request.params.workspaceId);
+    await schemaReady;
+    const limit = boundedIncidentLimit(request.query?.limit);
+    const rows = await listReadinessRegressionIncidents(dependencies.postgres, {
+      workspaceId: workspace.id,
+      limit
+    });
+    return { results: rows.map(serializeReadinessIncident), limit };
+  });
+
+  for (const action of ['acknowledge', 'resolve']) {
+    app.post(`${basePath}/:incidentId/${action}`, { preHandler: dependencies.requireAdmin }, async (request) => {
+      const workspace = await dependencies.requireWorkspace(request.params.workspaceId);
+      await schemaReady;
+      const incident = await transitionReadinessRegressionIncident(dependencies.postgres, {
+        action,
+        workspaceId: workspace.id,
+        incidentId: request.params.incidentId,
+        actor: requestActor(request),
+        note: request.body?.note
+      });
+      return serializeReadinessIncident(incident);
+    });
+  }
+}
+
 export function registerSyncOperationsRoutes(app, dependencies) {
   const result = registerBaseSyncOperationsRoutes(withoutLegacyRevenueRoutes(app), dependencies);
   registerRevenueReportingRoutes(app, {
@@ -126,6 +199,7 @@ export function registerSyncOperationsRoutes(app, dependencies) {
     requireWorkspace: dependencies.requireWorkspace
   });
   registerReadinessOperationsRoutes(app, dependencies);
+  registerReadinessIncidentRoutes(app, dependencies);
 
   const invalidationSubscriber = startReportCacheInvalidationSubscriber({
     redisUrl: dependencies.redisUrl,
