@@ -11,25 +11,26 @@ LIMIT="${OPS_MONITORING_LIMIT:-100}"
 READINESS_FRESHNESS_HOURS="${OPS_READINESS_FRESHNESS_HOURS:-24}"
 READINESS_CONCURRENCY="${OPS_READINESS_CONCURRENCY:-3}"
 READINESS_LIMIT="${OPS_READINESS_WORKSPACE_LIMIT:-10000}"
+READINESS_INCIDENT_LIMIT="${OPS_READINESS_INCIDENT_LIMIT:-500}"
+READINESS_INCIDENT_COOLDOWN_MINUTES="${OPS_READINESS_INCIDENT_COOLDOWN_MINUTES:-360}"
 
 usage() {
-  echo "Usage: $0 <backup|sla|integrity|readiness>" >&2
+  echo "Usage: $0 <backup|sla|integrity|readiness|readiness-incidents>" >&2
   exit 4
 }
 
-[[ "$ACTION" =~ ^(backup|sla|integrity|readiness)$ ]] || usage
+[[ "$ACTION" =~ ^(backup|sla|integrity|readiness|readiness-incidents)$ ]] || usage
 [[ "$DEPLOY_PATH" = /* ]] || { echo "OPS_DEPLOY_PATH must be absolute" >&2; exit 4; }
 [[ "$STATE_DIR" = /* ]] || { echo "OPS_MONITORING_STATE_DIR must be absolute" >&2; exit 4; }
 [[ "$LOCK_DIR" = /* ]] || { echo "OPS_MONITORING_LOCK_DIR must be absolute" >&2; exit 4; }
-[[ "$MAX_AGE_HOURS" =~ ^[0-9]+$ ]] || { echo "OPS_BACKUP_MAX_AGE_HOURS must be numeric" >&2; exit 4; }
-[[ "$STALE_HOURS" =~ ^[0-9]+$ ]] || { echo "OPS_TENANT_STALE_HOURS must be numeric" >&2; exit 4; }
-[[ "$LIMIT" =~ ^[0-9]+$ ]] || { echo "OPS_MONITORING_LIMIT must be numeric" >&2; exit 4; }
-[[ "$READINESS_FRESHNESS_HOURS" =~ ^[0-9]+$ ]] || { echo "OPS_READINESS_FRESHNESS_HOURS must be numeric" >&2; exit 4; }
-[[ "$READINESS_CONCURRENCY" =~ ^[0-9]+$ ]] || { echo "OPS_READINESS_CONCURRENCY must be numeric" >&2; exit 4; }
-[[ "$READINESS_LIMIT" =~ ^[0-9]+$ ]] || { echo "OPS_READINESS_WORKSPACE_LIMIT must be numeric" >&2; exit 4; }
+for value in MAX_AGE_HOURS STALE_HOURS LIMIT READINESS_FRESHNESS_HOURS READINESS_CONCURRENCY READINESS_LIMIT READINESS_INCIDENT_LIMIT READINESS_INCIDENT_COOLDOWN_MINUTES; do
+  [[ "${!value}" =~ ^[0-9]+$ ]] || { echo "$value must be numeric" >&2; exit 4; }
+done
 (( READINESS_FRESHNESS_HOURS >= 1 && READINESS_FRESHNESS_HOURS <= 168 )) || { echo "OPS_READINESS_FRESHNESS_HOURS must be between 1 and 168" >&2; exit 4; }
 (( READINESS_CONCURRENCY >= 1 && READINESS_CONCURRENCY <= 10 )) || { echo "OPS_READINESS_CONCURRENCY must be between 1 and 10" >&2; exit 4; }
 (( READINESS_LIMIT >= 1 && READINESS_LIMIT <= 10000 )) || { echo "OPS_READINESS_WORKSPACE_LIMIT must be between 1 and 10000" >&2; exit 4; }
+(( READINESS_INCIDENT_LIMIT >= 1 && READINESS_INCIDENT_LIMIT <= 1000 )) || { echo "OPS_READINESS_INCIDENT_LIMIT must be between 1 and 1000" >&2; exit 4; }
+(( READINESS_INCIDENT_COOLDOWN_MINUTES >= 15 && READINESS_INCIDENT_COOLDOWN_MINUTES <= 10080 )) || { echo "OPS_READINESS_INCIDENT_COOLDOWN_MINUTES must be between 15 and 10080" >&2; exit 4; }
 
 command -v flock >/dev/null 2>&1 || { echo "flock is required" >&2; exit 4; }
 command -v python3 >/dev/null 2>&1 || { echo "python3 is required" >&2; exit 4; }
@@ -64,12 +65,11 @@ case "$ACTION" in
     exit_code=$?
     ;;
   readiness)
-    bash scripts/onboarding-readiness-operations.sh \
-      --action evaluate \
-      --format json \
-      --freshness-hours "$READINESS_FRESHNESS_HOURS" \
-      --concurrency "$READINESS_CONCURRENCY" \
-      --limit "$READINESS_LIMIT" >"$output_file" 2>"$error_file"
+    bash scripts/onboarding-readiness-operations.sh --action evaluate --format json --freshness-hours "$READINESS_FRESHNESS_HOURS" --concurrency "$READINESS_CONCURRENCY" --limit "$READINESS_LIMIT" >"$output_file" 2>"$error_file"
+    exit_code=$?
+    ;;
+  readiness-incidents)
+    bash scripts/readiness-regression-monitor.sh --action evaluate --format json --limit "$READINESS_INCIDENT_LIMIT" --cooldown-minutes "$READINESS_INCIDENT_COOLDOWN_MINUTES" >"$output_file" 2>"$error_file"
     exit_code=$?
     ;;
 esac
@@ -87,14 +87,10 @@ try:
 except json.JSONDecodeError:
     payload = {'unparsed': raw[:4000]}
 record = {
-    'schemaVersion': 1,
-    'check': action,
-    'startedAt': os.environ['STARTED_AT'],
-    'completedAt': os.environ['COMPLETED_AT'],
-    'exitCode': int(os.environ['EXIT_CODE']),
+    'schemaVersion': 1, 'check': action, 'startedAt': os.environ['STARTED_AT'],
+    'completedAt': os.environ['COMPLETED_AT'], 'exitCode': int(os.environ['EXIT_CODE']),
     'status': 'healthy' if int(os.environ['EXIT_CODE']) == 0 else ('warning' if int(os.environ['EXIT_CODE']) == 2 else 'critical'),
-    'result': payload,
-    'error': err[:2000] or None,
+    'result': payload, 'error': err[:2000] or None,
 }
 latest = state_dir / f'{action}-latest.json'
 history = state_dir / f'{action}-history.jsonl'
@@ -107,7 +103,6 @@ os.replace(tmp_name, latest)
 with history.open('a') as handle:
     handle.write(json.dumps(record, separators=(',', ':'), ensure_ascii=True) + '\n')
 os.chmod(history, 0o640)
-# Keep bounded local history without depending on logrotate.
 lines = history.read_text().splitlines()
 if len(lines) > 500:
     history.write_text('\n'.join(lines[-500:]) + '\n')
