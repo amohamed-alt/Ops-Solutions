@@ -62,6 +62,7 @@ write_timer sla '*:07:00' '3m'
 write_timer readiness '*:22:00' '5m'
 write_timer readiness-incidents '*:37:00' '5m'
 write_timer readiness-notifications '*:47:00' '5m'
+write_timer readiness-dead-letters '*:57:00' '3m'
 write_timer integrity '*-*-* 05:10:00' '20m'
 
 systemctl daemon-reload
@@ -71,6 +72,7 @@ systemctl enable --now \
   ops-solutions-monitor-readiness.timer \
   ops-solutions-monitor-readiness-incidents.timer \
   ops-solutions-monitor-readiness-notifications.timer \
+  ops-solutions-monitor-readiness-dead-letters.timer \
   ops-solutions-monitor-integrity.timer
 
 echo "Installed Ops Solutions monitoring timers"
