@@ -65,7 +65,8 @@ test('dead-letter navigation focuses loaded incidents and fetches missing tenant
   assert.match(focusIncident, /prefers-reduced-motion/);
   assert.match(focusIncident, /target\.focus/);
 
-  assert.match(openIncident, /if\(focusIncident\(incidentId\)\)return/);
+  assert.match(openIncident, /if\(focusIncident\(incidentId\)\)\{/);
+  assert.match(openIncident, /if\(persist\)setIncidentDeepLink\(incidentId\)/);
   assert.match(openIncident, /incidentDetailRequestRef\.current\?\.abort\(\)/);
   assert.match(openIncident, /readiness-incidents\/\$\{encodeURIComponent\(incidentId\)\}/);
   assert.match(openIncident, /current\.some\(item=>item\.id===incident\.id\)/);
