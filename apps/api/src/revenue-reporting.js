@@ -1,3 +1,13 @@
+import {
+  decoratePropertyBag,
+  firstPropertyValueLabel,
+  labelDistribution,
+  loadPropertyPresentation,
+  loadReferenceLabels,
+  propertyDescriptor,
+  propertyValueLabel
+} from './crm-presentation.js';
+
 const REPORT_KEYS = new Set([
   'untouched-contacts',
   'stale-contacts',
@@ -8,11 +18,20 @@ const REPORT_KEYS = new Set([
   'open-deals',
   'won-deals',
   'calls',
-  'meetings'
+  'meetings',
+  'contacts-by-lead-status',
+  'contacts-by-lifecycle-stage',
+  'contacts-by-country',
+  'contacts-by-created-month',
+  'companies-by-industry',
+  'companies-by-country',
+  'companies-by-employee-size',
+  'companies-by-created-month'
 ]);
 
 const OBJECT_COLUMNS = Object.freeze({
   contacts: ['firstname', 'lastname', 'email', 'phone', 'mobilephone', 'company', 'country', 'hubspot_owner_id', 'hs_lead_status', 'lifecyclestage', 'notes_last_contacted'],
+  companies: ['name', 'domain', 'phone', 'country', 'industry', 'numberofemployees', 'annualrevenue', 'lifecyclestage', 'hubspot_owner_id', 'createdate'],
   deals: ['dealname', 'amount', 'pipeline', 'dealstage', 'closedate', 'hubspot_owner_id', 'hs_next_activity_date', 'hs_is_closed', 'hs_is_closed_won'],
   tasks: ['hs_task_subject', 'hs_task_status', 'hs_task_priority', 'hs_timestamp', 'hubspot_owner_id', 'hs_activity_assigned_to_user_id'],
   calls: ['hs_call_title', 'hs_call_status', 'hs_call_disposition', 'hs_timestamp', 'hubspot_owner_id', 'hs_activity_assigned_to_user_id'],
@@ -143,6 +162,26 @@ function countrySql(alias) {
   )`;
 }
 
+function employeeSizeSql(alias = 'r') {
+  return `CASE
+    WHEN COALESCE(${alias}.properties->>'numberofemployees', '') !~ '^[0-9]+(\\.[0-9]+)?$'
+      THEN 'Unknown'
+    WHEN (${alias}.properties->>'numberofemployees')::numeric <= 10 THEN '1-10'
+    WHEN (${alias}.properties->>'numberofemployees')::numeric <= 50 THEN '11-50'
+    WHEN (${alias}.properties->>'numberofemployees')::numeric <= 200 THEN '51-200'
+    WHEN (${alias}.properties->>'numberofemployees')::numeric <= 500 THEN '201-500'
+    WHEN (${alias}.properties->>'numberofemployees')::numeric <= 1000 THEN '501-1,000'
+    ELSE '1,001+'
+  END`;
+}
+
+function createdMonthSql(alias = 'r') {
+  return `to_char(
+    date_trunc('month', COALESCE(${alias}.hubspot_created_at, ${alias}.synced_at)),
+    'YYYY-MM'
+  )`;
+}
+
 function leadSourceSql(alias) {
   return `COALESCE(
     NULLIF(${alias}.properties->>'hs_analytics_source', ''),
@@ -267,6 +306,54 @@ function objectPredicate(objectType, alias = 'r', { period = true } = {}) {
     ${dealAssociationDimensions(alias, objectType)}`;
 }
 
+function companyPredicate(alias = 'r', { period = true } = {}) {
+  const timestamp = recordTimestampSql(alias, 'companies');
+  return `
+    ${alias}.workspace_id = $1
+    AND ${alias}.object_type = 'companies'
+    AND ${alias}.archived = FALSE
+    AND $2::date IS NOT NULL
+    AND $3::date IS NOT NULL
+    ${period ? `AND ${timestamp} >= $2::date AND ${timestamp} < ($3::date + INTERVAL '1 day')` : ''}
+    AND ($4::text IS NULL OR ${ownerSql(alias, 'companies')} = $4)
+    AND ($5::text IS NULL OR ${countrySql(alias)} = $5)
+    AND (
+      ($6::text IS NULL AND $7::text IS NULL)
+      OR EXISTS (
+        SELECT 1
+        FROM crm_record_associations da
+        JOIN crm_records deal_record
+          ON deal_record.workspace_id = da.workspace_id
+         AND deal_record.object_type = 'deals'
+         AND deal_record.record_id = da.to_record_id
+         AND deal_record.archived = FALSE
+        WHERE da.workspace_id = $1
+          AND da.from_object_type = 'companies'
+          AND da.from_record_id = ${alias}.record_id
+          AND da.to_object_type = 'deals'
+          AND ($6::text IS NULL OR NULLIF(deal_record.properties->>'pipeline', '') = $6)
+          AND ($7::text IS NULL OR NULLIF(deal_record.properties->>'dealstage', '') = $7)
+      )
+    )
+    AND (
+      $8::text IS NULL
+      OR EXISTS (
+        SELECT 1
+        FROM crm_record_associations ca
+        JOIN crm_records contact_record
+          ON contact_record.workspace_id = ca.workspace_id
+         AND contact_record.object_type = 'contacts'
+         AND contact_record.record_id = ca.to_record_id
+         AND contact_record.archived = FALSE
+        WHERE ca.workspace_id = $1
+          AND ca.from_object_type = 'companies'
+          AND ca.from_record_id = ${alias}.record_id
+          AND ca.to_object_type = 'contacts'
+          AND ${leadSourceSql('contact_record')} = $8
+      )
+    )`;
+}
+
 function delta(current, previous) {
   const currentValue = numeric(current);
   const previousValue = numeric(previous);
@@ -276,7 +363,7 @@ function delta(current, previous) {
 
 async function overviewMetrics(postgres, workspaceId, filters) {
   const values = filterValues(workspaceId, filters);
-  const [contacts, activities, deals, tasks] = await Promise.all([
+  const [contacts, companies, activities, deals, tasks] = await Promise.all([
     postgres.query(
       `SELECT
          COUNT(*)::bigint AS portfolio_contacts,
@@ -287,6 +374,17 @@ async function overviewMetrics(postgres, workspaceId, filters) {
          COUNT(*) FILTER (WHERE NULLIF(r.properties->>'hubspot_owner_id', '') IS NULL)::bigint AS missing_owner
        FROM crm_records r
        WHERE ${objectPredicate('contacts', 'r', { period: false })}`,
+      values
+    ),
+    postgres.query(
+      `SELECT
+         COUNT(*)::bigint AS portfolio_companies,
+         COUNT(*) FILTER (
+           WHERE COALESCE(r.hubspot_created_at, r.synced_at) >= $2::date
+             AND COALESCE(r.hubspot_created_at, r.synced_at) < ($3::date + INTERVAL '1 day')
+         )::bigint AS new_companies
+       FROM crm_records r
+       WHERE ${companyPredicate('r', { period: false })}`,
       values
     ),
     postgres.query(
@@ -354,6 +452,7 @@ async function overviewMetrics(postgres, workspaceId, filters) {
   ]);
 
   const contactRow = contacts.rows[0] ?? {};
+  const companyRow = companies.rows[0] ?? {};
   const activityRow = activities.rows[0] ?? {};
   const dealRow = deals.rows[0] ?? {};
   const taskRow = tasks.rows[0] ?? {};
@@ -366,6 +465,8 @@ async function overviewMetrics(postgres, workspaceId, filters) {
   return {
     portfolioContacts: numeric(contactRow.portfolio_contacts),
     newContacts: numeric(contactRow.new_contacts),
+    portfolioCompanies: numeric(companyRow.portfolio_companies),
+    newCompanies: numeric(companyRow.new_companies),
     missingOwnerContacts: numeric(contactRow.missing_owner),
     calls,
     meetings,
@@ -523,6 +624,206 @@ async function countryDistribution(postgres, workspaceId, filters) {
     values
   );
   return result.rows.map((row) => ({ key: row.key || 'Unknown', value: numeric(row.value) }));
+}
+
+function rowsForDimension(rows, dimension, { chronological = false, limit = 12 } = {}) {
+  const result = rows
+    .filter((row) => row.dimension === dimension)
+    .map((row) => ({ key: row.key || 'Unknown', value: numeric(row.value) }));
+  result.sort(chronological
+    ? (left, right) => left.key.localeCompare(right.key)
+    : (left, right) => right.value - left.value || left.key.localeCompare(right.key));
+  return result.slice(chronological ? Math.max(0, result.length - limit) : 0, chronological ? undefined : limit);
+}
+
+async function crmBreakdownRows(postgres, workspaceId, filters) {
+  const values = filterValues(workspaceId, filters);
+  const [contacts, companies] = await Promise.all([
+    postgres.query(
+      `SELECT 'leadStatus'::text AS dimension,
+              COALESCE(NULLIF(r.properties->>'hs_lead_status', ''), 'Unknown') AS key,
+              COUNT(*)::bigint AS value
+       FROM crm_records r
+       WHERE ${objectPredicate('contacts', 'r', { period: false })}
+       GROUP BY 2
+       UNION ALL
+       SELECT 'lifecycleStage'::text AS dimension,
+              COALESCE(NULLIF(r.properties->>'lifecyclestage', ''), 'Unknown') AS key,
+              COUNT(*)::bigint AS value
+       FROM crm_records r
+       WHERE ${objectPredicate('contacts', 'r', { period: false })}
+       GROUP BY 2
+       UNION ALL
+       SELECT 'country'::text AS dimension,
+              ${countrySql('r')} AS key,
+              COUNT(*)::bigint AS value
+       FROM crm_records r
+       WHERE ${objectPredicate('contacts', 'r', { period: false })}
+       GROUP BY 2
+       UNION ALL
+       SELECT 'createdMonthly'::text AS dimension,
+              ${createdMonthSql('r')} AS key,
+              COUNT(*)::bigint AS value
+       FROM crm_records r
+       WHERE ${objectPredicate('contacts', 'r', { period: true })}
+       GROUP BY 2`,
+      values
+    ),
+    postgres.query(
+      `SELECT 'industry'::text AS dimension,
+              COALESCE(NULLIF(r.properties->>'industry', ''), 'Unknown') AS key,
+              COUNT(*)::bigint AS value
+       FROM crm_records r
+       WHERE ${companyPredicate('r', { period: false })}
+       GROUP BY 2
+       UNION ALL
+       SELECT 'country'::text AS dimension,
+              ${countrySql('r')} AS key,
+              COUNT(*)::bigint AS value
+       FROM crm_records r
+       WHERE ${companyPredicate('r', { period: false })}
+       GROUP BY 2
+       UNION ALL
+       SELECT 'employeeSize'::text AS dimension,
+              ${employeeSizeSql('r')} AS key,
+              COUNT(*)::bigint AS value
+       FROM crm_records r
+       WHERE ${companyPredicate('r', { period: false })}
+       GROUP BY 2
+       UNION ALL
+       SELECT 'createdMonthly'::text AS dimension,
+              ${createdMonthSql('r')} AS key,
+              COUNT(*)::bigint AS value
+       FROM crm_records r
+       WHERE ${companyPredicate('r', { period: true })}
+       GROUP BY 2`,
+      values
+    )
+  ]);
+
+  return {
+    contacts: {
+      leadStatus: rowsForDimension(contacts.rows, 'leadStatus'),
+      lifecycleStage: rowsForDimension(contacts.rows, 'lifecycleStage'),
+      country: rowsForDimension(contacts.rows, 'country'),
+      createdMonthly: rowsForDimension(contacts.rows, 'createdMonthly', {
+        chronological: true,
+        limit: 13
+      })
+    },
+    companies: {
+      industry: rowsForDimension(companies.rows, 'industry'),
+      country: rowsForDimension(companies.rows, 'country'),
+      employeeSize: rowsForDimension(companies.rows, 'employeeSize'),
+      createdMonthly: rowsForDimension(companies.rows, 'createdMonthly', {
+        chronological: true,
+        limit: 13
+      })
+    }
+  };
+}
+
+function monthLabel(value) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(value ?? ''));
+  if (!match) return 'Unknown';
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1));
+  return new Intl.DateTimeFormat('en', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC'
+  }).format(date);
+}
+
+function monthlyDistribution(propertyLabel, rows) {
+  return {
+    propertyName: 'createdate',
+    propertyLabel,
+    rows: rows.map((row) => ({ ...row, label: monthLabel(row.key) }))
+  };
+}
+
+function formatCrmBreakdowns(presentation, raw) {
+  const contactCountry = labelDistribution(
+    presentation,
+    'contacts',
+    'country',
+    raw.contacts.country,
+    'Country/Region'
+  );
+  contactCountry.rows = contactCountry.rows.map((row) => ({
+    ...row,
+    label: firstPropertyValueLabel(
+      presentation,
+      'contacts',
+      ['country', 'hs_country_region_code'],
+      row.key
+    )
+  }));
+
+  const companyCountry = labelDistribution(
+    presentation,
+    'companies',
+    'country',
+    raw.companies.country,
+    'Country/Region'
+  );
+  companyCountry.rows = companyCountry.rows.map((row) => ({
+    ...row,
+    label: firstPropertyValueLabel(
+      presentation,
+      'companies',
+      ['country', 'hs_country_region_code'],
+      row.key
+    )
+  }));
+
+  return {
+    contacts: {
+      leadStatus: labelDistribution(
+        presentation,
+        'contacts',
+        'hs_lead_status',
+        raw.contacts.leadStatus,
+        'Lead Status'
+      ),
+      lifecycleStage: labelDistribution(
+        presentation,
+        'contacts',
+        'lifecyclestage',
+        raw.contacts.lifecycleStage,
+        'Lifecycle Stage'
+      ),
+      country: contactCountry,
+      createdMonthly: monthlyDistribution(
+        propertyDescriptor(presentation, 'contacts', 'createdate', 'Contact Create Date').label,
+        raw.contacts.createdMonthly
+      )
+    },
+    companies: {
+      industry: labelDistribution(
+        presentation,
+        'companies',
+        'industry',
+        raw.companies.industry,
+        'Industry'
+      ),
+      country: companyCountry,
+      employeeSize: {
+        propertyName: 'numberofemployees',
+        propertyLabel: propertyDescriptor(
+          presentation,
+          'companies',
+          'numberofemployees',
+          'Number of Employees'
+        ).label,
+        rows: raw.companies.employeeSize.map((row) => ({ ...row, label: row.key }))
+      },
+      createdMonthly: monthlyDistribution(
+        propertyDescriptor(presentation, 'companies', 'createdate', 'Company Create Date').label,
+        raw.companies.createdMonthly
+      )
+    }
+  };
 }
 
 async function ownerPerformance(postgres, workspaceId, filters) {
@@ -755,7 +1056,7 @@ async function filterOptions(postgres, workspaceId) {
 }
 
 function metricComparisons(current, previous) {
-  const keys = ['newContacts', 'calls', 'meetings', 'tasks', 'completedTasks', 'wonDeals', 'wonRevenue'];
+  const keys = ['newContacts', 'newCompanies', 'calls', 'meetings', 'tasks', 'completedTasks', 'wonDeals', 'wonRevenue'];
   return Object.fromEntries(keys.map((key) => [key, {
     current: numeric(current[key]),
     previous: numeric(previous[key]),
@@ -766,7 +1067,21 @@ function metricComparisons(current, previous) {
 export async function buildRevenueReportingPack(postgres, workspaceId, rawFilters = {}) {
   const filters = normalizeReportingFilters(rawFilters);
   const previous = previousFilters(filters);
-  const [overview, previousOverview, trend, pipeline, sources, countries, owners, outcomes, quality, attention, options] = await Promise.all([
+  const [
+    overview,
+    previousOverview,
+    trend,
+    pipeline,
+    sources,
+    countries,
+    owners,
+    outcomes,
+    quality,
+    attention,
+    options,
+    rawBreakdowns,
+    presentation
+  ] = await Promise.all([
     overviewMetrics(postgres, workspaceId, filters),
     overviewMetrics(postgres, workspaceId, previous),
     activityTrend(postgres, workspaceId, filters),
@@ -777,22 +1092,94 @@ export async function buildRevenueReportingPack(postgres, workspaceId, rawFilter
     outcomeDistributions(postgres, workspaceId, filters),
     dataQuality(postgres, workspaceId, filters),
     attentionSnapshot(postgres, workspaceId, filters),
-    filterOptions(postgres, workspaceId)
+    filterOptions(postgres, workspaceId),
+    crmBreakdownRows(postgres, workspaceId, filters),
+    loadPropertyPresentation(postgres, workspaceId, ['contacts', 'companies', 'calls', 'meetings', 'tasks'])
   ]);
+
+  const labeledSources = sources.map((row) => ({
+    ...row,
+    label: firstPropertyValueLabel(
+      presentation,
+      'contacts',
+      ['hs_analytics_source', 'lead_source', 'original_source'],
+      row.key
+    )
+  }));
+  const labeledCountries = countries.map((row) => ({
+    ...row,
+    label: firstPropertyValueLabel(
+      presentation,
+      'contacts',
+      ['country', 'hs_country_region_code'],
+      row.key
+    )
+  }));
+  const labeledOutcomes = {
+    calls: outcomes.calls.map((row) => ({
+      ...row,
+      label: firstPropertyValueLabel(
+        presentation,
+        'calls',
+        ['hs_call_disposition', 'hs_call_status'],
+        row.key
+      )
+    })),
+    meetings: outcomes.meetings.map((row) => ({
+      ...row,
+      label: propertyValueLabel(
+        presentation,
+        'meetings',
+        'hs_meeting_outcome',
+        row.key
+      )
+    })),
+    tasks: outcomes.tasks.map((row) => ({
+      ...row,
+      label: propertyValueLabel(
+        presentation,
+        'tasks',
+        'hs_task_status',
+        row.key
+      )
+    }))
+  };
+  const labeledOptions = {
+    ...options,
+    countries: options.countries.map((row) => ({
+      ...row,
+      label: firstPropertyValueLabel(
+        presentation,
+        'contacts',
+        ['country', 'hs_country_region_code'],
+        row.value
+      )
+    })),
+    leadSources: options.leadSources.map((row) => ({
+      ...row,
+      label: firstPropertyValueLabel(
+        presentation,
+        'contacts',
+        ['hs_analytics_source', 'lead_source', 'original_source'],
+        row.value
+      )
+    }))
+  };
 
   return {
     generatedAt: new Date().toISOString(),
     filters,
     comparisonPeriod: { from: previous.from, to: previous.to },
-    filterOptions: options,
+    filterOptions: labeledOptions,
     overview,
     comparisons: metricComparisons(overview, previousOverview),
     activityTrend: trend,
     pipelineByStage: pipeline,
-    leadSourcePerformance: sources,
-    countryDistribution: countries,
+    leadSourcePerformance: labeledSources,
+    countryDistribution: labeledCountries,
+    crmBreakdowns: formatCrmBreakdowns(presentation, rawBreakdowns),
     ownerPerformance: owners,
-    outcomes,
+    outcomes: labeledOutcomes,
     dataQuality: quality,
     attention,
     drilldowns: [...REPORT_KEYS]
@@ -855,7 +1242,63 @@ function drilldownDefinition(reportKey) {
       orderBy: `COALESCE(${jsonTimestampSql('closedate','r')},r.hubspot_updated_at,r.synced_at) DESC`
     },
     calls: { objectType: 'calls', period: true, condition: 'TRUE', orderBy: `${activityTimestampSql('r')} DESC` },
-    meetings: { objectType: 'meetings', period: true, condition: 'TRUE', orderBy: `${activityTimestampSql('r')} DESC` }
+    meetings: { objectType: 'meetings', period: true, condition: 'TRUE', orderBy: `${activityTimestampSql('r')} DESC` },
+    'contacts-by-lead-status': {
+      objectType: 'contacts',
+      period: false,
+      dimension: true,
+      condition: `COALESCE(NULLIF(r.properties->>'hs_lead_status',''),'Unknown') = $11::text`,
+      orderBy: 'COALESCE(r.hubspot_created_at,r.synced_at) DESC'
+    },
+    'contacts-by-lifecycle-stage': {
+      objectType: 'contacts',
+      period: false,
+      dimension: true,
+      condition: `COALESCE(NULLIF(r.properties->>'lifecyclestage',''),'Unknown') = $11::text`,
+      orderBy: 'COALESCE(r.hubspot_created_at,r.synced_at) DESC'
+    },
+    'contacts-by-country': {
+      objectType: 'contacts',
+      period: false,
+      dimension: true,
+      condition: `${countrySql('r')} = $11::text`,
+      orderBy: 'COALESCE(r.hubspot_created_at,r.synced_at) DESC'
+    },
+    'contacts-by-created-month': {
+      objectType: 'contacts',
+      period: true,
+      dimension: true,
+      condition: `${createdMonthSql('r')} = $11::text`,
+      orderBy: 'COALESCE(r.hubspot_created_at,r.synced_at) DESC'
+    },
+    'companies-by-industry': {
+      objectType: 'companies',
+      period: false,
+      dimension: true,
+      condition: `COALESCE(NULLIF(r.properties->>'industry',''),'Unknown') = $11::text`,
+      orderBy: 'COALESCE(r.hubspot_created_at,r.synced_at) DESC'
+    },
+    'companies-by-country': {
+      objectType: 'companies',
+      period: false,
+      dimension: true,
+      condition: `${countrySql('r')} = $11::text`,
+      orderBy: 'COALESCE(r.hubspot_created_at,r.synced_at) DESC'
+    },
+    'companies-by-employee-size': {
+      objectType: 'companies',
+      period: false,
+      dimension: true,
+      condition: `${employeeSizeSql('r')} = $11::text`,
+      orderBy: 'COALESCE(r.hubspot_created_at,r.synced_at) DESC'
+    },
+    'companies-by-created-month': {
+      objectType: 'companies',
+      period: true,
+      dimension: true,
+      condition: `${createdMonthSql('r')} = $11::text`,
+      orderBy: 'COALESCE(r.hubspot_created_at,r.synced_at) DESC'
+    }
   };
   return definitions[reportKey] ?? null;
 }
@@ -871,11 +1314,30 @@ export async function getRevenueDrilldown(postgres, workspaceId, reportKey, rawF
   const limit = Math.max(1, Math.min(200, Number(rawFilters.limit) || 50));
   const offset = Math.max(0, Number(rawFilters.offset) || 0);
   const definition = drilldownDefinition(reportKey);
-  const values = [...filterValues(workspaceId, filters), limit + 1, offset];
+  const dimensionValue = definition.dimension ? cleanDimension(rawFilters.value) : null;
+  if (definition.dimension && !dimensionValue) {
+    const error = new Error('Choose a dashboard segment before opening its records.');
+    error.statusCode = 400;
+    error.category = 'REPORT_DIMENSION_REQUIRED';
+    throw error;
+  }
+  const [presentation, references] = await Promise.all([
+    loadPropertyPresentation(postgres, workspaceId, [definition.objectType]),
+    loadReferenceLabels(postgres, workspaceId)
+  ]);
+  const values = [
+    ...filterValues(workspaceId, filters),
+    limit + 1,
+    offset,
+    ...(definition.dimension ? [dimensionValue] : [])
+  ];
+  const predicate = definition.objectType === 'companies'
+    ? companyPredicate('r', { period: definition.period })
+    : objectPredicate(definition.objectType, 'r', { period: definition.period });
   const result = await postgres.query(
     `SELECT r.record_id, r.properties, r.hubspot_created_at, r.hubspot_updated_at, r.synced_at
      FROM crm_records r
-     WHERE ${objectPredicate(definition.objectType, 'r', { period: definition.period })}
+     WHERE ${predicate}
        AND (${definition.condition})
      ORDER BY ${definition.orderBy}, r.record_id
      LIMIT $9 OFFSET $10`,
@@ -886,12 +1348,28 @@ export async function getRevenueDrilldown(postgres, workspaceId, reportKey, rawF
     key: reportKey,
     objectType: definition.objectType,
     columns: OBJECT_COLUMNS[definition.objectType] ?? [],
+    propertyLabels: Object.fromEntries(
+      (OBJECT_COLUMNS[definition.objectType] ?? []).map((propertyName) => [
+        propertyName,
+        propertyDescriptor(
+          presentation,
+          definition.objectType,
+          propertyName
+        ).label
+      ])
+    ),
     limit,
     offset,
     hasMore: result.rows.length > limit,
     results: rows.map((row) => ({
       id: row.record_id,
       properties: row.properties ?? {},
+      displayProperties: decoratePropertyBag(
+        presentation,
+        definition.objectType,
+        row.properties ?? {},
+        references
+      ),
       hubspotCreatedAt: row.hubspot_created_at,
       hubspotUpdatedAt: row.hubspot_updated_at,
       syncedAt: row.synced_at

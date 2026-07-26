@@ -77,7 +77,10 @@ test('lead status distribution uses HubSpot lead status with lifecycle fallback'
   };
 
   const result = await executeLeadStatusDistribution(postgres, 'workspace-id');
-  assert.deepEqual(result, [{ key: 'NEW', value: 14 }, { key: 'Unassigned', value: 3 }]);
+  assert.deepEqual(result, [
+    { key: 'NEW', label: 'NEW', value: 14 },
+    { key: 'Unassigned', label: 'Unassigned', value: 3 }
+  ]);
   assert.match(captured, /hs_lead_status/);
   assert.match(captured, /lifecyclestage/);
 });

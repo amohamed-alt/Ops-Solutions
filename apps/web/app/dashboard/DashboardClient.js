@@ -173,7 +173,7 @@ function LeadStatusChart({ rows }) {
     <div className={styles.statusChart}>
       {safeRows.map((row) => (
         <div key={row.key}>
-          <span title={humanize(row.key)}>{humanize(row.key)}</span>
+          <span title={row.label || humanize(row.key)}>{row.label || humanize(row.key)}</span>
           <div><i style={{ width: `${Math.max(2, (Number(row.value || 0) / max) * 100)}%` }} /></div>
           <strong>{number(row.value)}</strong>
         </div>
@@ -493,9 +493,10 @@ export default function DashboardClient() {
             <div className={styles.tableScroll}>
               <div className={styles.tableHeader}><span>Priority</span><span>Contact</span><span>Company</span><span>Country</span><span>Owner</span><span>Lead status</span><span>Phone</span></div>
               {(drilldown?.results ?? []).map((row, index) => {
-                const properties = row.properties || {};
+                const rawProperties = row.properties || {};
+                const properties = row.displayProperties || rawProperties;
                 const contactName = [properties.firstname, properties.lastname].filter(Boolean).join(' ') || `Contact ${row.id}`;
-                const owner = leaderboard.find((item) => String(item.owner?.id) === String(properties.hubspot_owner_id))?.owner;
+                const owner = leaderboard.find((item) => String(item.owner?.id) === String(rawProperties.hubspot_owner_id))?.owner;
                 const hubspotUrl = portalId ? `https://app.hubspot.com/contacts/${portalId}/contact/${row.id}` : null;
                 return (
                   <article key={row.id}>
@@ -507,7 +508,7 @@ export default function DashboardClient() {
                     <span>{properties.company || '—'}</span>
                     <span>{properties.country || '—'}</span>
                     <span>{owner?.name || properties.hubspot_owner_id || 'Unassigned'}</span>
-                    <span><i className={styles.statusBadge}>{humanize(properties.hs_lead_status || properties.lifecyclestage)}</i></span>
+                    <span><i className={styles.statusBadge}>{properties.hs_lead_status || properties.lifecyclestage || 'Unknown'}</i></span>
                     <span>{properties.phone || properties.mobilephone || '—'}</span>
                   </article>
                 );

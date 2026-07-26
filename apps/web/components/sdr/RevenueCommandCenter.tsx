@@ -105,16 +105,28 @@ type Comparison = {
   deltaPercent: number | null;
 };
 
+type DistributionRow = {
+  key: string;
+  label: string;
+  value: number;
+};
+
+type CrmBreakdown = {
+  propertyName: string;
+  propertyLabel: string;
+  rows: DistributionRow[];
+};
+
 type Report = {
   generatedAt: string;
   filters: Filters & { days: number };
   comparisonPeriod: { from: string; to: string };
   filterOptions: {
     owners: Array<{ id: string; label: string; email?: string | null }>;
-    countries: Array<{ value: string; count: number }>;
+    countries: Array<{ value: string; label: string; count: number }>;
     pipelines: Array<{ id: string; label: string }>;
     stages: Array<{ id: string; pipelineId: string; label: string }>;
-    leadSources: Array<{ value: string; count: number }>;
+    leadSources: Array<{ value: string; label: string; count: number }>;
   };
   overview: Record<string, number>;
   comparisons: Record<string, Comparison>;
@@ -129,13 +141,28 @@ type Report = {
   }>;
   leadSourcePerformance: Array<{
     key: string;
+    label: string;
     contacts: number;
     contacted: number;
     opportunities: number;
     won: number;
     winRate: number;
   }>;
-  countryDistribution: Array<{ key: string; value: number }>;
+  countryDistribution: DistributionRow[];
+  crmBreakdowns: {
+    contacts: {
+      leadStatus: CrmBreakdown;
+      lifecycleStage: CrmBreakdown;
+      country: CrmBreakdown;
+      createdMonthly: CrmBreakdown;
+    };
+    companies: {
+      industry: CrmBreakdown;
+      country: CrmBreakdown;
+      employeeSize: CrmBreakdown;
+      createdMonthly: CrmBreakdown;
+    };
+  };
   ownerPerformance: Array<{
     ownerId: string;
     ownerName: string;
@@ -148,7 +175,7 @@ type Report = {
     wonRevenue: number;
     meetingRate: number;
   }>;
-  outcomes: Record<'calls' | 'meetings' | 'tasks', Array<{ key: string; value: number }>>;
+  outcomes: Record<'calls' | 'meetings' | 'tasks', DistributionRow[]>;
   dataQuality: {
     totalContacts: number;
     score: number;
@@ -165,6 +192,7 @@ type RevenuePayload = {
 type DrilldownRow = {
   id: string;
   properties: Record<string, string | undefined>;
+  displayProperties?: Record<string, string | undefined>;
   hubspotCreatedAt?: string | null;
   hubspotUpdatedAt?: string | null;
   syncedAt?: string | null;
@@ -174,6 +202,7 @@ type Drilldown = {
   key: string;
   objectType: string;
   columns: string[];
+  propertyLabels?: Record<string, string>;
   limit: number;
   offset: number;
   hasMore: boolean;
@@ -200,6 +229,8 @@ type NavigationItem = {
 
 const NAVIGATION: NavigationItem[] = [
   { id: 'overview', label: 'Executive overview', icon: Gauge },
+  { id: 'crm-contacts', label: 'Contact intelligence', icon: UsersRound },
+  { id: 'crm-companies', label: 'Company intelligence', icon: Building2 },
   { id: 'activity', label: 'Activity performance', icon: Activity },
   { id: 'pipeline', label: 'Pipeline & revenue', icon: BriefcaseBusiness },
   { id: 'sources', label: 'Sources & markets', icon: Globe2 },
@@ -423,14 +454,14 @@ function TooltipCard({ active, payload, label }: any) {
   );
 }
 
-function OutcomeList({ rows }: { rows: Array<{ key: string; value: number }> }) {
+function OutcomeList({ rows }: { rows: DistributionRow[] }) {
   const maximum = Math.max(1, ...rows.map((row) => row.value));
   if (rows.length === 0) return <div className="ric-empty">No records match the selected filters.</div>;
   return (
     <div className="ric-outcome-list">
       {rows.slice(0, 7).map((row) => (
         <article key={row.key}>
-          <div><strong>{titleCase(row.key)}</strong><span>{integer(row.value)}</span></div>
+          <div><strong>{row.label}</strong><span>{integer(row.value)}</span></div>
           <i><b style={{ width: `${Math.max(3, row.value / maximum * 100)}%` }} /></i>
         </article>
       ))}
@@ -438,8 +469,82 @@ function OutcomeList({ rows }: { rows: Array<{ key: string; value: number }> }) 
   );
 }
 
+function DistributionBars({
+  breakdown,
+  color,
+  onSelect
+}: {
+  breakdown: CrmBreakdown;
+  color: string;
+  onSelect: (row: DistributionRow) => void;
+}) {
+  const rows = breakdown.rows.slice(0, 10);
+  if (!rows.length) return <div className="ric-empty">No synchronized records are available for this report.</div>;
+  return (
+    <div className="ric-chart ric-breakdown-chart">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={rows} layout="vertical" margin={{ top: 2, right: 26, left: 16, bottom: 2 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e8edf5" />
+          <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: '#8490a3' }} axisLine={false} tickLine={false} />
+          <YAxis type="category" dataKey="label" width={138} tick={{ fontSize: 10, fill: '#536176' }} axisLine={false} tickLine={false} />
+          <Tooltip formatter={(value) => integer(value)} labelFormatter={(label) => String(label)} />
+          <Bar
+            dataKey="value"
+            name="Records"
+            radius={[0, 7, 7, 0]}
+            fill={color}
+            cursor="pointer"
+            onClick={(entry: any) => onSelect(entry?.payload ?? entry)}
+          />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function MonthlyCreatedChart({
+  breakdown,
+  color,
+  onSelect
+}: {
+  breakdown: CrmBreakdown;
+  color: string;
+  onSelect: (row: DistributionRow) => void;
+}) {
+  if (!breakdown.rows.length) {
+    return <div className="ric-empty">No records were created during the selected reporting period.</div>;
+  }
+  return (
+    <div className="ric-chart">
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={breakdown.rows} margin={{ top: 12, right: 14, left: -12, bottom: 4 }}>
+          <defs>
+            <linearGradient id={`monthly-${breakdown.propertyName}-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.34} />
+              <stop offset="100%" stopColor={color} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e8edf5" />
+          <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#8490a3' }} axisLine={false} tickLine={false} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#8490a3' }} axisLine={false} tickLine={false} />
+          <Tooltip formatter={(value) => integer(value)} />
+          <Area
+            type="monotone"
+            dataKey="value"
+            name="Created"
+            stroke={color}
+            fill={`url(#monthly-${breakdown.propertyName}-${color.replace('#', '')})`}
+            strokeWidth={2.5}
+            activeDot={{ r: 6, cursor: 'pointer', onClick: (_event: unknown, entry: any) => onSelect(entry?.payload ?? entry) }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function RecordLabel({ row }: { row: DrilldownRow }) {
-  const properties = row.properties || {};
+  const properties = row.displayProperties || row.properties || {};
   if (properties.firstname || properties.lastname) {
     return (
       <>
@@ -453,6 +558,14 @@ function RecordLabel({ row }: { row: DrilldownRow }) {
       <>
         <strong>{properties.dealname}</strong>
         <small>{properties.amount ? `Amount ${properties.amount}` : `HubSpot ID ${row.id}`}</small>
+      </>
+    );
+  }
+  if (properties.name || properties.domain) {
+    return (
+      <>
+        <strong>{properties.name || properties.domain}</strong>
+        <small>{properties.domain || properties.industry || `HubSpot ID ${row.id}`}</small>
       </>
     );
   }
@@ -494,14 +607,17 @@ function DrilldownDrawer({
         <div className="ric-drawer-table">
           <div className="ric-drawer-head"><span>Record</span><span>Owner / Status</span><span>Company / Pipeline</span><span>Last activity</span></div>
           {drilldown.results.map((row) => {
-            const properties = row.properties || {};
+            const properties = row.displayProperties || row.properties || {};
             const contactUrl = drilldown.objectType === 'contacts' && portalId
               ? `https://app.hubspot.com/contacts/${portalId}/contact/${row.id}`
               : null;
             const dealUrl = drilldown.objectType === 'deals' && portalId
               ? `https://app.hubspot.com/contacts/${portalId}/deal/${row.id}`
               : null;
-            const recordUrl = contactUrl || dealUrl;
+            const companyUrl = drilldown.objectType === 'companies' && portalId
+              ? `https://app.hubspot.com/contacts/${portalId}/company/${row.id}`
+              : null;
+            const recordUrl = contactUrl || dealUrl || companyUrl;
             return (
               <article key={row.id}>
                 <span className="ric-record-main">
@@ -509,7 +625,7 @@ function DrilldownDrawer({
                 </span>
                 <span>
                   <strong>{properties.hubspot_owner_id || properties.hs_activity_assigned_to_user_id || 'Unassigned'}</strong>
-                  <small>{titleCase(properties.hs_lead_status || properties.hs_task_status || properties.hs_call_status || properties.hs_meeting_outcome || properties.dealstage || 'Unknown')}</small>
+                  <small>{properties.hs_lead_status || properties.hs_task_status || properties.hs_call_status || properties.hs_meeting_outcome || properties.dealstage || 'Unknown'}</small>
                 </span>
                 <span>
                   <strong>{properties.company || properties.pipeline || '—'}</strong>
@@ -553,6 +669,7 @@ export function RevenueCommandCenter() {
   const [drilldown, setDrilldown] = useState<Drilldown | null>(null);
   const [drillTitle, setDrillTitle] = useState('Report details');
   const [drillKey, setDrillKey] = useState('');
+  const [drillValue, setDrillValue] = useState('');
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [viewsOpen, setViewsOpen] = useState(false);
   const [viewsLoading, setViewsLoading] = useState(false);
@@ -963,15 +1080,16 @@ export function RevenueCommandCenter() {
     }
   }
 
-  function loadDrilldown(key: string, title: string, offset = 0) {
+  function loadDrilldown(key: string, title: string, offset = 0, value = '') {
     if (!selectedId) return;
     setDrillKey(key);
     setDrillTitle(title);
+    setDrillValue(value);
     setMessage('');
     transition(async () => {
       try {
         const response = await fetch(
-          `/api/dashboard/${selectedId}/reports/${encodeURIComponent(key)}?${queryString(filters, { limit: 50, offset })}`,
+          `/api/dashboard/${selectedId}/reports/${encodeURIComponent(key)}?${queryString(filters, { limit: 50, offset, value })}`,
           { cache: 'no-store' }
         );
         const result = await response.json();
@@ -1000,6 +1118,7 @@ export function RevenueCommandCenter() {
   const kpis: Kpi[] = [
     { label: 'Portfolio contacts', value: overview.portfolioContacts, icon: UsersRound, tone: 'indigo', helper: `${integer(overview.missingOwnerContacts)} without owner` },
     { label: 'New contacts', value: overview.newContacts, icon: TrendingUp, tone: 'cyan', helper: `${report.filters.days}-day acquisition`, comparison: comparisons.newContacts },
+    { label: 'Portfolio companies', value: overview.portfolioCompanies, icon: Building2, tone: 'violet', helper: `${integer(overview.newCompanies)} created in period` },
     { label: 'Calls', value: overview.calls, icon: Phone, tone: 'teal', helper: 'Completed in selected period', comparison: comparisons.calls, drilldown: 'calls' },
     { label: 'Meetings', value: overview.meetings, icon: CalendarDays, tone: 'amber', helper: `${percentage(overview.meetingRate)} per call`, comparison: comparisons.meetings, drilldown: 'meetings' },
     { label: 'Meeting rate', value: overview.meetingRate, icon: Target, tone: 'violet', helper: 'Calls converted to meetings', percent: true },
@@ -1154,10 +1273,10 @@ export function RevenueCommandCenter() {
             <label><span>From</span><input type="date" value={draft.from} disabled={datePreset !== 'custom'} onChange={(event) => setDraft({ ...draft, from: event.target.value })} /></label>
             <label><span>To</span><input type="date" value={draft.to} disabled={datePreset !== 'custom'} onChange={(event) => setDraft({ ...draft, to: event.target.value })} /></label>
             <label><span>Owner</span><select value={draft.ownerId} onChange={(event) => setDraft({ ...draft, ownerId: event.target.value })}><option value="">All owners</option>{report.filterOptions.owners.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select></label>
-            <label><span>Country</span><select value={draft.country} onChange={(event) => setDraft({ ...draft, country: event.target.value })}><option value="">All countries</option>{report.filterOptions.countries.map((row) => <option key={row.value} value={row.value}>{titleCase(row.value)} · {integer(row.count)}</option>)}</select></label>
+            <label><span>Country</span><select value={draft.country} onChange={(event) => setDraft({ ...draft, country: event.target.value })}><option value="">All countries</option>{report.filterOptions.countries.map((row) => <option key={row.value} value={row.value}>{row.label} · {integer(row.count)}</option>)}</select></label>
             <label><span>Pipeline</span><select value={draft.pipelineId} onChange={(event) => setDraft({ ...draft, pipelineId: event.target.value, stageId: '' })}><option value="">All pipelines</option>{report.filterOptions.pipelines.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select></label>
             <label><span>Stage</span><select value={draft.stageId} onChange={(event) => setDraft({ ...draft, stageId: event.target.value })}><option value="">All stages</option>{stages.map((row) => <option key={row.id} value={row.id}>{row.label}</option>)}</select></label>
-            <label><span>Lead source</span><select value={draft.leadSource} onChange={(event) => setDraft({ ...draft, leadSource: event.target.value })}><option value="">All sources</option>{report.filterOptions.leadSources.map((row) => <option key={row.value} value={row.value}>{titleCase(row.value)} · {integer(row.count)}</option>)}</select></label>
+            <label><span>Lead source</span><select value={draft.leadSource} onChange={(event) => setDraft({ ...draft, leadSource: event.target.value })}><option value="">All sources</option>{report.filterOptions.leadSources.map((row) => <option key={row.value} value={row.value}>{row.label} · {integer(row.count)}</option>)}</select></label>
             <div className="ric-filter-actions"><button onClick={resetFilters}><RotateCcw size={15} />Reset</button><button className="primary" onClick={applyFilters} disabled={isPending}><Search size={15} />Apply filters</button></div>
           </section>
         ) : null}
@@ -1175,6 +1294,112 @@ export function RevenueCommandCenter() {
                 <span><Icon size={18} /></span><div><strong>{integer(value)}</strong><h3>{label}</h3><p>{helper}</p></div><ChevronRight size={16} />
               </button>
             ))}
+          </div>
+        </section>
+
+        <section className="ric-object-section" id="crm-contacts">
+          <header className="ric-section-heading">
+            <div><span>CONTACT INTELLIGENCE</span><h2>Understand the shape and growth of your contact database.</h2><p>Every label comes from the connected HubSpot property schema. Select any segment to open the matching contacts.</p></div>
+            <b><UsersRound size={16} />{integer(overview.portfolioContacts)} contacts</b>
+          </header>
+          <div className="ric-object-grid">
+            <Panel
+              title={`Contacts by ${report.crmBreakdowns.contacts.leadStatus.propertyLabel}`}
+              description="Current contact distribution using the original HubSpot option labels."
+              action={<span className="ric-chip">Click to inspect</span>}
+            >
+              <DistributionBars
+                breakdown={report.crmBreakdowns.contacts.leadStatus}
+                color="#5b67f1"
+                onSelect={(row) => loadDrilldown('contacts-by-lead-status', `${report.crmBreakdowns.contacts.leadStatus.propertyLabel} · ${row.label}`, 0, row.key)}
+              />
+            </Panel>
+            <Panel
+              title={`Contacts by ${report.crmBreakdowns.contacts.lifecycleStage.propertyLabel}`}
+              description="Lifecycle composition across the synchronized contact portfolio."
+              action={<span className="ric-chip">Click to inspect</span>}
+            >
+              <DistributionBars
+                breakdown={report.crmBreakdowns.contacts.lifecycleStage}
+                color="#14b8a6"
+                onSelect={(row) => loadDrilldown('contacts-by-lifecycle-stage', `${report.crmBreakdowns.contacts.lifecycleStage.propertyLabel} · ${row.label}`, 0, row.key)}
+              />
+            </Panel>
+            <Panel
+              title={`Contacts by ${report.crmBreakdowns.contacts.country.propertyLabel}`}
+              description="Geographic concentration using the workspace's original country values."
+              action={<span className="ric-chip">Click to inspect</span>}
+            >
+              <DistributionBars
+                breakdown={report.crmBreakdowns.contacts.country}
+                color="#0ea5e9"
+                onSelect={(row) => loadDrilldown('contacts-by-country', `${report.crmBreakdowns.contacts.country.propertyLabel} · ${row.label}`, 0, row.key)}
+              />
+            </Panel>
+            <Panel
+              title={`${report.crmBreakdowns.contacts.createdMonthly.propertyLabel} · monthly`}
+              description="Contacts created in each month inside the selected reporting period."
+              action={<span className="ric-chip">{report.filters.from} → {report.filters.to}</span>}
+            >
+              <MonthlyCreatedChart
+                breakdown={report.crmBreakdowns.contacts.createdMonthly}
+                color="#8b5cf6"
+                onSelect={(row) => loadDrilldown('contacts-by-created-month', `Contacts created · ${row.label}`, 0, row.key)}
+              />
+            </Panel>
+          </div>
+        </section>
+
+        <section className="ric-object-section" id="crm-companies">
+          <header className="ric-section-heading">
+            <div><span>COMPANY INTELLIGENCE</span><h2>See which accounts make up the commercial database.</h2><p>Industry, market, employee size and monthly company creation are filter-aware and open directly to their source records.</p></div>
+            <b><Building2 size={16} />{integer(overview.portfolioCompanies)} companies</b>
+          </header>
+          <div className="ric-object-grid">
+            <Panel
+              title={`Companies by ${report.crmBreakdowns.companies.industry.propertyLabel}`}
+              description="Account concentration by the original HubSpot industry labels."
+              action={<span className="ric-chip">Click to inspect</span>}
+            >
+              <DistributionBars
+                breakdown={report.crmBreakdowns.companies.industry}
+                color="#f59e0b"
+                onSelect={(row) => loadDrilldown('companies-by-industry', `${report.crmBreakdowns.companies.industry.propertyLabel} · ${row.label}`, 0, row.key)}
+              />
+            </Panel>
+            <Panel
+              title={`Companies by ${report.crmBreakdowns.companies.country.propertyLabel}`}
+              description="Company footprint across countries and commercial markets."
+              action={<span className="ric-chip">Click to inspect</span>}
+            >
+              <DistributionBars
+                breakdown={report.crmBreakdowns.companies.country}
+                color="#0ea5e9"
+                onSelect={(row) => loadDrilldown('companies-by-country', `${report.crmBreakdowns.companies.country.propertyLabel} · ${row.label}`, 0, row.key)}
+              />
+            </Panel>
+            <Panel
+              title={`Companies by ${report.crmBreakdowns.companies.employeeSize.propertyLabel}`}
+              description="Company distribution in practical employee-size bands."
+              action={<span className="ric-chip">Click to inspect</span>}
+            >
+              <DistributionBars
+                breakdown={report.crmBreakdowns.companies.employeeSize}
+                color="#22c55e"
+                onSelect={(row) => loadDrilldown('companies-by-employee-size', `${report.crmBreakdowns.companies.employeeSize.propertyLabel} · ${row.label}`, 0, row.key)}
+              />
+            </Panel>
+            <Panel
+              title={`${report.crmBreakdowns.companies.createdMonthly.propertyLabel} · monthly`}
+              description="Companies created in each month inside the selected reporting period."
+              action={<span className="ric-chip">{report.filters.from} → {report.filters.to}</span>}
+            >
+              <MonthlyCreatedChart
+                breakdown={report.crmBreakdowns.companies.createdMonthly}
+                color="#ec4899"
+                onSelect={(row) => loadDrilldown('companies-by-created-month', `Companies created · ${row.label}`, 0, row.key)}
+              />
+            </Panel>
           </div>
         </section>
 
@@ -1220,7 +1445,7 @@ export function RevenueCommandCenter() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={report.leadSourcePerformance.slice(0, 8)} margin={{ top: 6, right: 8, left: -14, bottom: 36 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e8edf5" />
-                  <XAxis dataKey="key" angle={-28} textAnchor="end" interval={0} tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="label" angle={-28} textAnchor="end" interval={0} tick={{ fontSize: 9, fill: '#64748b' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 10, fill: '#8490a3' }} axisLine={false} tickLine={false} />
                   <Tooltip content={<TooltipCard />} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: 10 }} />
@@ -1235,7 +1460,16 @@ export function RevenueCommandCenter() {
             <div className="ric-chart">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={report.countryDistribution} dataKey="value" nameKey="key" innerRadius={68} outerRadius={105} paddingAngle={2}>
+                  <Pie
+                    data={report.countryDistribution}
+                    dataKey="value"
+                    nameKey="label"
+                    innerRadius={68}
+                    outerRadius={105}
+                    paddingAngle={2}
+                    cursor="pointer"
+                    onClick={(entry: any) => loadDrilldown('contacts-by-country', `Contacts · ${entry?.label || entry?.payload?.label}`, 0, entry?.key || entry?.payload?.key)}
+                  >
                     {report.countryDistribution.map((row, index) => <Cell key={row.key} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
                   </Pie>
                   <Tooltip formatter={(value) => integer(value)} />
@@ -1281,7 +1515,7 @@ export function RevenueCommandCenter() {
 
         <section className="ric-footprint">
           <div><Layers3 size={18} /><span>Active filters</span><strong>{[filters.ownerId, filters.country, filters.pipelineId, filters.stageId, filters.leadSource].filter(Boolean).length + 1}</strong></div>
-          <div><BarChart3 size={18} /><span>Report modules</span><strong>14</strong></div>
+          <div><BarChart3 size={18} /><span>Report modules</span><strong>22</strong></div>
           <div><Database size={18} /><span>Generated</span><strong>{new Date(report.generatedAt).toLocaleTimeString()}</strong></div>
           <div><Building2 size={18} /><span>Workspace</span><strong>{workspace.name}</strong></div>
         </section>
@@ -1293,7 +1527,7 @@ export function RevenueCommandCenter() {
         portalId={workspace.portal_id}
         loading={isPending}
         onClose={() => setDrilldown(null)}
-        onPage={(offset) => loadDrilldown(drillKey, drillTitle, offset)}
+        onPage={(offset) => loadDrilldown(drillKey, drillTitle, offset, drillValue)}
       />
     </main>
   );

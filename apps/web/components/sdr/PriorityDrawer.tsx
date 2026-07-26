@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { ExternalLink, Search, UsersRound, X } from 'lucide-react';
 
 import type { OwnerActivityDatum, PriorityDrilldown } from './types';
-import { humanize } from './WidgetKit';
 
 function shortDate(value?: string | null) {
   if (!value) return '—';
@@ -61,9 +60,10 @@ export function PriorityDrawer({
         <div className="sdr-drilldown-list">
           {!filtered.length ? <div className="sdr-drawer-empty"><Search size={26} /><strong>No matching records</strong><span>Try a different search inside this result set.</span></div> : null}
           {filtered.map((row) => {
-            const properties = row.properties ?? {};
+            const rawProperties = row.properties ?? {};
+            const properties = row.displayProperties ?? rawProperties;
             const name = [properties.firstname, properties.lastname].filter(Boolean).join(' ') || `Contact ${row.id}`;
-            const owner = ownerIndex[String(properties.hubspot_owner_id ?? '')];
+            const owner = ownerIndex[String(rawProperties.hubspot_owner_id ?? '')];
             const hubspotUrl = portalId ? `https://app.hubspot.com/contacts/${portalId}/contact/${row.id}` : null;
             return (
               <article className="sdr-drawer-record-card" key={row.id}>
@@ -75,7 +75,7 @@ export function PriorityDrawer({
                 <div className="sdr-drawer-record-fields">
                   <span><b>Country</b>{properties.country || '—'}</span>
                   <span><b>Owner</b>{owner?.name || properties.hubspot_owner_id || 'Unassigned'}</span>
-                  <span><b>Lead status</b>{humanize(properties.hs_lead_status || properties.lifecyclestage)}</span>
+                  <span><b>Lead status</b>{properties.hs_lead_status || properties.lifecyclestage || 'Unknown'}</span>
                   <span><b>Email</b>{properties.email || '—'}</span>
                   <span><b>Phone</b>{properties.phone || properties.mobilephone || '—'}</span>
                   <span><b>Last contacted</b>{shortDate(properties.notes_last_contacted)}</span>
