@@ -137,6 +137,8 @@ services:
       OPERATIONS_ACCESS_KEY: ${OPERATIONS_ACCESS_KEY:-}
       ONBOARDING_SESSION_SECRET: ${ONBOARDING_SESSION_SECRET:-}
       NEXT_PUBLIC_APP_NAME: ${APP_NAME:-Ops Solutions}
+      RELEASE_SHA: ${RELEASE_SHA:-unknown}
+      RELEASE_DEPLOYED_AT: ${RELEASE_DEPLOYED_AT:-}
     depends_on:
       api:
         condition: service_healthy
