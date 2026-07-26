@@ -26,7 +26,6 @@ type NavigationGroup = {
   icon: LucideIcon;
   sectionId?: string;
   href?: string;
-  defaultOpen?: boolean;
   children?: SectionLink[];
 };
 
@@ -41,7 +40,6 @@ const NAVIGATION_GROUPS: NavigationGroup[] = [
     id: 'revenue',
     label: 'Revenue',
     icon: CircleDollarSign,
-    defaultOpen: true,
     children: [
       { label: 'Pipeline & revenue', sectionId: 'pipeline' },
       { label: 'Executive overview', sectionId: 'overview' }
@@ -164,11 +162,11 @@ export function ObjectRouteNavigationEnhancer() {
   const navigation = (
     <div className="command-center-navigation" data-command-center-navigation>
       <span className="command-center-navigation-label">WORKSPACE</span>
-      {NAVIGATION_GROUPS.map(({ id, label, icon: Icon, sectionId, href, children, defaultOpen }) => {
+      {NAVIGATION_GROUPS.map(({ id, label, icon: Icon, sectionId, href, children }) => {
         if (children?.length) {
           const containsActive = children.some((child) => child.sectionId === activeSection);
           return (
-            <details key={id} className={containsActive ? 'active' : ''} defaultOpen={defaultOpen || containsActive}>
+            <details key={id} className={containsActive ? 'active' : ''} open={containsActive || undefined}>
               <summary>
                 <Icon size={16} aria-hidden="true" />
                 <span>{label}</span>
