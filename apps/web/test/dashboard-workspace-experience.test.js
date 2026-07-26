@@ -14,7 +14,7 @@ test('dashboard uses one unified workspace experience', async () => {
 
 test('workspace selection remains tenant scoped and persistent', async () => {
   const source = await readFile(componentPath, 'utf8');
-  assert.match(source, /fetch\('\/api\/customer\/workspaces'/);
+  assert.match(source, /json<\{ results\?: WorkspaceState\[\] \}>\('\/api\/customer\/workspaces'\)/);
   assert.match(source, /row\.workspace\.hubspot_status === 'connected'/);
   assert.match(source, /ops:last-dashboard-workspace/);
   assert.match(source, /changeWorkspace/);
