@@ -1,74 +1,227 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  BriefcaseBusiness,
+  Building2,
+  ChevronRight,
+  CircleDollarSign,
+  Database,
+  Gauge,
+  Settings2,
+  Target,
+  type LucideIcon
+} from 'lucide-react';
 
-const OBJECT_ROUTES = [
-  ['contacts', 'Contacts'],
-  ['companies', 'Companies'],
-  ['deals', 'Deals'],
-  ['calls', 'Calls'],
-  ['meetings', 'Meetings'],
-  ['tasks', 'Tasks'],
-  ['tickets', 'Tickets']
-] as const;
+type SectionLink = {
+  label: string;
+  sectionId?: string;
+  href?: string;
+};
 
-const OPERATIONS_ROUTES = [
-  ['/settings/readiness', 'Production Readiness', '✓'],
-  ['/dashboard/retention-budget', 'Retention Budget', 'R'],
-  ['/settings/reports', 'Scheduled Reports', 'S'],
-  ['/settings/alerts', 'Operational Alerts', '!'],
-  ['/settings/billing', 'Plans & Usage', '$']
-] as const;
+type NavigationGroup = {
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  sectionId?: string;
+  href?: string;
+  children?: SectionLink[];
+};
 
-function navLink(href: string, label: string, glyph: string, className = 'object-route-nav-link') {
-  const link = document.createElement('a');
-  link.href = href;
-  link.className = className;
-  link.innerHTML = `<span aria-hidden="true">${glyph}</span><b>${label}</b><i aria-hidden="true">›</i>`;
-  return link;
+const NAVIGATION_GROUPS: NavigationGroup[] = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    icon: Gauge,
+    sectionId: 'overview'
+  },
+  {
+    id: 'revenue',
+    label: 'Revenue',
+    icon: CircleDollarSign,
+    children: [
+      { label: 'Pipeline & revenue', sectionId: 'pipeline' },
+      { label: 'Executive overview', sectionId: 'overview' }
+    ]
+  },
+  {
+    id: 'acquisition',
+    label: 'Acquisition',
+    icon: Target,
+    children: [
+      { label: 'Activity performance', sectionId: 'activity' },
+      { label: 'Sources & markets', sectionId: 'sources' },
+      { label: 'Team performance', sectionId: 'team' }
+    ]
+  },
+  {
+    id: 'retention',
+    label: 'Retention',
+    icon: BriefcaseBusiness,
+    href: '/dashboard/retention-budget'
+  },
+  {
+    id: 'crm-data',
+    label: 'CRM Data',
+    icon: Database,
+    children: [
+      { label: 'All CRM Objects', href: '/dashboard/all-objects' },
+      { label: 'Contacts', href: '/dashboard/objects/contacts' },
+      { label: 'Companies', href: '/dashboard/objects/companies' },
+      { label: 'Deals', href: '/dashboard/objects/deals' },
+      { label: 'Calls', href: '/dashboard/objects/calls' },
+      { label: 'Meetings', href: '/dashboard/objects/meetings' },
+      { label: 'Tasks', href: '/dashboard/objects/tasks' },
+      { label: 'Tickets', href: '/dashboard/objects/tickets' }
+    ]
+  },
+  {
+    id: 'administration',
+    label: 'Administration',
+    icon: Settings2,
+    children: [
+      { label: 'Workspace Settings', href: '/settings/workspace' },
+      { label: 'Mappings', href: '/settings/mappings' },
+      { label: 'Data SLA', href: '/settings/data-sla' },
+      { label: 'Scheduled Reports', href: '/settings/reports' },
+      { label: 'Operational Alerts', href: '/settings/alerts' },
+      { label: 'Plans & Usage', href: '/settings/billing' },
+      { label: 'Security', href: '/settings/security' },
+      { label: 'Production Readiness', href: '/settings/readiness' }
+    ]
+  }
+];
+
+const SECTION_IDS = ['overview', 'activity', 'pipeline', 'sources', 'team', 'quality'];
+
+function scrollToSection(sectionId: string) {
+  const target = document.getElementById(sectionId);
+  if (!target) return;
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${sectionId}`);
+}
+
+function NavigationChild({ item, onSection }: { item: SectionLink; onSection: (sectionId: string) => void }) {
+  if (item.href) {
+    return (
+      <a href={item.href} className="command-center-nav-child">
+        <span>{item.label}</span>
+        <ChevronRight size={13} aria-hidden="true" />
+      </a>
+    );
+  }
+
+  return (
+    <button type="button" className="command-center-nav-child" onClick={() => item.sectionId && onSection(item.sectionId)}>
+      <span>{item.label}</span>
+      <ChevronRight size={13} aria-hidden="true" />
+    </button>
+  );
 }
 
 export function ObjectRouteNavigationEnhancer() {
+  const [target, setTarget] = useState<HTMLElement | null>(null);
+  const [activeSection, setActiveSection] = useState('overview');
+
   useEffect(() => {
-    let createdGroup: HTMLElement | null = null;
-
-    const install = () => {
+    const locate = () => {
       const nav = document.querySelector<HTMLElement>('.dashboard-workspace-experience .ric-sidebar nav');
-      if (!nav || nav.querySelector('[data-object-route-group]')) return;
-
-      const group = document.createElement('section');
-      group.className = 'object-route-nav-group';
-      group.dataset.objectRouteGroup = 'true';
-
-      const objectHeading = document.createElement('span');
-      objectHeading.className = 'object-route-nav-heading';
-      objectHeading.textContent = 'OBJECT DASHBOARDS';
-      group.append(objectHeading);
-      group.append(navLink('/dashboard/all-objects', 'All CRM Objects', '∞', 'object-route-nav-link object-route-nav-all'));
-
-      for (const [type, label] of OBJECT_ROUTES) {
-        group.append(navLink(`/dashboard/objects/${type}`, label, label.charAt(0)));
-      }
-
-      const operationsHeading = document.createElement('span');
-      operationsHeading.className = 'object-route-nav-heading';
-      operationsHeading.textContent = 'OPERATIONS';
-      group.append(operationsHeading);
-      for (const [href, label, glyph] of OPERATIONS_ROUTES) group.append(navLink(href, label, glyph));
-
-      nav.append(group);
-      createdGroup = group;
+      if (nav) setTarget(nav);
     };
 
-    install();
-    const observer = new MutationObserver(install);
+    locate();
+    const observer = new MutationObserver(locate);
     observer.observe(document.body, { childList: true, subtree: true });
-
-    return () => {
-      observer.disconnect();
-      createdGroup?.remove();
-    };
+    return () => observer.disconnect();
   }, []);
 
-  return null;
+  useEffect(() => {
+    if (!target) return;
+    const sections = SECTION_IDS
+      .map((id) => document.getElementById(id))
+      .filter((section): section is HTMLElement => Boolean(section));
+    if (!sections.length) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible?.target.id) setActiveSection(visible.target.id);
+      },
+      { rootMargin: '-18% 0px -66% 0px', threshold: [0.05, 0.25, 0.5] }
+    );
+
+    sections.forEach((section) => observer.observe(section));
+    return () => observer.disconnect();
+  }, [target]);
+
+  if (!target) return null;
+
+  const navigation = (
+    <div className="command-center-navigation" data-command-center-navigation>
+      <span className="command-center-navigation-label">WORKSPACE</span>
+      {NAVIGATION_GROUPS.map(({ id, label, icon: Icon, sectionId, href, children }) => {
+        if (children?.length) {
+          const containsActive = children.some((child) => child.sectionId === activeSection);
+          return (
+            <details key={id} className={containsActive ? 'active' : ''} open={containsActive || undefined}>
+              <summary>
+                <Icon size={16} aria-hidden="true" />
+                <span>{label}</span>
+                <ChevronRight className="command-center-nav-chevron" size={14} aria-hidden="true" />
+              </summary>
+              <div className="command-center-nav-children">
+                {children.map((child) => (
+                  <NavigationChild key={`${id}-${child.label}`} item={child} onSection={(next) => {
+                    setActiveSection(next);
+                    scrollToSection(next);
+                  }} />
+                ))}
+              </div>
+            </details>
+          );
+        }
+
+        if (href) {
+          return (
+            <a
+              key={id}
+              href={href}
+              className="command-center-nav-main"
+              aria-label={id === 'retention' ? 'Retention Budget' : label}
+            >
+              <Icon size={16} aria-hidden="true" />
+              <span>{label}</span>
+              <ChevronRight size={14} aria-hidden="true" />
+            </a>
+          );
+        }
+
+        return (
+          <button
+            key={id}
+            type="button"
+            className={`command-center-nav-main ${activeSection === sectionId ? 'active' : ''}`}
+            onClick={() => {
+              if (!sectionId) return;
+              setActiveSection(sectionId);
+              scrollToSection(sectionId);
+            }}
+          >
+            <Icon size={16} aria-hidden="true" />
+            <span>{label}</span>
+            <ChevronRight size={14} aria-hidden="true" />
+          </button>
+        );
+      })}
+      <div className="command-center-navigation-footer">
+        <Building2 size={15} aria-hidden="true" />
+        <span>Company-scoped analytics</span>
+      </div>
+    </div>
+  );
+
+  return createPortal(navigation, target);
 }

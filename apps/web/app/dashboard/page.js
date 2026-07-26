@@ -1,4 +1,5 @@
 import { DashboardProductShell } from '@/components/sdr/DashboardProductShell';
+import { DashboardDensityControl } from '@/components/sdr/DashboardDensityControl';
 import { ObjectIntelligenceWorkspace } from '@/components/sdr/ObjectIntelligenceWorkspace';
 import { ObjectRouteNavigationEnhancer } from '@/components/sdr/ObjectRouteNavigationEnhancer';
 import { PdfSnapshotAction } from '@/components/sdr/PdfSnapshotAction';
@@ -20,6 +21,7 @@ export default function DashboardPage() {
       <DashboardProductShell />
       <ObjectIntelligenceWorkspace />
       <ObjectRouteNavigationEnhancer />
+      <DashboardDensityControl />
       <PdfSnapshotAction />
     </>
   );

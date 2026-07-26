@@ -1,0 +1,1056 @@
+:root {
+  --ops-page: #f2f6f4;
+  --ops-surface: #ffffff;
+  --ops-surface-soft: #f7faf8;
+  --ops-sidebar: #0e4b3e;
+  --ops-sidebar-soft: #175d4d;
+  --ops-border: #dbe5e0;
+  --ops-border-soft: #e8efeb;
+  --ops-text: #10291f;
+  --ops-muted: #6e8178;
+  --ops-accent: #087a50;
+  --ops-accent-strong: #066541;
+  --ops-accent-soft: #e2f2e9;
+  --ops-blue: #3a7de0;
+  --ops-amber: #d98d25;
+  --ops-red: #df5a4b;
+  --ops-purple: #744bc4;
+  --ops-teal: #1aa6a0;
+  --ops-shadow: 0 12px 34px rgba(23, 67, 50, 0.07);
+  --ops-shadow-strong: 0 18px 44px rgba(23, 67, 50, 0.12);
+  --ops-sidebar-width: 244px;
+}
+
+body:has(.dashboard-workspace-experience),
+body:has(.odp-page) {
+  background: var(--ops-page);
+  color: var(--ops-text);
+}
+
+.dashboard-workspace-experience {
+  --enterprise-sidebar: var(--ops-sidebar-width) !important;
+  --enterprise-page: var(--ops-page) !important;
+  --enterprise-surface: var(--ops-surface) !important;
+  --enterprise-surface-soft: var(--ops-surface-soft) !important;
+  --enterprise-border: var(--ops-border) !important;
+  --enterprise-border-strong: #c6d5cd !important;
+  --enterprise-text: var(--ops-text) !important;
+  --enterprise-muted: var(--ops-muted) !important;
+  --enterprise-navy: var(--ops-sidebar) !important;
+  --enterprise-navy-soft: var(--ops-sidebar-soft) !important;
+  --enterprise-blue: var(--ops-accent) !important;
+  --enterprise-shadow: var(--ops-shadow) !important;
+  --enterprise-shadow-strong: var(--ops-shadow-strong) !important;
+  min-height: 100vh;
+  background: var(--ops-page) !important;
+  color: var(--ops-text);
+}
+
+html[data-workspace-appearance='dark'] .dashboard-workspace-experience,
+html[data-workspace-appearance='system'] .dashboard-workspace-experience {
+  --ric-page: var(--ops-page) !important;
+  background: var(--ops-page) !important;
+  color: var(--ops-text) !important;
+}
+
+.dashboard-workspace-experience .dashboard-workspace-brand {
+  display: none !important;
+}
+
+.dashboard-workspace-experience .dashboard-command-mode {
+  position: relative;
+  z-index: 34;
+  display: grid;
+  grid-template-columns: minmax(190px, 0.72fr) minmax(510px, 1.85fr) auto;
+  gap: 14px;
+  margin-left: var(--ops-sidebar-width) !important;
+  padding: 10px clamp(18px, 2.6vw, 38px);
+  border-bottom: 1px solid var(--ops-border);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: none;
+  backdrop-filter: blur(16px);
+}
+
+.dashboard-workspace-experience .dashboard-command-mode-copy > span {
+  width: 34px;
+  height: 34px;
+  border-color: #cfe4d9;
+  border-radius: 10px;
+  color: var(--ops-accent);
+  background: var(--ops-accent-soft);
+}
+
+.dashboard-workspace-experience .dashboard-command-mode-copy small {
+  color: #71847a;
+  font-size: 8px;
+}
+
+.dashboard-workspace-experience .dashboard-command-mode-copy strong {
+  color: var(--ops-text);
+  font-size: 13px;
+}
+
+.dashboard-workspace-experience .dashboard-command-mode-copy p {
+  max-width: 330px;
+  color: var(--ops-muted);
+  font-size: 9px;
+}
+
+.dashboard-workspace-experience .dashboard-command-mode-options {
+  gap: 5px;
+  padding: 4px;
+  border-color: var(--ops-border);
+  border-radius: 13px;
+  box-shadow: none;
+}
+
+.dashboard-workspace-experience .dashboard-command-mode-options button {
+  min-height: 40px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  color: #61766b;
+}
+
+.dashboard-workspace-experience .dashboard-command-mode-options button:hover {
+  color: var(--ops-text);
+  background: var(--ops-surface-soft);
+}
+
+.dashboard-workspace-experience .dashboard-command-mode-options button.active {
+  border-color: #bfddce;
+  color: var(--ops-accent);
+  background: var(--ops-accent-soft);
+  box-shadow: none;
+}
+
+.dashboard-workspace-experience .dashboard-command-mode-options strong {
+  font-size: 10px;
+}
+
+.dashboard-workspace-experience .dashboard-command-mode-options small {
+  font-size: 7px;
+}
+
+.dashboard-workspace-experience .dashboard-command-actions a,
+.dashboard-workspace-experience .dashboard-command-actions button {
+  height: 34px;
+  border-color: var(--ops-border);
+  border-radius: 9px;
+  color: #50675c;
+  font-size: 9px;
+}
+
+.dashboard-workspace-experience .dashboard-command-actions a:hover,
+.dashboard-workspace-experience .dashboard-command-actions button:hover {
+  border-color: #a8c7b8;
+  color: var(--ops-accent);
+  background: var(--ops-surface-soft);
+}
+
+.dashboard-workspace-experience .dashboard-data-health {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 9px;
+  margin: 10px clamp(18px, 2.6vw, 38px) 0 calc(var(--ops-sidebar-width) + clamp(18px, 2.6vw, 38px)) !important;
+  padding: 9px 11px;
+  border-color: #cfe0d8;
+  border-radius: 12px;
+  color: #173b2d;
+  background: #f3fbf7;
+  box-shadow: none;
+}
+
+.dashboard-workspace-experience .dashboard-data-health-icon {
+  width: 29px;
+  height: 29px;
+  border-radius: 9px;
+  background: var(--ops-accent);
+}
+
+.dashboard-workspace-experience .dashboard-data-health small {
+  color: #60776c;
+  font-size: 8px;
+}
+
+.dashboard-workspace-experience .dashboard-data-health strong {
+  font-size: 11px;
+}
+
+.dashboard-workspace-experience .dashboard-data-health p,
+.dashboard-workspace-experience .dashboard-data-health-meta span,
+.dashboard-workspace-experience .dashboard-data-health button {
+  font-size: 9px;
+}
+
+.dashboard-workspace-experience .dashboard-data-health button {
+  padding: 7px 9px;
+  border-color: #bdd9cb;
+  color: var(--ops-accent);
+  background: #fff;
+}
+
+.dashboard-workspace-experience .ric-shell {
+  --ric-bg: transparent !important;
+  --ric-surface: var(--ops-surface) !important;
+  --ric-surface-2: var(--ops-surface-soft) !important;
+  --ric-border: var(--ops-border) !important;
+  --ric-text: var(--ops-text) !important;
+  --ric-muted: var(--ops-muted) !important;
+  --ric-sidebar: var(--ops-sidebar) !important;
+  --ric-sidebar-2: var(--ops-sidebar-soft) !important;
+  --ric-primary: var(--ops-accent) !important;
+  --ric-cyan: var(--ops-blue) !important;
+  --ric-teal: var(--ops-teal) !important;
+  --ric-violet: var(--ops-purple) !important;
+  --ric-amber: var(--ops-amber) !important;
+  --ric-red: var(--ops-red) !important;
+  --ric-green: var(--ops-accent) !important;
+  --ric-shadow: var(--ops-shadow) !important;
+  background: transparent !important;
+}
+
+.dashboard-workspace-experience .ric-sidebar {
+  width: var(--ops-sidebar-width) !important;
+  padding: 20px 14px;
+  background: var(--ops-sidebar) !important;
+  box-shadow: 10px 0 30px rgba(11, 59, 48, 0.12);
+}
+
+.dashboard-workspace-experience .ric-brand {
+  gap: 10px;
+  padding: 2px 10px 18px;
+  border-bottom-color: rgba(255, 255, 255, 0.13);
+}
+
+.dashboard-workspace-experience .ric-brand > span {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--ops-accent);
+  background: #e2f2e9 !important;
+  box-shadow: none;
+}
+
+.dashboard-workspace-experience .ric-brand strong {
+  color: #fff !important;
+  font-size: 12px;
+}
+
+.dashboard-workspace-experience .ric-brand small {
+  color: #9bc0b1;
+  font-size: 8px;
+}
+
+.dashboard-workspace-experience .ric-nav-label:first-of-type,
+.dashboard-workspace-experience .ric-sidebar nav > button,
+.dashboard-workspace-experience .object-route-nav-group {
+  display: none !important;
+}
+
+.dashboard-workspace-experience .ric-sidebar nav {
+  display: block;
+  margin-top: 12px;
+}
+
+.command-center-navigation {
+  display: grid;
+  gap: 4px;
+}
+
+.command-center-navigation-label {
+  display: block;
+  padding: 8px 10px 7px;
+  color: #78a797;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.command-center-navigation details,
+.command-center-navigation .command-center-nav-main {
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+}
+
+.command-center-navigation summary,
+.command-center-navigation .command-center-nav-main {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 9px;
+  color: #bad0c6;
+  background: transparent;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 720;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  list-style: none;
+  transition: 160ms ease;
+}
+
+.command-center-navigation summary::-webkit-details-marker {
+  display: none;
+}
+
+.command-center-navigation summary > svg:first-child,
+.command-center-navigation .command-center-nav-main > svg:first-child {
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border-radius: 8px;
+  color: #9fc6b5;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.command-center-navigation summary:hover,
+.command-center-navigation .command-center-nav-main:hover,
+.command-center-navigation .command-center-nav-main.active,
+.command-center-navigation details.active > summary {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.command-center-navigation .command-center-nav-main.active {
+  color: #126044;
+  background: #e2f2e9;
+}
+
+.command-center-navigation .command-center-nav-main.active > svg:first-child {
+  color: var(--ops-accent);
+  background: #fff;
+}
+
+.command-center-nav-chevron {
+  transition: transform 160ms ease;
+}
+
+.command-center-navigation details[open] .command-center-nav-chevron {
+  transform: rotate(90deg);
+}
+
+.command-center-nav-children {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0 5px 36px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.13);
+}
+
+.command-center-nav-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  min-height: 30px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 7px;
+  color: #91b7a7;
+  background: transparent;
+  font: inherit;
+  font-size: 8px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.command-center-nav-child:hover,
+.command-center-nav-child:focus-visible {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+  outline: none;
+}
+
+.command-center-navigation-footer {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  color: #83aa9a;
+  font-size: 8px;
+}
+
+.dashboard-workspace-experience .ric-nav-label {
+  padding: 18px 10px 8px;
+  color: #78a797;
+}
+
+.dashboard-workspace-experience .ric-workspaces button {
+  min-height: 38px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  color: #b9d0c6;
+}
+
+.dashboard-workspace-experience .ric-workspaces button:hover,
+.dashboard-workspace-experience .ric-workspaces button.active {
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.dashboard-workspace-experience .ric-workspaces i {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dashboard-workspace-experience .ric-sync {
+  border-radius: 10px;
+  color: #88ad9e;
+}
+
+.dashboard-workspace-experience .ric-topbar {
+  min-height: 68px;
+  height: auto;
+  margin-left: var(--ops-sidebar-width) !important;
+  padding: 10px clamp(18px, 2.6vw, 38px);
+  border-bottom-color: var(--ops-border);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: none;
+  backdrop-filter: blur(16px);
+}
+
+.dashboard-workspace-experience .ric-topbar strong {
+  color: var(--ops-text);
+  font-size: 14px;
+}
+
+.dashboard-workspace-experience .ric-topbar span {
+  color: var(--ops-muted);
+  font-size: 9px;
+}
+
+.dashboard-workspace-experience .ric-topbar > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.dashboard-workspace-experience .ric-topbar button {
+  height: 35px;
+  padding: 0 11px;
+  border-color: var(--ops-border);
+  border-radius: 9px;
+  color: #4d6559;
+  background: #fff;
+  font-size: 9px;
+}
+
+.dashboard-workspace-experience .ric-topbar button:hover,
+.dashboard-workspace-experience .ric-topbar button.active {
+  border-color: #acd0be;
+  color: var(--ops-accent);
+  background: var(--ops-accent-soft);
+}
+
+.dashboard-workspace-experience .ric-topbar button.primary {
+  border-color: var(--ops-accent);
+  color: #fff;
+  background: var(--ops-accent);
+  box-shadow: none;
+}
+
+.dashboard-workspace-experience .ric-topbar button.primary:hover {
+  background: var(--ops-accent-strong);
+}
+
+.dashboard-workspace-experience .ric-live {
+  height: 31px;
+  border-color: #cfe5da;
+  color: #236947 !important;
+  background: #edf8f2;
+}
+
+.dashboard-density-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 35px;
+  padding: 3px;
+  border: 1px solid var(--ops-border);
+  border-radius: 9px;
+  background: var(--ops-surface-soft);
+}
+
+.dashboard-density-control > span {
+  padding: 0 5px;
+  color: #71847a !important;
+  font-size: 8px !important;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dashboard-workspace-experience .dashboard-density-control button {
+  width: 29px;
+  height: 27px;
+  padding: 0;
+  justify-content: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+}
+
+.dashboard-density-control button > span {
+  display: none;
+}
+
+.dashboard-workspace-experience .dashboard-density-control button.active {
+  color: var(--ops-accent);
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(23, 67, 50, 0.09);
+}
+
+.dashboard-workspace-experience .ric-content {
+  max-width: none;
+  margin-left: var(--ops-sidebar-width) !important;
+  padding: 27px clamp(18px, 2.6vw, 38px) 70px;
+}
+
+.dashboard-workspace-experience .ric-heading {
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.dashboard-workspace-experience .ric-heading > div:first-child > span::after {
+  color: var(--ops-accent);
+  font-size: 8px;
+}
+
+.dashboard-workspace-experience .ric-heading h1::after {
+  max-width: 890px;
+  color: var(--ops-text);
+  font-size: clamp(28px, 3.3vw, 44px);
+  line-height: 1.05;
+}
+
+.dashboard-workspace-experience .ric-heading p {
+  max-width: 820px;
+  color: var(--ops-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.dashboard-workspace-experience .ric-score {
+  min-width: 180px;
+  padding: 13px;
+  border-color: #cfe2d8;
+  border-radius: 13px;
+  color: var(--ops-accent);
+  background: #fff;
+  box-shadow: var(--ops-shadow);
+}
+
+.dashboard-workspace-experience .ric-score strong {
+  font-size: 21px;
+}
+
+.dashboard-workspace-experience .ric-filterbar {
+  grid-template-columns: repeat(4, minmax(145px, 1fr));
+  gap: 9px;
+  padding: 14px;
+  margin-bottom: 16px;
+  border-color: var(--ops-border);
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: var(--ops-shadow);
+}
+
+.dashboard-workspace-experience .ric-filterbar input,
+.dashboard-workspace-experience .ric-filterbar select {
+  height: 38px;
+  border-color: var(--ops-border);
+  border-radius: 8px;
+  color: #31483e;
+  background: #fbfcfb;
+  font-size: 10px;
+}
+
+.dashboard-workspace-experience .ric-filterbar input:focus,
+.dashboard-workspace-experience .ric-filterbar select:focus {
+  border-color: var(--ops-accent);
+  box-shadow: 0 0 0 3px rgba(8, 122, 80, 0.1);
+}
+
+.dashboard-workspace-experience .ric-kpi-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.dashboard-workspace-experience .ric-kpi-grid .ric-kpi {
+  grid-column: span 3;
+  min-height: 132px;
+  padding: 15px;
+  border-color: var(--ops-border);
+  border-radius: 13px;
+  color: var(--ops-accent);
+  background: #fff;
+  box-shadow: var(--ops-shadow);
+}
+
+.dashboard-workspace-experience[data-command-role='executive'] .ric-kpi-grid .ric-kpi {
+  grid-column: span 4;
+}
+
+.dashboard-workspace-experience .ric-kpi:nth-child(8),
+.dashboard-workspace-experience .ric-kpi:nth-child(10),
+.dashboard-workspace-experience .ric-kpi:nth-child(12) {
+  border-color: var(--ops-border);
+  color: var(--ops-accent);
+  background: #fff;
+  box-shadow: var(--ops-shadow);
+}
+
+.dashboard-workspace-experience .ric-kpi:nth-child(8) > strong,
+.dashboard-workspace-experience .ric-kpi:nth-child(10) > strong,
+.dashboard-workspace-experience .ric-kpi:nth-child(8) h3,
+.dashboard-workspace-experience .ric-kpi:nth-child(10) h3 {
+  color: inherit;
+}
+
+.dashboard-workspace-experience .ric-kpi:nth-child(8) p,
+.dashboard-workspace-experience .ric-kpi:nth-child(10) p {
+  color: var(--ops-muted);
+}
+
+.dashboard-workspace-experience .ric-kpi::after {
+  width: 82px;
+  height: 82px;
+  right: -37px;
+  top: -37px;
+  opacity: 0.08;
+}
+
+.dashboard-workspace-experience .ric-kpi:hover {
+  border-color: #a8c7b8;
+  box-shadow: var(--ops-shadow-strong);
+  transform: translateY(-2px);
+}
+
+.dashboard-workspace-experience .ric-kpi-top > span {
+  width: 32px;
+  height: 32px;
+  border-color: var(--ops-accent) !important;
+  border-radius: 9px;
+  background: var(--ops-accent) !important;
+}
+
+.dashboard-workspace-experience .ric-kpi > strong {
+  margin: 15px 0 6px;
+  color: var(--ops-text);
+  font-size: 27px;
+}
+
+.dashboard-workspace-experience .ric-kpi h3 {
+  color: #3d554a;
+  font-size: 9px;
+}
+
+.dashboard-workspace-experience .ric-kpi p {
+  margin-top: 6px;
+  color: var(--ops-muted);
+  font-size: 8px;
+}
+
+.dashboard-workspace-experience .ric-attention {
+  margin-bottom: 16px;
+  padding: 17px;
+  border: 1px solid #d7e5de;
+  border-radius: 14px;
+  color: var(--ops-text);
+  background: linear-gradient(90deg, #e6f4ec, #f7fbf9);
+  box-shadow: var(--ops-shadow);
+}
+
+.dashboard-workspace-experience .ric-attention header span {
+  color: var(--ops-accent);
+}
+
+.dashboard-workspace-experience .ric-attention h2,
+.dashboard-workspace-experience .ric-attention button h3 {
+  color: var(--ops-text);
+}
+
+.dashboard-workspace-experience .ric-attention header b {
+  border-color: #cce0d6;
+  color: #557064;
+  background: #fff;
+}
+
+.dashboard-workspace-experience .ric-attention > div {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dashboard-workspace-experience .ric-attention button {
+  min-height: 74px;
+  grid-template-columns: 34px minmax(0, 1fr) 14px;
+  padding: 11px;
+  border-color: #d4e3dc;
+  border-radius: 10px;
+  color: var(--ops-text);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.dashboard-workspace-experience .ric-attention button:hover {
+  border-color: #a8c7b8;
+  background: #fff;
+}
+
+.dashboard-workspace-experience .ric-attention button > span {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  color: var(--ops-accent);
+  background: var(--ops-accent-soft);
+}
+
+.dashboard-workspace-experience .ric-attention button strong {
+  color: var(--ops-text);
+  font-size: 19px;
+}
+
+.dashboard-workspace-experience .ric-attention button p {
+  color: var(--ops-muted);
+  font-size: 8px;
+}
+
+.dashboard-workspace-experience .ric-attention button > svg {
+  color: #83978e;
+}
+
+.dashboard-workspace-experience .ric-grid,
+.dashboard-workspace-experience .ric-grid-wide {
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.dashboard-workspace-experience .ric-grid-wide {
+  grid-template-columns: minmax(0, 1.55fr) minmax(330px, 0.8fr);
+}
+
+.dashboard-workspace-experience .ric-panel {
+  padding: 17px;
+  border-color: var(--ops-border);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--ops-shadow);
+}
+
+.dashboard-workspace-experience .ric-panel > header {
+  padding-bottom: 13px;
+  border-bottom-color: var(--ops-border-soft);
+}
+
+.dashboard-workspace-experience .ric-panel h2 {
+  color: var(--ops-text) !important;
+  font-size: 14px;
+}
+
+.dashboard-workspace-experience .ric-panel header p {
+  color: var(--ops-muted);
+  font-size: 9px;
+}
+
+.dashboard-workspace-experience .ric-panel-body {
+  padding-top: 14px;
+}
+
+.dashboard-workspace-experience .ric-chart {
+  height: 290px;
+}
+
+.dashboard-workspace-experience .ric-chart.large {
+  height: 335px;
+}
+
+.dashboard-workspace-experience .ric-chip,
+.dashboard-workspace-experience .ric-score-pill {
+  color: var(--ops-accent);
+  background: var(--ops-accent-soft);
+}
+
+.command-center-expandable-copy {
+  cursor: pointer;
+}
+
+.command-center-expandable-copy:not(.expanded) {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.command-center-expandable-copy:not(.expanded)::after {
+  content: '  More';
+  color: var(--ops-accent);
+  font-weight: 800;
+}
+
+html[data-dashboard-density='executive'] .dashboard-workspace-experience .ric-filterbar {
+  display: none;
+}
+
+html[data-dashboard-density='executive'] .dashboard-workspace-experience .ric-attention button:nth-child(n + 4) {
+  display: none;
+}
+
+html[data-dashboard-density='executive'] .dashboard-workspace-experience .ric-panel header p,
+html[data-dashboard-density='executive'] .dashboard-workspace-experience .ric-kpi p {
+  display: none;
+}
+
+html[data-dashboard-density='executive'] .dashboard-workspace-experience .ric-chart,
+html[data-dashboard-density='executive'] .dashboard-workspace-experience .ric-chart.large {
+  height: 270px;
+}
+
+html[data-dashboard-density='detailed'] .dashboard-workspace-experience .ric-kpi-grid .ric-kpi {
+  display: block !important;
+  grid-column: span 3;
+}
+
+html[data-dashboard-density='detailed'] .dashboard-workspace-experience .ric-filterbar {
+  grid-template-columns: repeat(4, minmax(145px, 1fr));
+}
+
+html[data-dashboard-density='detailed'] .dashboard-workspace-experience .ric-chart.large {
+  height: 390px;
+}
+
+.odp-page {
+  background: var(--ops-page) !important;
+  color: var(--ops-text) !important;
+}
+
+.odp-topbar > a,
+.odp-topbar nav a,
+.odp-controls,
+.odp-metric,
+.odp-chart,
+.odp-breakdown,
+.odp-drawer {
+  border-color: var(--ops-border) !important;
+  box-shadow: var(--ops-shadow) !important;
+}
+
+.odp-topbar > a:hover,
+.odp-topbar nav a:hover,
+.odp-topbar nav a.active,
+.odp-controls button.primary {
+  border-color: var(--ops-accent) !important;
+  color: var(--ops-accent) !important;
+  background: var(--ops-accent-soft) !important;
+}
+
+.odp-controls button.primary {
+  color: #fff !important;
+  background: var(--ops-accent) !important;
+}
+
+.odp-hero {
+  border-color: var(--ops-border) !important;
+  background: linear-gradient(135deg, #fff, #f0f8f4) !important;
+  box-shadow: var(--ops-shadow) !important;
+}
+
+.odp-hero-icon {
+  background: var(--ops-accent) !important;
+  box-shadow: 0 12px 28px rgba(8, 122, 80, 0.2) !important;
+}
+
+.odp-hero span,
+.odp-chart header span {
+  color: var(--ops-accent) !important;
+}
+
+@media (max-width: 1180px) {
+  .dashboard-workspace-experience .dashboard-command-mode {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-workspace-experience .dashboard-command-mode-copy p {
+    max-width: none;
+  }
+
+  .dashboard-workspace-experience .dashboard-command-actions {
+    justify-content: flex-end;
+  }
+
+  .dashboard-workspace-experience .ric-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-workspace-experience .ric-topbar > div:last-child {
+    justify-content: flex-start;
+  }
+
+  .dashboard-workspace-experience .ric-filterbar {
+    grid-template-columns: repeat(3, minmax(135px, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  :root {
+    --ops-sidebar-width: 76px;
+  }
+
+  .dashboard-workspace-experience .ric-brand > div,
+  .dashboard-workspace-experience .ric-nav-label,
+  .dashboard-workspace-experience .ric-workspaces,
+  .dashboard-workspace-experience .ric-sync div,
+  .command-center-navigation-label,
+  .command-center-navigation summary span,
+  .command-center-navigation .command-center-nav-main span,
+  .command-center-navigation summary > svg:last-child,
+  .command-center-navigation .command-center-nav-main > svg:last-child,
+  .command-center-nav-children,
+  .command-center-navigation-footer span {
+    display: none;
+  }
+
+  .dashboard-workspace-experience .ric-sidebar {
+    align-items: center;
+    padding-inline: 10px;
+  }
+
+  .dashboard-workspace-experience .ric-brand {
+    padding-inline: 0;
+  }
+
+  .command-center-navigation summary,
+  .command-center-navigation .command-center-nav-main {
+    display: flex;
+    justify-content: center;
+    width: 48px;
+    padding-inline: 0;
+  }
+
+  .command-center-navigation-footer {
+    justify-content: center;
+    width: 48px;
+  }
+
+  .dashboard-workspace-experience .dashboard-command-mode-options {
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .dashboard-workspace-experience .dashboard-data-health {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .dashboard-workspace-experience .dashboard-data-health-meta,
+  .dashboard-workspace-experience .dashboard-data-health button {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-workspace-experience .ric-kpi-grid,
+  html[data-dashboard-density='detailed'] .dashboard-workspace-experience .ric-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-workspace-experience .ric-kpi-grid .ric-kpi,
+  .dashboard-workspace-experience[data-command-role='executive'] .ric-kpi-grid .ric-kpi,
+  html[data-dashboard-density='detailed'] .dashboard-workspace-experience .ric-kpi-grid .ric-kpi {
+    grid-column: span 1;
+  }
+
+  .dashboard-workspace-experience .ric-grid,
+  .dashboard-workspace-experience .ric-grid-wide {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  :root {
+    --ops-sidebar-width: 0px;
+  }
+
+  .dashboard-workspace-experience .ric-sidebar {
+    position: relative;
+    width: 100% !important;
+    min-height: auto;
+    align-items: stretch;
+  }
+
+  .dashboard-workspace-experience .ric-brand > div,
+  .command-center-navigation-label,
+  .command-center-navigation summary span,
+  .command-center-navigation .command-center-nav-main span,
+  .command-center-navigation summary > svg:last-child,
+  .command-center-navigation .command-center-nav-main > svg:last-child,
+  .command-center-navigation-footer span {
+    display: initial;
+  }
+
+  .command-center-navigation {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .command-center-navigation summary,
+  .command-center-navigation .command-center-nav-main {
+    display: grid;
+    width: 100%;
+  }
+
+  .command-center-navigation details {
+    min-width: 0;
+  }
+
+  .command-center-nav-children {
+    display: none;
+  }
+
+  .dashboard-workspace-experience .dashboard-command-mode,
+  .dashboard-workspace-experience .dashboard-data-health,
+  .dashboard-workspace-experience .ric-topbar,
+  .dashboard-workspace-experience .ric-content {
+    margin-left: 0 !important;
+  }
+
+  .dashboard-workspace-experience .dashboard-command-mode-options {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-workspace-experience .ric-topbar {
+    position: relative;
+  }
+
+  .dashboard-workspace-experience .ric-filterbar,
+  .dashboard-workspace-experience .ric-kpi-grid,
+  html[data-dashboard-density='detailed'] .dashboard-workspace-experience .ric-kpi-grid,
+  .dashboard-workspace-experience .ric-attention > div {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-workspace-experience .ric-kpi-grid .ric-kpi,
+  .dashboard-workspace-experience[data-command-role='executive'] .ric-kpi-grid .ric-kpi,
+  html[data-dashboard-density='detailed'] .dashboard-workspace-experience .ric-kpi-grid .ric-kpi {
+    grid-column: span 1;
+  }
+
+  .dashboard-density-control > span {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .command-center-navigation *,
+  .dashboard-workspace-experience .ric-kpi,
+  .dashboard-workspace-experience .ric-panel {
+    scroll-behavior: auto;
+    transition: none !important;
+  }
+}
