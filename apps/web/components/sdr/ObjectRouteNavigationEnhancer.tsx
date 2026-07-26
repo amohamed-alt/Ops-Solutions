@@ -188,7 +188,12 @@ export function ObjectRouteNavigationEnhancer() {
 
         if (href) {
           return (
-            <a key={id} href={href} className="command-center-nav-main">
+            <a
+              key={id}
+              href={href}
+              className="command-center-nav-main"
+              aria-label={id === 'retention' ? 'Retention Budget' : label}
+            >
               <Icon size={16} aria-hidden="true" />
               <span>{label}</span>
               <ChevronRight size={14} aria-hidden="true" />
