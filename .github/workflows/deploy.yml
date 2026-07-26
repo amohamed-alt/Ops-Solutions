@@ -130,6 +130,27 @@ jobs:
             -e "ssh -i $HOME/.ssh/deploy_key -p $VPS_PORT -o BatchMode=yes -o IdentitiesOnly=yes" \
             ./ \
             "$VPS_USER@$VPS_HOST:$VPS_DEPLOY_PATH/"
+                  - name: Verify uploaded deployment files
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+        run: |
+          set -Eeuo pipefail
+
+          ssh -i "$HOME/.ssh/deploy_key" \
+            -p "$VPS_PORT" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            "$VPS_USER@$VPS_HOST" \
+            "set -Eeuo pipefail; \
+             test -f '$VPS_DEPLOY_PATH/.env'; \
+             test -f '$VPS_DEPLOY_PATH/.env.example'; \
+             test -f '$VPS_DEPLOY_PATH/docker-compose.prod.yml'; \
+             test -f '$VPS_DEPLOY_PATH/scripts/audit-runtime-config.sh'; \
+             echo 'Required deployment files are present.'"
 
       - name: Create verified pre-deployment database backup
         shell: bash
