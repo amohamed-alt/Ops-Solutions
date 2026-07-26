@@ -68,7 +68,7 @@ const NAVIGATION_GROUPS: NavigationGroup[] = [
     label: 'CRM Data',
     icon: Database,
     children: [
-      { label: 'All CRM objects', href: '/dashboard/all-objects' },
+      { label: 'All CRM Objects', href: '/dashboard/all-objects' },
       { label: 'Contacts', href: '/dashboard/objects/contacts' },
       { label: 'Companies', href: '/dashboard/objects/companies' },
       { label: 'Deals', href: '/dashboard/objects/deals' },
@@ -83,14 +83,14 @@ const NAVIGATION_GROUPS: NavigationGroup[] = [
     label: 'Administration',
     icon: Settings2,
     children: [
-      { label: 'Workspace settings', href: '/settings/workspace' },
+      { label: 'Workspace Settings', href: '/settings/workspace' },
       { label: 'Mappings', href: '/settings/mappings' },
       { label: 'Data SLA', href: '/settings/data-sla' },
-      { label: 'Scheduled reports', href: '/settings/reports' },
-      { label: 'Operational alerts', href: '/settings/alerts' },
-      { label: 'Billing & usage', href: '/settings/billing' },
+      { label: 'Scheduled Reports', href: '/settings/reports' },
+      { label: 'Operational Alerts', href: '/settings/alerts' },
+      { label: 'Billing & Usage', href: '/settings/billing' },
       { label: 'Security', href: '/settings/security' },
-      { label: 'Production readiness', href: '/settings/readiness' }
+      { label: 'Production Readiness', href: '/settings/readiness' }
     ]
   }
 ];
