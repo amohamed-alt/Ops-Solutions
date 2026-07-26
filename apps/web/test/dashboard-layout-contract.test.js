@@ -21,7 +21,7 @@ test('command center content is sized beside one fixed sidebar', async () => {
   assert.match(component, /className="cc2-main"/);
   assert.match(styles, /\.cc2-sidebar[\s\S]*position:\s*fixed/);
   assert.match(styles, /\.cc2-main\s*\{[\s\S]*margin-left:\s*244px/);
-  assert.match(styles, /\.cc2-content[\s\S]*width:\s*min\(1640px, 100%\)/);
+  assert.match(styles, /\.cc2-content[\s\S]*width:\s*min\(1720px, 100%\)/);
   assert.doesNotMatch(styles, /ADMIN_API_KEY|x-admin-key|access[_-]?token|client[_-]?secret/i);
 });
 

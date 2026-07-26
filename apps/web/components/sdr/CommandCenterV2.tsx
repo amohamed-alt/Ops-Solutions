@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Activity,
   AlertTriangle,
+  ArrowDownRight,
+  ArrowUpRight,
   BarChart3,
   Bookmark,
   BriefcaseBusiness,
@@ -136,6 +138,102 @@ type RevenuePayload = {
   report: Report;
 };
 
+type WorkspacePreferences = {
+  currency: string;
+  locale: string;
+  timezone: string;
+  accentColor?: string | null;
+  logoUrl?: string | null;
+};
+
+type OperatingReports = {
+  definitionsVersion: string;
+  mappings: Record<string, { status: 'ready' | 'configuration_required'; propertyName?: string | null }>;
+  todayFocus: {
+    priorityNeedsContact: number;
+    untouchedContacts: number;
+    coldContacts: number;
+    overdueTasks: number;
+    tasksDueToday: number;
+    dealsAtRisk: number;
+    overdueCloseDeals: number;
+  };
+  execution: {
+    calls: number;
+    connectedCalls: number;
+    connectionRate: number;
+    meetingsBooked: number;
+    meetingsCompleted: number;
+    meetingCompletionRate: number;
+    noShowMeetings: number;
+    noShowRate: number;
+    tasks: number;
+    completedTasks: number;
+    taskCompletionRate: number;
+    openTasks: number;
+    tasksDueToday: number;
+    overdueTasks: number;
+    portfolioContacts: number;
+    newContacts: number;
+    contactedContacts: number;
+    leadContactRate: number;
+    untouchedContacts: number;
+    coldContacts: number;
+    missingOwnerContacts: number;
+  };
+  yesterday: {
+    calls: number;
+    connectedCalls: number;
+    connectionRate: number;
+    meetingsBooked: number;
+    meetingsCompleted: number;
+    meetingCompletionRate: number;
+    noShowMeetings: number;
+    noShowRate: number;
+    tasks: number;
+    completedTasks: number;
+    taskCompletionRate: number;
+  };
+  qualityFunnel: {
+    status: 'ready' | 'configuration_required';
+    rows: Array<{
+      quality: string;
+      contacts: number;
+      contacted: number;
+      contactRate: number;
+      meetingsCompleted: number;
+      opportunities: number;
+      won: number;
+      needsContact: number;
+    }>;
+    priorityNeedsContact: number;
+    message?: string | null;
+  };
+  revenueHealth: {
+    openDeals: number;
+    openPipeline: number;
+    dealsAtRisk: number;
+    atRiskPipeline: number;
+    overdueCloseDeals: number;
+    overdueClosePipeline: number;
+    closingSoonDeals: number;
+    closingSoonPipeline: number;
+    wonDeals: number;
+    wonRevenue: number;
+    commercialMilestones: {
+      signedContract: { deals: number; value: number; confidence: string };
+      booked: { deals: number; value: number; confidence: string };
+      cashing: { deals: number; value: number; confidence: string };
+    };
+  };
+};
+
+type OperatingPayload = {
+  report: {
+    operatingReports: OperatingReports;
+  };
+};
+
 type DrilldownRow = {
   id: string;
   properties: Record<string, string | undefined>;
@@ -181,6 +279,16 @@ type Kpi = {
   amount?: boolean;
   percent?: boolean;
   drilldown?: string;
+};
+
+type DecisionSignal = {
+  label: string;
+  value: string;
+  helper: string;
+  tone: 'positive' | 'warning' | 'danger' | 'neutral';
+  icon: LucideIcon;
+  drilldown?: string;
+  filterOverrides?: Partial<Filters>;
 };
 
 type RoleMeta = {
@@ -285,12 +393,31 @@ function compact(value: unknown) {
   return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value ?? 0));
 }
 
+function money(value: unknown, preferences?: WorkspacePreferences | null) {
+  const currency = preferences?.currency || 'USD';
+  const locale = preferences?.locale || 'en-US';
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      notation: 'compact',
+      maximumFractionDigits: 1
+    }).format(Number(value ?? 0));
+  } catch {
+    return `${currency} ${compact(value)}`;
+  }
+}
+
 function percentage(value: unknown) {
   return `${Number(value ?? 0).toFixed(1)}%`;
 }
 
 function titleCase(value: unknown) {
   return String(value || 'Unknown').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function chartDatum(value: any) {
+  return value?.payload ?? value ?? {};
 }
 
 function queryString(filters: Filters, extra: Record<string, string | number> = {}) {
@@ -384,18 +511,49 @@ function ChartTooltip({ active, payload, label }: any) {
   );
 }
 
-function KpiCard({ item, onOpen }: { item: Kpi; onOpen: (key: string, title: string) => void }) {
+function KpiCard({ item, onOpen, preferences }: { item: Kpi; onOpen: (key: string, title: string) => void; preferences?: WorkspacePreferences | null }) {
   const Icon = item.icon;
-  const value = item.percent ? percentage(item.value) : item.amount ? compact(item.value) : integer(item.value);
+  const value = item.percent ? percentage(item.value) : item.amount ? money(item.value, preferences) : integer(item.value);
+  const delta = item.comparison ? item.comparison.deltaPercent : null;
   const content = (
     <>
-      <div className="cc2-kpi-top"><span><Icon size={17} /></span>{item.comparison ? <b className={item.comparison.deltaPercent !== null && item.comparison.deltaPercent < 0 ? 'down' : 'up'}>{item.comparison.deltaPercent === null ? 'New' : `${Math.abs(item.comparison.deltaPercent).toFixed(1)}%`}</b> : <b>Snapshot</b>}</div>
+      <div className="cc2-kpi-top"><span><Icon size={17} /></span>{item.comparison ? <b className={delta !== null && delta < 0 ? 'down' : 'up'}>{delta === null ? 'New' : <>{delta < 0 ? <ArrowDownRight size={12} /> : <ArrowUpRight size={12} />}{Math.abs(delta).toFixed(1)}%</>}</b> : <b>Snapshot</b>}</div>
       <strong>{value}</strong><h3>{item.label}</h3><p>{item.helper}</p>
     </>
   );
   return item.drilldown
     ? <button className={`cc2-kpi ric-kpi tone-${item.tone}`} onClick={() => onOpen(item.drilldown!, item.label)}>{content}</button>
     : <article className={`cc2-kpi ric-kpi tone-${item.tone}`}>{content}</article>;
+}
+
+function DecisionBrief({
+  signals,
+  loading,
+  onOpen
+}: {
+  signals: DecisionSignal[];
+  loading: boolean;
+  onOpen: (key: string, title: string, offset?: number, overrides?: Partial<Filters>) => void;
+}) {
+  return (
+    <section className="cc2-decision">
+      <header>
+        <div><span>DECISION INTELLIGENCE</span><h2>Management brief</h2><p>Commercial health, execution and risk translated into actions.</p></div>
+        <b>{loading ? 'Compiling advanced reports…' : 'Live operating model'}</b>
+      </header>
+      <div>
+        {loading
+          ? Array.from({ length: 4 }, (_, index) => <article className="cc2-signal loading" key={index}><i /><strong /><span /></article>)
+          : signals.map((signal) => {
+            const Icon = signal.icon;
+            const content = <><i><Icon size={18} /></i><div><span>{signal.label}</span><strong>{signal.value}</strong><p>{signal.helper}</p></div><ChevronRight size={16} /></>;
+            return signal.drilldown
+              ? <button key={signal.label} className={`cc2-signal ${signal.tone}`} onClick={() => onOpen(signal.drilldown!, signal.label, 0, signal.filterOverrides)}>{content}</button>
+              : <article key={signal.label} className={`cc2-signal ${signal.tone}`}>{content}</article>;
+          })}
+      </div>
+    </section>
+  );
 }
 
 function OutcomeList({ rows }: { rows: Array<{ key: string; value: number }> }) {
@@ -420,9 +578,14 @@ function NavigationGroup({ id, label, icon: Icon, open, onToggle, children }: { 
 export function CommandCenterV2() {
   const router = useRouter();
   const requestVersion = useRef(0);
+  const operatingRequestVersion = useRef(0);
+  const preferencesRequestVersion = useRef(0);
   const [workspaces, setWorkspaces] = useState<WorkspaceState[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [payload, setPayload] = useState<RevenuePayload | null>(null);
+  const [operating, setOperating] = useState<OperatingReports | null>(null);
+  const [operatingLoading, setOperatingLoading] = useState(false);
+  const [preferences, setPreferences] = useState<WorkspacePreferences | null>(null);
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [draft, setDraft] = useState<Filters>(DEFAULT_FILTERS);
   const [datePreset, setDatePreset] = useState<DatePreset>(DEFAULT_PRESET);
@@ -436,6 +599,7 @@ export function CommandCenterV2() {
   const [drilldown, setDrilldown] = useState<Drilldown | null>(null);
   const [drillTitle, setDrillTitle] = useState('Report details');
   const [drillKey, setDrillKey] = useState('');
+  const [drillFilterOverrides, setDrillFilterOverrides] = useState<Partial<Filters>>({});
   const [savedViews, setSavedViews] = useState<SavedView[]>([]);
   const [viewsOpen, setViewsOpen] = useState(false);
   const [viewName, setViewName] = useState('');
@@ -452,6 +616,27 @@ export function CommandCenterV2() {
     const result = await json<RevenuePayload>(`/api/dashboard/${encodeURIComponent(workspaceId)}/reports?${queryString(nextFilters)}`);
     if (version === requestVersion.current) setPayload(result);
     return result;
+  }
+
+  async function loadOperatingReport(workspaceId: string, nextFilters: Filters) {
+    const version = ++operatingRequestVersion.current;
+    setOperatingLoading(true);
+    try {
+      const result = await json<OperatingPayload>(`/api/dashboard/${encodeURIComponent(workspaceId)}/reports?${queryString(nextFilters, { scope: 'operating' })}`);
+      if (version === operatingRequestVersion.current) setOperating(result.report.operatingReports);
+    } catch {
+      if (version === operatingRequestVersion.current) setOperating(null);
+    } finally {
+      if (version === operatingRequestVersion.current) setOperatingLoading(false);
+    }
+  }
+
+  async function loadPreferences(workspaceId: string) {
+    const version = ++preferencesRequestVersion.current;
+    const result = await json<WorkspacePreferences>(`/api/customer/workspaces/${encodeURIComponent(workspaceId)}/preferences`).catch(() => null);
+    if (!result || version !== preferencesRequestVersion.current) return;
+    setPreferences(result);
+    if (result.accentColor) document.documentElement.style.setProperty('--cc2-workspace-accent', result.accentColor);
   }
 
   async function loadViews(workspaceId: string) {
@@ -488,6 +673,8 @@ export function CommandCenterV2() {
         setDatePreset(defaultView?.datePreset ?? DEFAULT_PRESET);
         setActiveTab(defaultView ? tabFromSection(defaultView.section) : 'overview');
         await loadReport(selected.workspace.id, initialFilters);
+        void loadOperatingReport(selected.workspace.id, initialFilters);
+        void loadPreferences(selected.workspace.id);
       } catch (reason) {
         const typed = reason as Error & { status?: number };
         if (typed.status === 401) router.replace('/onboarding');
@@ -496,7 +683,7 @@ export function CommandCenterV2() {
         if (active) setLoading(false);
       }
     })();
-    return () => { active = false; requestVersion.current += 1; };
+    return () => { active = false; requestVersion.current += 1; operatingRequestVersion.current += 1; preferencesRequestVersion.current += 1; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
@@ -504,6 +691,8 @@ export function CommandCenterV2() {
     if (!workspaceId || workspaceId === selectedId) return;
     setSelectedId(workspaceId);
     setPayload(null);
+    setOperating(null);
+    setPreferences(null);
     setDrilldown(null);
     setError('');
     setLoading(true);
@@ -517,6 +706,8 @@ export function CommandCenterV2() {
       setDatePreset(defaultView?.datePreset ?? DEFAULT_PRESET);
       setActiveTab(defaultView ? tabFromSection(defaultView.section) : 'overview');
       await loadReport(workspaceId, nextFilters);
+      void loadOperatingReport(workspaceId, nextFilters);
+      void loadPreferences(workspaceId);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to load this workspace.');
     } finally {
@@ -537,6 +728,7 @@ export function CommandCenterV2() {
       setFilters(nextFilters);
       setDraft(nextFilters);
       await loadReport(selectedId, nextFilters);
+      void loadOperatingReport(selectedId, nextFilters);
       setFiltersOpen(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to apply filters.');
@@ -553,6 +745,7 @@ export function CommandCenterV2() {
     setLoading(true);
     try {
       await loadReport(selectedId, DEFAULT_FILTERS);
+      void loadOperatingReport(selectedId, DEFAULT_FILTERS);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to reset filters.');
     } finally {
@@ -568,6 +761,7 @@ export function CommandCenterV2() {
       const state = await json<{ results?: WorkspaceState[] }>('/api/customer/workspaces');
       setWorkspaces((state.results ?? []).filter((row) => row.workspace.hubspot_status === 'connected'));
       await loadReport(selectedId, filters);
+      void loadOperatingReport(selectedId, filters);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to refresh the dashboard.');
     } finally {
@@ -598,13 +792,15 @@ export function CommandCenterV2() {
     }
   }
 
-  async function loadDrilldown(key: string, title: string, offset = 0) {
+  async function loadDrilldown(key: string, title: string, offset = 0, overrides?: Partial<Filters>) {
     if (!selectedId) return;
     setDrillKey(key);
     setDrillTitle(title);
+    const effectiveOverrides = overrides ?? (offset > 0 ? drillFilterOverrides : {});
+    if (offset === 0) setDrillFilterOverrides(effectiveOverrides);
     setLoading(true);
     try {
-      const result = await json<{ drilldown: Drilldown }>(`/api/dashboard/${encodeURIComponent(selectedId)}/reports/${encodeURIComponent(key)}?${queryString(filters, { limit: 50, offset })}`);
+      const result = await json<{ drilldown: Drilldown }>(`/api/dashboard/${encodeURIComponent(selectedId)}/reports/${encodeURIComponent(key)}?${queryString({ ...filters, ...effectiveOverrides }, { limit: 50, offset })}`);
       setDrilldown(result.drilldown);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to load report details.');
@@ -656,6 +852,7 @@ export function CommandCenterV2() {
       setDraft(nextFilters);
       setActiveTab(tabFromSection(view.section));
       await loadReport(selectedId, nextFilters);
+      void loadOperatingReport(selectedId, nextFilters);
       setViewsOpen(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to apply this saved view.');
@@ -682,6 +879,24 @@ export function CommandCenterV2() {
 
   function toggleGroup(group: string) {
     setOpenGroups((current) => ({ ...current, [group]: !current[group] }));
+  }
+
+  function openPipelineStage(value: any) {
+    const row = chartDatum(value);
+    if (!row.stageId) return;
+    void loadDrilldown('open-deals', `${row.pipelineLabel} · ${row.stageLabel}`, 0, { pipelineId: row.pipelineId, stageId: row.stageId });
+  }
+
+  function openLeadSource(value: any) {
+    const row = chartDatum(value);
+    if (!row.key) return;
+    void loadDrilldown('portfolio-contacts', `${titleCase(row.key)} contacts`, 0, { leadSource: row.key });
+  }
+
+  function openCountry(value: any) {
+    const row = chartDatum(value);
+    if (!row.key) return;
+    void loadDrilldown('portfolio-contacts', `${titleCase(row.key)} contacts`, 0, { country: row.key });
   }
 
   if (!workspace || !report) {
@@ -729,12 +944,68 @@ export function CommandCenterV2() {
     ? `${integer(overview.dealsAtRisk)} open deals need intervention while ${compact(overview.openPipeline)} remains exposed in pipeline.`
     : `${integer(overview.meetings)} meetings and ${integer(overview.wonDeals)} wins were recorded without current deal-risk alerts.`;
   const totalRecords = Number(selectedState?.freshness?.total_records ?? 0);
-  const newestSync = selectedState?.freshness?.newest_record_sync ? new Date(String(selectedState.freshness.newest_record_sync)).toLocaleString() : 'Sync pending';
+  const newestSync = selectedState?.freshness?.newest_record_sync
+    ? new Intl.DateTimeFormat(preferences?.locale || 'en-US', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: preferences?.timezone || 'UTC'
+    }).format(new Date(String(selectedState.freshness.newest_record_sync)))
+    : 'Sync pending';
+  const riskRate = operating?.revenueHealth.openPipeline
+    ? operating.revenueHealth.atRiskPipeline / operating.revenueHealth.openPipeline * 100
+    : 0;
+  const fallbackSignals: DecisionSignal[] = [
+    { label: 'Open pipeline', value: money(overview.openPipeline, preferences), helper: `${integer(overview.openDeals)} active deals`, tone: 'neutral', icon: CircleDollarSign, drilldown: 'open-deals' },
+    { label: 'Deals at risk', value: integer(overview.dealsAtRisk), helper: 'No next step or overdue close date', tone: 'danger', icon: AlertTriangle, drilldown: 'no-next-activity-deals' },
+    { label: 'Meetings booked', value: integer(overview.meetings), helper: `${percentage(overview.meetingRate)} calls-to-meetings rate`, tone: 'positive', icon: CalendarDays, drilldown: 'meetings' },
+    { label: 'CRM readiness', value: percentage(report.dataQuality.score), helper: `${integer(overview.missingOwnerContacts)} contacts missing an owner`, tone: 'warning', icon: ShieldCheck, drilldown: 'missing-owner-contacts' }
+  ];
+  const decisionSignalsByRole: Record<CommandRole, DecisionSignal[]> = operating ? {
+    executive: [
+      { label: 'Pipeline at risk', value: money(operating.revenueHealth.atRiskPipeline, preferences), helper: `${percentage(riskRate)} of open pipeline · ${integer(operating.revenueHealth.dealsAtRisk)} deals`, tone: riskRate >= 30 ? 'danger' : 'warning', icon: AlertTriangle, drilldown: 'deals-at-risk' },
+      { label: 'Closing in 14 days', value: money(operating.revenueHealth.closingSoonPipeline, preferences), helper: `${integer(operating.revenueHealth.closingSoonDeals)} deals require a close plan`, tone: 'warning', icon: CalendarDays, drilldown: 'closing-soon-deals' },
+      { label: 'Won revenue', value: money(operating.revenueHealth.wonRevenue, preferences), helper: `${integer(operating.revenueHealth.wonDeals)} deals won in the selected period`, tone: 'positive', icon: TrendingUp, drilldown: 'won-deals' },
+      { label: 'CRM readiness', value: percentage(report.dataQuality.score), helper: `${integer(operating.execution.missingOwnerContacts)} contacts missing an owner`, tone: report.dataQuality.score >= 85 ? 'positive' : 'warning', icon: ShieldCheck, drilldown: 'missing-owner-contacts' }
+    ],
+    manager: [
+      { label: 'Connected calls', value: integer(operating.execution.connectedCalls), helper: `${percentage(operating.execution.connectionRate)} connection rate`, tone: 'positive', icon: Phone, drilldown: 'connected-calls' },
+      { label: 'Completed meetings', value: integer(operating.execution.meetingsCompleted), helper: `${percentage(operating.execution.meetingCompletionRate)} completion rate`, tone: 'positive', icon: CheckCircle2, drilldown: 'completed-meetings' },
+      { label: 'Tasks due today', value: integer(operating.execution.tasksDueToday), helper: `${integer(operating.execution.openTasks)} open tasks across the team`, tone: 'neutral', icon: ListTodo, drilldown: 'tasks-due-today' },
+      { label: 'Overdue tasks', value: integer(operating.execution.overdueTasks), helper: `${percentage(operating.execution.taskCompletionRate)} task completion rate`, tone: operating.execution.overdueTasks > 0 ? 'danger' : 'positive', icon: AlertTriangle, drilldown: 'overdue-tasks' }
+    ],
+    sdr: [
+      { label: 'Priority leads to contact', value: integer(operating.todayFocus.priorityNeedsContact), helper: 'High and medium quality leads outside SLA', tone: operating.todayFocus.priorityNeedsContact > 0 ? 'danger' : 'positive', icon: Target, drilldown: 'priority-needs-contact' },
+      { label: 'Untouched contacts', value: integer(operating.todayFocus.untouchedContacts), helper: 'No outreach after two days', tone: 'warning', icon: UserRoundSearch, drilldown: 'untouched-contacts' },
+      { label: 'Connected calls', value: integer(operating.execution.connectedCalls), helper: `${percentage(operating.execution.connectionRate)} connection rate`, tone: 'positive', icon: Phone, drilldown: 'connected-calls' },
+      { label: 'Tasks due today', value: integer(operating.todayFocus.tasksDueToday), helper: `${integer(operating.todayFocus.overdueTasks)} already overdue`, tone: operating.todayFocus.overdueTasks > 0 ? 'danger' : 'neutral', icon: ListTodo, drilldown: 'tasks-due-today' }
+    ],
+    revops: [
+      { label: 'CRM quality score', value: percentage(report.dataQuality.score), helper: 'Completeness of reporting-critical fields', tone: report.dataQuality.score >= 85 ? 'positive' : 'warning', icon: Database },
+      { label: 'Missing owner', value: integer(operating.execution.missingOwnerContacts), helper: 'Contacts excluded from clean accountability', tone: operating.execution.missingOwnerContacts > 0 ? 'warning' : 'positive', icon: UsersRound, drilldown: 'missing-owner-contacts' },
+      { label: 'Lead contact coverage', value: percentage(operating.execution.leadContactRate), helper: `${integer(operating.execution.contactedContacts)} of ${integer(operating.execution.portfolioContacts)} contacts`, tone: operating.execution.leadContactRate >= 80 ? 'positive' : 'warning', icon: Gauge, drilldown: 'portfolio-contacts' },
+      { label: 'Cold contacts', value: integer(operating.execution.coldContacts), helper: 'No sales contact for at least 21 days', tone: operating.execution.coldContacts > 0 ? 'danger' : 'positive', icon: Activity, drilldown: 'cold-contacts' }
+    ]
+  } : {
+    executive: fallbackSignals,
+    manager: fallbackSignals,
+    sdr: fallbackSignals,
+    revops: fallbackSignals
+  };
+  const decisionSignals = decisionSignalsByRole[commandRole];
+  const commercialMilestones = operating ? [
+    { label: 'Signed contract', reportKey: 'signed-contract-deals', ...operating.revenueHealth.commercialMilestones.signedContract },
+    { label: 'Booked', reportKey: 'booked-deals', ...operating.revenueHealth.commercialMilestones.booked },
+    { label: 'Cashing', reportKey: 'cashing-deals', ...operating.revenueHealth.commercialMilestones.cashing }
+  ] : [];
 
   return (
-    <main className="cc2-shell" data-command-role={commandRole}>
+    <main
+      className="cc2-shell"
+      data-command-role={commandRole}
+      style={{ '--cc2-workspace-accent': preferences?.accentColor || '#087a50' } as CSSProperties}
+    >
       <aside className="cc2-sidebar">
-        <div className="cc2-brand"><span>{workspace.name.slice(0, 1).toUpperCase()}</span><div><strong>{workspace.name}</strong><small>Revenue Intelligence</small></div></div>
+        <div className="cc2-brand"><span>{preferences?.logoUrl ? <img src={preferences.logoUrl} alt="" /> : workspace.name.slice(0, 1).toUpperCase()}</span><div><strong>{workspace.name}</strong><small>Revenue Intelligence</small></div></div>
         <label className="cc2-company"><span>Company</span><select value={selectedId} onChange={(event) => void changeWorkspace(event.target.value)}>{workspaces.map((row) => <option key={row.workspace.id} value={row.workspace.id}>{row.workspace.name}</option>)}</select></label>
         <nav aria-label="Command center navigation">
           <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => setActiveTab('overview')}><LayoutDashboard size={17} /><span>Overview</span><ChevronRight size={14} /></button>
@@ -804,20 +1075,100 @@ export function CommandCenterV2() {
             <div><button onClick={() => void resetFilters()}><RotateCcw size={14} />Reset</button><button className="primary" onClick={() => void applyFilters()} disabled={loading}><Search size={14} />Apply</button></div>
           </section> : null}
 
-          <section className="cc2-kpi-grid">{kpis.map((item) => <KpiCard key={item.label} item={item} onOpen={loadDrilldown} />)}</section>
+          <DecisionBrief signals={decisionSignals} loading={operatingLoading && !operating} onOpen={loadDrilldown} />
+
+          <section className="cc2-kpi-grid">{kpis.map((item) => <KpiCard key={item.label} item={item} onOpen={loadDrilldown} preferences={preferences} />)}</section>
 
           {activeTab === 'overview' ? <>
-            <section className="cc2-attention"><header><div><span>WHAT NEEDS ATTENTION</span><h2>Action queue</h2></div><b>{integer(Object.values(report.attention).reduce((sum, value) => sum + Number(value || 0), 0))} signals</b></header><div>{attentionCards.map(({ key, label, value, helper, icon: Icon }) => <button key={key} onClick={() => void loadDrilldown(key, label)}><span><Icon size={17} /></span><div><strong>{integer(value)}</strong><h3>{label}</h3><p>{helper}</p></div><ChevronRight size={15} /></button>)}</div></section>
-            <section className="cc2-grid wide"><Panel title="Activity performance" description="Calls, meetings and tasks across the selected reporting period." action={<span className="cc2-chip">Compared with previous period</span>}><div className="cc2-chart large"><ResponsiveContainer width="100%" height="100%"><AreaChart data={report.activityTrend} margin={{ top: 8, right: 10, left: -18, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4ebe8" /><XAxis dataKey="day" tickFormatter={(value: string) => value.slice(5)} tick={{ fontSize: 10, fill: '#768780' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize: 10, fill: '#768780' }} axisLine={false} tickLine={false} /><Tooltip content={<ChartTooltip />} /><Legend iconType="circle" wrapperStyle={{ fontSize: 10 }} /><Area type="monotone" dataKey="calls" stroke="#087a50" fill="rgba(8,122,80,.13)" strokeWidth={2.5} /><Area type="monotone" dataKey="meetings" stroke="#3a7de0" fill="transparent" strokeWidth={2} /><Area type="monotone" dataKey="tasks" stroke="#d98d25" fill="transparent" strokeWidth={2} /></AreaChart></ResponsiveContainer></div></Panel><Panel title="Pipeline by stage" description="Open deal value across active pipeline stages." action={<span className="cc2-chip">{compact(overview.openPipeline)} exposed</span>}><div className="cc2-chart large"><ResponsiveContainer width="100%" height="100%"><BarChart data={report.pipelineByStage.slice(0, 10)} layout="vertical" margin={{ top: 0, right: 18, left: 8, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e4ebe8" /><XAxis type="number" tickFormatter={(value) => compact(value)} tick={{ fontSize: 10, fill: '#768780' }} axisLine={false} tickLine={false} /><YAxis type="category" dataKey="stageLabel" width={115} tick={{ fontSize: 10, fill: '#3f554d' }} axisLine={false} tickLine={false} /><Tooltip formatter={(value) => compact(value)} /><Bar dataKey="amount" fill="#087a50" radius={[0, 7, 7, 0]} /></BarChart></ResponsiveContainer></div></Panel></section>
+            <section className="cc2-attention">
+              <header><div><span>WHAT NEEDS ATTENTION</span><h2>Action queue</h2></div><b>{integer(Object.values(report.attention).reduce((sum, value) => sum + Number(value || 0), 0))} signals</b></header>
+              <div>{attentionCards.map(({ key, label, value, helper, icon: Icon }) => <button key={key} onClick={() => void loadDrilldown(key, label)}><span><Icon size={18} /></span><div><strong>{integer(value)}</strong><h3>{label}</h3><p>{helper}</p></div><ChevronRight size={16} /></button>)}</div>
+            </section>
+            <section className="cc2-grid wide">
+              <Panel title="Activity performance" description="Calls, meetings and tasks across the selected reporting period." action={<span className="cc2-chip">Previous-period comparison</span>}>
+                <div className="cc2-chart large"><ResponsiveContainer width="100%" height="100%"><AreaChart data={report.activityTrend} margin={{ top: 8, right: 10, left: -10, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4ebe8" /><XAxis dataKey="day" tickFormatter={(value: string) => value.slice(5)} tick={{ fontSize: 12, fill: '#687c73' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize: 12, fill: '#687c73' }} axisLine={false} tickLine={false} /><Tooltip content={<ChartTooltip />} /><Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} /><Area type="monotone" dataKey="calls" stroke="#087a50" fill="rgba(8,122,80,.13)" strokeWidth={2.5} /><Area type="monotone" dataKey="meetings" stroke="#3a7de0" fill="transparent" strokeWidth={2} /><Area type="monotone" dataKey="tasks" stroke="#d98d25" fill="transparent" strokeWidth={2} /></AreaChart></ResponsiveContainer></div>
+              </Panel>
+              <Panel title="Pipeline by stage" description="Select a stage to open the underlying deals." action={<span className="cc2-chip">{money(overview.openPipeline, preferences)} exposed</span>}>
+                <div className="cc2-chart large interactive"><ResponsiveContainer width="100%" height="100%"><BarChart data={report.pipelineByStage.slice(0, 10)} layout="vertical" margin={{ top: 0, right: 18, left: 16, bottom: 0 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e4ebe8" /><XAxis type="number" tickFormatter={(value) => compact(value)} tick={{ fontSize: 12, fill: '#687c73' }} axisLine={false} tickLine={false} /><YAxis type="category" dataKey="stageLabel" width={130} tick={{ fontSize: 12, fill: '#3f554d' }} axisLine={false} tickLine={false} /><Tooltip formatter={(value) => money(value, preferences)} /><Bar dataKey="amount" fill="#087a50" radius={[0, 7, 7, 0]} onClick={openPipelineStage} /></BarChart></ResponsiveContainer></div>
+              </Panel>
+            </section>
           </> : null}
 
-          {activeTab === 'pipeline' ? <section className="cc2-grid"><Panel title="Pipeline by stage" description="Deal value and volume by current stage." action={<span className="cc2-chip">{integer(overview.openDeals)} open deals</span>}><div className="cc2-chart large"><ResponsiveContainer width="100%" height="100%"><BarChart data={report.pipelineByStage.slice(0, 14)} layout="vertical" margin={{ right: 18, left: 12 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e4ebe8" /><XAxis type="number" tickFormatter={(value) => compact(value)} axisLine={false} tickLine={false} /><YAxis type="category" dataKey="stageLabel" width={130} axisLine={false} tickLine={false} /><Tooltip formatter={(value) => compact(value)} /><Bar dataKey="amount" fill="#087a50" radius={[0, 7, 7, 0]} /></BarChart></ResponsiveContainer></div></Panel><Panel title="Revenue risk queue" description="Deals that need a next action or corrected close date."><div className="cc2-risk-list">{attentionCards.slice(3).map(({ key, label, value, helper, icon: Icon }) => <button key={key} onClick={() => void loadDrilldown(key, label)}><Icon size={17} /><span><strong>{integer(value)}</strong><b>{label}</b><small>{helper}</small></span><ChevronRight size={15} /></button>)}</div></Panel></section> : null}
+          {activeTab === 'pipeline' ? <>
+            {operating ? <section className="cc2-pipeline-health">
+              <header><div><span>PIPELINE HEALTH</span><h2>{money(operating.revenueHealth.openPipeline, preferences)} under management</h2></div><b className={riskRate >= 30 ? 'danger' : ''}>{percentage(riskRate)} at risk</b></header>
+              <div className="cc2-risk-meter" aria-label={`${percentage(riskRate)} of pipeline at risk`}><i style={{ width: `${Math.min(100, Math.max(0, riskRate))}%` }} /></div>
+              <div>
+                <button onClick={() => void loadDrilldown('deals-at-risk', 'Pipeline at risk')}><span>At-risk pipeline</span><strong>{money(operating.revenueHealth.atRiskPipeline, preferences)}</strong><small>{integer(operating.revenueHealth.dealsAtRisk)} deals</small></button>
+                <button onClick={() => void loadDrilldown('overdue-close-deals', 'Overdue close pipeline')}><span>Overdue close</span><strong>{money(operating.revenueHealth.overdueClosePipeline, preferences)}</strong><small>{integer(operating.revenueHealth.overdueCloseDeals)} deals</small></button>
+                <button onClick={() => void loadDrilldown('closing-soon-deals', 'Closing in 14 days')}><span>Closing in 14 days</span><strong>{money(operating.revenueHealth.closingSoonPipeline, preferences)}</strong><small>{integer(operating.revenueHealth.closingSoonDeals)} deals</small></button>
+              </div>
+            </section> : null}
+            {commercialMilestones.length ? <section className="cc2-milestones">
+              <header><div><span>COMMERCIAL MILESTONES</span><h2>Contract to cash</h2></div><small>Stage labels inferred from HubSpot</small></header>
+              <div>{commercialMilestones.map((item) => <button key={item.label} onClick={() => void loadDrilldown(item.reportKey, item.label)}><span>{item.label}</span><strong>{money(item.value, preferences)}</strong><small>{integer(item.deals)} deals</small><ChevronRight size={16} /></button>)}</div>
+            </section> : null}
+            <section className="cc2-grid">
+              <Panel title="Pipeline by stage" description="Deal value and volume by current stage. Select a bar for the underlying HubSpot deals." action={<span className="cc2-chip">{integer(overview.openDeals)} open deals</span>}>
+                <div className="cc2-chart large interactive"><ResponsiveContainer width="100%" height="100%"><BarChart data={report.pipelineByStage.slice(0, 14)} layout="vertical" margin={{ right: 18, left: 16 }}><CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e4ebe8" /><XAxis type="number" tickFormatter={(value) => compact(value)} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} /><YAxis type="category" dataKey="stageLabel" width={140} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} /><Tooltip formatter={(value) => money(value, preferences)} /><Bar dataKey="amount" fill="#087a50" radius={[0, 7, 7, 0]} onClick={openPipelineStage} /></BarChart></ResponsiveContainer></div>
+              </Panel>
+              <Panel title="Revenue risk queue" description="Deals that need a next action or corrected close date.">
+                <div className="cc2-risk-list">{attentionCards.slice(3).map(({ key, label, value, helper, icon: Icon }) => <button key={key} onClick={() => void loadDrilldown(key, label)}><Icon size={18} /><span><strong>{integer(value)}</strong><b>{label}</b><small>{helper}</small></span><ChevronRight size={16} /></button>)}</div>
+              </Panel>
+            </section>
+          </> : null}
 
-          {activeTab === 'acquisition' ? <><section className="cc2-grid"><Panel title="Lead source performance" description="Contacts, opportunities and wins by acquisition source."><div className="cc2-chart"><ResponsiveContainer width="100%" height="100%"><BarChart data={report.leadSourcePerformance.slice(0, 10)} margin={{ top: 8, right: 10, left: -14, bottom: 38 }}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4ebe8" /><XAxis dataKey="key" angle={-28} textAnchor="end" interval={0} tick={{ fontSize: 9, fill: '#667970' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize: 10, fill: '#768780' }} axisLine={false} tickLine={false} /><Tooltip content={<ChartTooltip />} /><Legend iconType="circle" wrapperStyle={{ fontSize: 10 }} /><Bar dataKey="contacts" fill="#087a50" radius={[5, 5, 0, 0]} /><Bar dataKey="opportunities" fill="#3a7de0" radius={[5, 5, 0, 0]} /><Bar dataKey="won" fill="#1aa6a0" radius={[5, 5, 0, 0]} /></BarChart></ResponsiveContainer></div></Panel><Panel title="Market distribution" description="Contact concentration across countries and commercial markets."><div className="cc2-chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={report.countryDistribution.slice(0, 8)} dataKey="value" nameKey="key" innerRadius={65} outerRadius={102} paddingAngle={2}>{report.countryDistribution.slice(0, 8).map((row, index) => <Cell key={row.key} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}</Pie><Tooltip formatter={(value) => integer(value)} /><Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" wrapperStyle={{ fontSize: 10 }} /></PieChart></ResponsiveContainer></div></Panel></section><Panel title="Activity trend" description="Daily call, meeting and task execution."><div className="cc2-chart large"><ResponsiveContainer width="100%" height="100%"><AreaChart data={report.activityTrend} margin={{ top: 8, right: 12, left: -18 }}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4ebe8" /><XAxis dataKey="day" tickFormatter={(value: string) => value.slice(5)} axisLine={false} tickLine={false} /><YAxis axisLine={false} tickLine={false} /><Tooltip content={<ChartTooltip />} /><Legend iconType="circle" /><Area type="monotone" dataKey="calls" stroke="#087a50" fill="rgba(8,122,80,.13)" strokeWidth={2.5} /><Area type="monotone" dataKey="meetings" stroke="#3a7de0" fill="transparent" strokeWidth={2} /><Area type="monotone" dataKey="tasks" stroke="#d98d25" fill="transparent" strokeWidth={2} /></AreaChart></ResponsiveContainer></div></Panel></> : null}
+          {activeTab === 'acquisition' ? <>
+            {operating ? <section className="cc2-execution">
+              <header><div><span>SDR EXECUTION</span><h2>From outreach to attended meetings</h2></div><small>Selected period vs. yesterday</small></header>
+              <div>
+                <button onClick={() => void loadDrilldown('calls', 'All calls')}><span>Calls</span><strong>{integer(operating.execution.calls)}</strong><small>Yesterday {integer(operating.yesterday.calls)}</small></button>
+                <button onClick={() => void loadDrilldown('connected-calls', 'Connected calls')}><span>Connection rate</span><strong>{percentage(operating.execution.connectionRate)}</strong><small>{integer(operating.execution.connectedCalls)} connected</small></button>
+                <button onClick={() => void loadDrilldown('completed-meetings', 'Completed meetings')}><span>Meeting completion</span><strong>{percentage(operating.execution.meetingCompletionRate)}</strong><small>{integer(operating.execution.meetingsCompleted)} completed</small></button>
+                <button onClick={() => void loadDrilldown('no-show-meetings', 'No-show meetings')}><span>No-show rate</span><strong>{percentage(operating.execution.noShowRate)}</strong><small>{integer(operating.execution.noShowMeetings)} no shows</small></button>
+                <button onClick={() => void loadDrilldown('portfolio-contacts', 'Contacted portfolio')}><span>Contact coverage</span><strong>{percentage(operating.execution.leadContactRate)}</strong><small>{integer(operating.execution.contactedContacts)} contacted</small></button>
+              </div>
+            </section> : null}
+            {operating?.qualityFunnel.status === 'ready' ? <Panel title="Lead quality funnel" description="Mapped Rank/Tier cohorts from contact to completed meeting, opportunity and win." action={<span className="cc2-chip">{integer(operating.qualityFunnel.priorityNeedsContact)} priority leads need contact</span>}>
+              <div className="cc2-funnel-table">
+                <div className="head"><span>Quality</span><span>Contacts</span><span>Contacted</span><span>Contact rate</span><span>Meetings</span><span>Opportunities</span><span>Won</span><span>Needs contact</span></div>
+                {operating.qualityFunnel.rows.map((row) => <button key={row.quality} onClick={() => void loadDrilldown('priority-needs-contact', `${titleCase(row.quality)} priority leads`)}><strong>{titleCase(row.quality)}</strong><span>{integer(row.contacts)}</span><span>{integer(row.contacted)}</span><span>{percentage(row.contactRate)}</span><span>{integer(row.meetingsCompleted)}</span><span>{integer(row.opportunities)}</span><span>{integer(row.won)}</span><b>{integer(row.needsContact)}</b></button>)}
+              </div>
+            </Panel> : operating ? <div className="cc2-configuration"><Wrench size={20} /><div><strong>Lead Quality mapping required</strong><p>{operating.qualityFunnel.message}</p></div><a href="/settings/mappings">Configure mapping<ChevronRight size={15} /></a></div> : null}
+            <section className="cc2-grid">
+              <Panel title="Lead source performance" description="Select a source to inspect its contact portfolio.">
+                <div className="cc2-chart interactive"><ResponsiveContainer width="100%" height="100%"><BarChart data={report.leadSourcePerformance.slice(0, 10)} margin={{ top: 8, right: 10, left: -4, bottom: 48 }}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4ebe8" /><XAxis dataKey="key" angle={-28} textAnchor="end" interval={0} tick={{ fontSize: 11, fill: '#667970' }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize: 12, fill: '#687c73' }} axisLine={false} tickLine={false} /><Tooltip content={<ChartTooltip />} /><Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} /><Bar dataKey="contacts" fill="#087a50" radius={[5, 5, 0, 0]} onClick={openLeadSource} /><Bar dataKey="opportunities" fill="#3a7de0" radius={[5, 5, 0, 0]} onClick={openLeadSource} /><Bar dataKey="won" fill="#1aa6a0" radius={[5, 5, 0, 0]} onClick={openLeadSource} /></BarChart></ResponsiveContainer></div>
+              </Panel>
+              <Panel title="Market distribution" description="Select a market to inspect the underlying contacts.">
+                <div className="cc2-chart interactive"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={report.countryDistribution.slice(0, 8)} dataKey="value" nameKey="key" innerRadius={65} outerRadius={105} paddingAngle={2} onClick={openCountry}>{report.countryDistribution.slice(0, 8).map((row, index) => <Cell key={row.key} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}</Pie><Tooltip formatter={(value) => integer(value)} /><Legend layout="vertical" align="right" verticalAlign="middle" iconType="circle" wrapperStyle={{ fontSize: 12 }} /></PieChart></ResponsiveContainer></div>
+              </Panel>
+            </section>
+            <Panel title="Activity trend" description="Daily call, meeting and task execution.">
+              <div className="cc2-chart large"><ResponsiveContainer width="100%" height="100%"><AreaChart data={report.activityTrend} margin={{ top: 8, right: 12, left: -6 }}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e4ebe8" /><XAxis dataKey="day" tickFormatter={(value: string) => value.slice(5)} tick={{ fontSize: 12 }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} /><Tooltip content={<ChartTooltip />} /><Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} /><Area type="monotone" dataKey="calls" stroke="#087a50" fill="rgba(8,122,80,.13)" strokeWidth={2.5} /><Area type="monotone" dataKey="meetings" stroke="#3a7de0" fill="transparent" strokeWidth={2} /><Area type="monotone" dataKey="tasks" stroke="#d98d25" fill="transparent" strokeWidth={2} /></AreaChart></ResponsiveContainer></div>
+            </Panel>
+          </> : null}
 
-          {activeTab === 'team' ? <section className="cc2-grid wide"><Panel title="Team performance" description="Owner-level activity, conversion, open pipeline and won revenue." action={<span className="cc2-chip">{report.ownerPerformance.length} owners</span>}><div className="cc2-owner-table"><div className="head"><span>Owner</span><span>Calls</span><span>Meetings</span><span>Rate</span><span>Open deals</span><span>Pipeline</span><span>Won</span></div>{report.ownerPerformance.map((row, index) => <article key={`${row.ownerId}-${index}`}><span><i>{row.ownerName.slice(0, 2).toUpperCase()}</i><div><strong>{row.ownerName}</strong><small>{row.email || row.ownerId}</small></div></span><b>{integer(row.calls)}</b><b>{integer(row.meetings)}</b><b>{percentage(row.meetingRate)}</b><b>{integer(row.openDeals)}</b><b>{compact(row.openPipeline)}</b><b>{compact(row.wonRevenue)}</b></article>)}</div></Panel><div className="cc2-stack"><Panel title="Call outcomes" description="Disposition mix for calls in this period."><OutcomeList rows={report.outcomes.calls} /></Panel><Panel title="Meeting outcomes" description="Completion and outcome mix for meetings."><OutcomeList rows={report.outcomes.meetings} /></Panel></div></section> : null}
+          {activeTab === 'team' ? <section className="cc2-grid wide">
+            <Panel title="Team performance" description="Select an owner to open their call activity and underlying HubSpot records." action={<span className="cc2-chip">{report.ownerPerformance.length} owners</span>}>
+              <div className="cc2-owner-table">
+                <div className="head"><span>Owner</span><span>Calls</span><span>Meetings</span><span>Rate</span><span>Open deals</span><span>Pipeline</span><span>Won</span></div>
+                {report.ownerPerformance.map((row, index) => <button key={`${row.ownerId}-${index}`} onClick={() => void loadDrilldown('calls', `${row.ownerName} calls`, 0, { ownerId: row.ownerId })}><span><i>{row.ownerName.slice(0, 2).toUpperCase()}</i><div><strong>{row.ownerName}</strong><small>{row.email || row.ownerId}</small></div></span><b>{integer(row.calls)}</b><b>{integer(row.meetings)}</b><b>{percentage(row.meetingRate)}</b><b>{integer(row.openDeals)}</b><b>{money(row.openPipeline, preferences)}</b><b>{money(row.wonRevenue, preferences)}</b></button>)}
+              </div>
+            </Panel>
+            <div className="cc2-stack"><Panel title="Call outcomes" description="Disposition mix for calls in this period."><OutcomeList rows={report.outcomes.calls} /></Panel><Panel title="Meeting outcomes" description="Completion and outcome mix for meetings."><OutcomeList rows={report.outcomes.meetings} /></Panel></div>
+          </section> : null}
 
-          {activeTab === 'quality' ? <section className="cc2-grid"><Panel title="CRM data quality" description="Completeness across the fields needed for reliable reporting." action={<span className="cc2-chip">{percentage(report.dataQuality.score)}</span>}><div className="cc2-quality">{report.dataQuality.fields.map((row) => <article key={row.key}><div><strong>{titleCase(row.key)}</strong><span>{integer(row.complete)} complete · {integer(row.missing)} missing</span><b>{percentage(row.percentage)}</b></div><i><b style={{ width: `${Math.max(0, Math.min(100, row.percentage))}%` }} /></i></article>)}</div></Panel><Panel title="Task execution status" description="Current task-status distribution for the reporting period."><OutcomeList rows={report.outcomes.tasks} /></Panel></section> : null}
+          {activeTab === 'quality' ? <section className="cc2-grid">
+            <Panel title="CRM data quality" description="Completeness across the fields needed for reliable reporting." action={<span className="cc2-chip">{percentage(report.dataQuality.score)}</span>}>
+              <div className="cc2-quality">{report.dataQuality.fields.map((row) => <article key={row.key}><div><strong>{titleCase(row.key)}</strong><span>{integer(row.complete)} complete · {integer(row.missing)} missing</span><b>{percentage(row.percentage)}</b></div><i><b style={{ width: `${Math.max(0, Math.min(100, row.percentage))}%` }} /></i></article>)}</div>
+            </Panel>
+            <div className="cc2-stack">
+              {operating ? <Panel title="Semantic mapping readiness" description="Approved HubSpot mappings used by advanced reports.">
+                <div className="cc2-mapping-list">{Object.entries(operating.mappings).map(([key, mapping]) => <article key={key} className={mapping.status}><span>{mapping.status === 'ready' ? <CheckCircle2 size={17} /> : <AlertTriangle size={17} />}</span><div><strong>{titleCase(key)}</strong><small>{mapping.propertyName || 'Configuration required'}</small></div><b>{mapping.status === 'ready' ? 'Ready' : 'Map now'}</b></article>)}</div>
+              </Panel> : null}
+              <Panel title="Task execution status" description="Current task-status distribution for the reporting period."><OutcomeList rows={report.outcomes.tasks} /></Panel>
+            </div>
+          </section> : null}
         </section>
       </div>
 

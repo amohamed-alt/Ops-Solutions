@@ -47,22 +47,22 @@ jobs:
         working-directory: apps/api
         run: |
           set -Eeuo pipefail
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          node ../../scripts/npm-audit-with-retry.mjs --omit=dev --audit-level=critical
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+          node ../../scripts/npm-audit-with-retry.mjs --omit=dev --audit-level=high
 
       - name: Audit worker production dependencies
         working-directory: apps/worker
         run: |
           set -Eeuo pipefail
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          node ../../scripts/npm-audit-with-retry.mjs --omit=dev --audit-level=critical
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+          node ../../scripts/npm-audit-with-retry.mjs --omit=dev --audit-level=high
 
       - name: Audit web production dependencies
         working-directory: apps/web
         run: |
           set -Eeuo pipefail
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          node ../../scripts/npm-audit-with-retry.mjs --omit=dev --audit-level=critical
+          npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+          node ../../scripts/npm-audit-with-retry.mjs --omit=dev --audit-level=high
 
       - name: Verify audit did not modify tracked files
         run: |

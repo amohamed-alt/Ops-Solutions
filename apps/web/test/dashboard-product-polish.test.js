@@ -33,7 +33,15 @@ test('dashboard charts and KPI cards remain accessible interactive controls', as
   assert.match(source, /aria-label="Command center navigation"/);
   assert.match(source, /aria-label="Dashboard role"/);
   assert.match(source, /aria-label="Close report"/);
+  assert.match(source, /DECISION INTELLIGENCE/);
+  assert.match(source, /scope: 'operating'/);
+  assert.match(source, /Lead quality funnel/);
+  assert.match(source, /Commercial milestones/i);
+  assert.match(source, /filterOverrides/);
   assert.match(styles, /button\.cc2-kpi\s*\{\s*cursor:\s*pointer/);
+  assert.match(styles, /\.cc2-decision/);
+  assert.match(styles, /\.cc2-pipeline-health/);
+  assert.match(styles, /\.cc2-execution/);
   assert.match(styles, /\.cc2-kpi:hover/);
   assert.match(styles, /\.cc2-drawer-backdrop/);
 });
