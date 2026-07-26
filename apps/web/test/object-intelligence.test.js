@@ -3,18 +3,21 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const pagePath = new URL('../app/dashboard/page.js', import.meta.url);
+const commandCenterPath = new URL('../components/sdr/CommandCenterV2.tsx', import.meta.url);
 const componentPath = new URL('../components/sdr/ObjectIntelligenceWorkspace.tsx', import.meta.url);
 const objectStylesPath = new URL('../components/sdr/object-intelligence.css', import.meta.url);
-const refreshStylesPath = new URL('../components/sdr/dashboard-saas-refresh.css', import.meta.url);
 const overviewRoutePath = new URL('../app/api/dashboard/[workspaceId]/objects/route.ts', import.meta.url);
 const detailRoutePath = new URL('../app/api/dashboard/[workspaceId]/objects/[objectType]/route.ts', import.meta.url);
 const drilldownRoutePath = new URL('../app/api/dashboard/[workspaceId]/objects/[objectType]/drilldowns/[reportKey]/route.ts', import.meta.url);
 
-test('dashboard mounts the light SaaS refresh and progressive object intelligence workspace', async () => {
+test('main dashboard links to object intelligence instead of mounting a duplicate workspace', async () => {
   const page = await readFile(pagePath, 'utf8');
-  assert.match(page, /ObjectIntelligenceWorkspace/);
-  assert.match(page, /dashboard-saas-refresh\.css/);
-  assert.match(page, /DashboardProductShell/);
+  const commandCenter = await readFile(commandCenterPath, 'utf8');
+  assert.doesNotMatch(page, /ObjectIntelligenceWorkspace/);
+  assert.match(commandCenter, /\/dashboard\/all-objects/);
+  assert.match(commandCenter, /\/dashboard\/objects\/contacts/);
+  assert.match(commandCenter, /\/dashboard\/objects\/companies/);
+  assert.match(commandCenter, /\/dashboard\/objects\/deals/);
 });
 
 test('object intelligence covers all primary HubSpot objects with lazy detail reports', async () => {
@@ -39,15 +42,6 @@ test('object intelligence uses responsive cards, charts, skeletons and a record 
   assert.match(styles, /\.oi-drawer-backdrop/);
   assert.match(styles, /@media \(max-width: 620px\)/);
   assert.match(styles, /prefers-reduced-motion/);
-});
-
-test('premium refresh changes the command center to the approved light SaaS direction', async () => {
-  const styles = await readFile(refreshStylesPath, 'utf8');
-  assert.match(styles, /--enterprise-sidebar:\s*246px/);
-  assert.match(styles, /\.ric-sidebar[\s\S]*linear-gradient\(180deg, #ffffff/);
-  assert.match(styles, /\.ric-attention[\s\S]*linear-gradient\(135deg, #fff/);
-  assert.match(styles, /\.ric-kpi:nth-child\(8\)[\s\S]*background:\s*linear-gradient\(180deg, #fff/);
-  assert.match(styles, /@media \(max-width: 760px\)/);
 });
 
 test('object report proxy routes preserve customer authorization and bounded timeouts', async () => {
