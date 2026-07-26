@@ -2,6 +2,7 @@
 
 import { spawn } from 'node:child_process';
 import process from 'node:process';
+import { pathToFileURL } from 'node:url';
 
 const DEFAULT_ATTEMPTS = 3;
 const DEFAULT_BASE_DELAY_MS = 2_000;
@@ -23,6 +24,10 @@ const TRANSIENT_PATTERNS = [
 
 export function isTransientAuditFailure(output) {
   return TRANSIENT_PATTERNS.some((pattern) => pattern.test(output));
+}
+
+export function allowTransientFailure(value = process.env.NPM_AUDIT_ALLOW_TRANSIENT_FAILURE) {
+  return value === '1' || value === 'true';
 }
 
 function positiveInteger(value, fallback) {
@@ -68,20 +73,31 @@ export async function runAuditWithRetry({
   args = ['--omit=dev', '--audit-level=critical'],
   attempts = positiveInteger(process.env.NPM_AUDIT_ATTEMPTS, DEFAULT_ATTEMPTS),
   baseDelayMs = positiveInteger(process.env.NPM_AUDIT_BASE_DELAY_MS, DEFAULT_BASE_DELAY_MS),
+  tolerateTransientFailure = allowTransientFailure(),
 } = {}) {
+  let lastResult = { code: 1, signal: null, output: 'npm audit did not run.' };
+
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const result = await runAudit(args);
-    if (result.code === 0) return result;
+    lastResult = await runAudit(args);
+    if (lastResult.code === 0) return lastResult;
 
-    const transient = isTransientAuditFailure(result.output);
-    if (!transient || attempt === attempts) return result;
+    const transient = isTransientAuditFailure(lastResult.output);
+    if (!transient) return lastResult;
 
-    const delayMs = baseDelayMs * attempt;
-    process.stderr.write(`npm audit transport failure detected; retrying attempt ${attempt + 1}/${attempts} in ${delayMs}ms.\n`);
-    await sleep(delayMs);
+    if (attempt < attempts) {
+      const delayMs = baseDelayMs * attempt;
+      process.stderr.write(`npm audit transport failure detected; retrying attempt ${attempt + 1}/${attempts} in ${delayMs}ms.\n`);
+      await sleep(delayMs);
+      continue;
+    }
+
+    if (tolerateTransientFailure) {
+      process.stderr.write('::warning title=npm audit unavailable::Dependency audit registry remained unavailable after retries. Vulnerability findings still fail closed; this exception applies only to recognized transport failures on pull requests.\n');
+      return { ...lastResult, code: 0, degraded: true };
+    }
   }
 
-  return { code: 1, signal: null, output: 'npm audit retry loop exhausted unexpectedly.' };
+  return lastResult;
 }
 
 async function main() {
@@ -91,7 +107,8 @@ async function main() {
   process.exitCode = result.code;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';
+if (import.meta.url === invokedPath) {
   main().catch((error) => {
     process.stderr.write(`npm audit wrapper failed: ${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
