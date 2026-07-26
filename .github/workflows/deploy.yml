@@ -163,6 +163,7 @@ jobs:
           VPS_PORT: ${{ secrets.VPS_PORT }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+          RELEASE_SHA: ${{ github.sha }}
         run: |
           set -Eeuo pipefail
           ssh -i "$HOME/.ssh/deploy_key" -p "$VPS_PORT" -o BatchMode=yes -o IdentitiesOnly=yes \
@@ -174,7 +175,10 @@ jobs:
              if [ -f docker-compose.prod.yml ]; then compose_file='docker-compose.prod.yml'; else compose_file='docker-compose.yml'; fi; \
              test -f .env || { echo 'Missing production .env at $VPS_DEPLOY_PATH/.env'; exit 1; }; \
              docker compose -f \"\$compose_file\" config --quiet; \
-             docker compose -f \"\$compose_file\" up --detach --build --remove-orphans --wait --wait-timeout 180; \
+             release_deployed_at=\$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+             RELEASE_SHA='$RELEASE_SHA' RELEASE_DEPLOYED_AT=\"\$release_deployed_at\" docker compose -f \"\$compose_file\" build --pull api worker; \
+             RELEASE_SHA='$RELEASE_SHA' RELEASE_DEPLOYED_AT=\"\$release_deployed_at\" docker compose -f \"\$compose_file\" build --pull --no-cache web; \
+             RELEASE_SHA='$RELEASE_SHA' RELEASE_DEPLOYED_AT=\"\$release_deployed_at\" docker compose -f \"\$compose_file\" up --detach --no-build --remove-orphans --wait --wait-timeout 180; \
              docker compose -f \"\$compose_file\" ps; \
              docker image prune --force"
 
@@ -185,6 +189,7 @@ jobs:
           VPS_PORT: ${{ secrets.VPS_PORT }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_DEPLOY_PATH: ${{ secrets.VPS_DEPLOY_PATH }}
+          RELEASE_SHA: ${{ github.sha }}
         run: |
           set -Eeuo pipefail
           ssh -i "$HOME/.ssh/deploy_key" -p "$VPS_PORT" -o BatchMode=yes -o IdentitiesOnly=yes \
@@ -193,7 +198,7 @@ jobs:
              cd '$VPS_DEPLOY_PATH'; \
              chmod +x scripts/verify-production.sh; \
              if [ -f docker-compose.prod.yml ]; then compose_file='docker-compose.prod.yml'; else compose_file='docker-compose.yml'; fi; \
-             COMPOSE_FILE=\"\$compose_file\" VERIFY_MODE=internal scripts/verify-production.sh"
+             EXPECTED_RELEASE_SHA='$RELEASE_SHA' COMPOSE_FILE=\"\$compose_file\" VERIFY_MODE=internal scripts/verify-production.sh"
 
       - name: Verify public production routes
         shell: bash
@@ -202,6 +207,7 @@ jobs:
           VERIFY_MODE: public
           VERIFY_ATTEMPTS: 12
           VERIFY_DELAY_SECONDS: 5
+          EXPECTED_RELEASE_SHA: ${{ github.sha }}
         run: |
           set -Eeuo pipefail
           chmod +x scripts/verify-production.sh
@@ -247,6 +253,9 @@ jobs:
                 "$VPS_USER@$VPS_HOST" \
                 "cd '$VPS_DEPLOY_PATH' 2>/dev/null || exit 0; \
                  if [ -f docker-compose.prod.yml ]; then compose_file='docker-compose.prod.yml'; else compose_file='docker-compose.yml'; fi; \
+                 echo '--- deployed source contract ---'; grep -n 'CommandCenterV2' apps/web/app/dashboard/page.js 2>/dev/null || true; \
+                 echo '--- public release endpoint ---'; curl -fsS https://ops.dashboardtalentera.tech/api/release 2>/dev/null || true; echo; \
+                 echo '--- internal release endpoint ---'; curl -fsS http://127.0.0.1:3210/api/release 2>/dev/null || true; echo; \
                  echo '--- docker compose ps ---'; docker compose -f \"\$compose_file\" ps; \
                  echo '--- rollback state ---'; cat .deploy-backups/last-rollback.json 2>/dev/null || echo 'No rollback state recorded.'; \
                  echo '--- latest database backup manifests ---'; find backups/postgres -maxdepth 1 -type f -name '*.manifest.json' -printf '%TY-%Tm-%TdT%TH:%TM:%TSZ %f\n' 2>/dev/null | sort -r | head -n 3; \
