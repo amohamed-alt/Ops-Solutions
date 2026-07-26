@@ -1,9 +1,8 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-const pagePath = path.join(__dirname, '..', 'app', 'settings', 'readiness', 'page.tsx');
-const source = fs.readFileSync(pagePath, 'utf8');
+const pageUrl = new URL('../app/settings/readiness/page.tsx', import.meta.url);
+const source = readFileSync(pageUrl, 'utf8');
 
 function expectSource(fragment, message) {
   assert.ok(source.includes(fragment), message);
