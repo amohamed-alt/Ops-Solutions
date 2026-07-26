@@ -88,7 +88,7 @@ const NAVIGATION_GROUPS: NavigationGroup[] = [
       { label: 'Data SLA', href: '/settings/data-sla' },
       { label: 'Scheduled Reports', href: '/settings/reports' },
       { label: 'Operational Alerts', href: '/settings/alerts' },
-      { label: 'Billing & Usage', href: '/settings/billing' },
+      { label: 'Plans & Usage', href: '/settings/billing' },
       { label: 'Security', href: '/settings/security' },
       { label: 'Production Readiness', href: '/settings/readiness' }
     ]
