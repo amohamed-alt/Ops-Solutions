@@ -9,6 +9,7 @@ VERIFY_MODE="${VERIFY_MODE:-all}"
 ATTEMPTS="${VERIFY_ATTEMPTS:-12}"
 DELAY_SECONDS="${VERIFY_DELAY_SECONDS:-5}"
 HTTP_TIMEOUT="${VERIFY_HTTP_TIMEOUT:-15}"
+EXPECTED_RELEASE_SHA="${EXPECTED_RELEASE_SHA:-}"
 EXPECTED_SERVICES=(postgres redis api worker web)
 
 log() {
@@ -66,6 +67,16 @@ curl_contains() {
   grep -Fqi -- "$expected" <<<"$body"
 }
 
+verify_release() {
+  local description="$1"
+  local url="$2"
+  if [[ -n "$EXPECTED_RELEASE_SHA" ]]; then
+    retry "$description" curl_contains "$url" "\"release\":\"${EXPECTED_RELEASE_SHA}\""
+  else
+    retry "$description" curl_ok "$url"
+  fi
+}
+
 verify_containers() {
   [[ -f "$COMPOSE_FILE" ]] || fail "Compose file not found: $COMPOSE_FILE"
 
@@ -88,12 +99,14 @@ verify_containers() {
 verify_internal_endpoints() {
   retry "internal API health" curl_contains "http://127.0.0.1:${API_PORT}/health" '"status":"healthy"'
   retry "internal web health" curl_ok "http://127.0.0.1:${WEB_PORT}/api/health"
+  verify_release "internal web release" "http://127.0.0.1:${WEB_PORT}/api/release"
   retry "internal onboarding page" curl_contains "http://127.0.0.1:${WEB_PORT}/onboarding" "Connect HubSpot"
 }
 
 verify_public_endpoints() {
   local base="${PUBLIC_BASE_URL%/}"
   retry "public web health" curl_ok "${base}/api/health"
+  verify_release "public web release" "${base}/api/release"
   retry "public onboarding page" curl_contains "${base}/onboarding" "Connect HubSpot"
   retry "public dashboard route" curl_ok "${base}/dashboard"
 }
