@@ -202,7 +202,8 @@ function registerReadinessOperationsRoutes(app, dependencies) {
 
 function registerReadinessIncidentRoutes(app, dependencies) {
   const basePath = '/api/v1/workspaces/:workspaceId/readiness-incidents';
-  const schemaReady = ensureReadinessRegressionSchema(dependencies.postgres);
+  const schemaReady = ensureOnboardingReadinessSchema(dependencies.postgres)
+    .then(() => ensureReadinessRegressionSchema(dependencies.postgres));
 
   app.get(basePath, { preHandler: dependencies.requireAdmin }, async (request, reply) => {
     const workspace = await dependencies.requireWorkspace(request.params.workspaceId);

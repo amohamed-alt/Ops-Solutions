@@ -72,3 +72,45 @@ test('allows non-production policy checks for local development', () => {
   const result = evaluateRuntimeConfig({ env, template, composeKeys, mode: 0o600, production: false });
   assert.equal(result.findings.some((item) => item.code === 'unsafe_production_flag'), false);
 });
+
+test('allows disabled email and AI integrations to remain unconfigured', () => {
+  const integrationTemplate = parsed({
+    ...Object.fromEntries(template.values),
+    EMAIL_PROVIDER: 'disabled',
+    EMAIL_FROM_ADDRESS: '',
+    EMAIL_FROM_NAME: 'Ops Intelligence',
+    RESEND_API_KEY: '',
+    POSTMARK_SERVER_TOKEN: '',
+    EMAIL_DELIVERY_POLL_INTERVAL_MS: '60000',
+    AI_API_KEY: '',
+    AI_MODEL: '',
+    ONBOARDING_SESSION_SECRET: '',
+    HUBSPOT_OPTIONAL_SCOPES: '',
+    RELEASE_SHA: 'unknown',
+    RELEASE_DEPLOYED_AT: ''
+  });
+  const integrationComposeKeys = new Set([...composeKeys, ...integrationTemplate.values.keys()]);
+  const env = healthyEnv();
+  env.values.set('EMAIL_PROVIDER', 'disabled');
+  const result = evaluateRuntimeConfig({ env, template: integrationTemplate, composeKeys: integrationComposeKeys, mode: 0o600, production: true });
+  assert.equal(result.status, 'healthy');
+  assert.equal(result.findings.length, 0);
+});
+
+test('requires provider-specific email configuration only when delivery is enabled', () => {
+  const integrationTemplate = parsed({
+    ...Object.fromEntries(template.values),
+    EMAIL_PROVIDER: 'disabled',
+    EMAIL_FROM_ADDRESS: '',
+    RESEND_API_KEY: '',
+    POSTMARK_SERVER_TOKEN: ''
+  });
+  const integrationComposeKeys = new Set([...composeKeys, ...integrationTemplate.values.keys()]);
+  const env = healthyEnv();
+  env.values.set('EMAIL_PROVIDER', 'resend');
+  const result = evaluateRuntimeConfig({ env, template: integrationTemplate, composeKeys: integrationComposeKeys, mode: 0o600, production: true });
+  assert.equal(result.status, 'critical');
+  assert.ok(result.findings.some((item) => item.code === 'missing_required_key' && item.key === 'EMAIL_FROM_ADDRESS'));
+  assert.ok(result.findings.some((item) => item.code === 'missing_required_key' && item.key === 'RESEND_API_KEY'));
+  assert.equal(result.findings.some((item) => item.key === 'POSTMARK_SERVER_TOKEN'), false);
+});

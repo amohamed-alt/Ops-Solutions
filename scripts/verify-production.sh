@@ -96,11 +96,53 @@ verify_containers() {
   done
 }
 
+verify_internal_core_report() {
+  docker compose -f "$COMPOSE_FILE" exec -T api node --input-type=module <<'NODE'
+const adminKey = String(process.env.ADMIN_API_KEY || '');
+if (!adminKey) throw new Error('ADMIN_API_KEY is unavailable inside the API container.');
+const headers = { 'x-admin-key': adminKey };
+const workspaceResponse = await fetch('http://127.0.0.1:3001/api/v1/workspaces', {
+  headers,
+  signal: AbortSignal.timeout(15_000)
+});
+if (!workspaceResponse.ok) throw new Error(`Workspace smoke request returned ${workspaceResponse.status}.`);
+const workspacePayload = await workspaceResponse.json();
+const rows = Array.isArray(workspacePayload.results) ? workspacePayload.results : [];
+const workspace = rows.find((row) => row.status === 'active' && row.hubspot_status === 'connected')
+  ?? rows.find((row) => row.status === 'active')
+  ?? rows[0];
+if (!workspace?.id) {
+  console.log('No workspace is available; core report smoke check skipped.');
+  process.exit(0);
+}
+const to = new Date();
+const from = new Date(to);
+from.setUTCDate(from.getUTCDate() - 6);
+const reportUrl = new URL(`http://127.0.0.1:3001/api/v1/workspaces/${encodeURIComponent(workspace.id)}/analytics/revenue`);
+reportUrl.searchParams.set('scope', 'core');
+reportUrl.searchParams.set('from', from.toISOString().slice(0, 10));
+reportUrl.searchParams.set('to', to.toISOString().slice(0, 10));
+const reportResponse = await fetch(reportUrl, {
+  headers,
+  signal: AbortSignal.timeout(70_000)
+});
+if (!reportResponse.ok) throw new Error(`Core revenue report returned ${reportResponse.status}.`);
+const reportPayload = await reportResponse.json();
+if (reportPayload.scope !== 'core' || !reportPayload.report?.overview || !reportPayload.report?.filterOptions) {
+  throw new Error('Core revenue report response contract is incomplete.');
+}
+console.log('Core revenue report smoke check passed.');
+NODE
+}
+
 verify_internal_endpoints() {
   retry "internal API health" curl_contains "http://127.0.0.1:${API_PORT}/health" '"status":"healthy"'
   retry "internal web health" curl_ok "http://127.0.0.1:${WEB_PORT}/api/health"
   verify_release "internal web release" "http://127.0.0.1:${WEB_PORT}/api/release"
   retry "internal onboarding page" curl_contains "http://127.0.0.1:${WEB_PORT}/onboarding" "Connect HubSpot"
+  log "internal core revenue report: starting"
+  verify_internal_core_report || fail "internal core revenue report failed"
+  log "internal core revenue report: ok"
 }
 
 verify_public_endpoints() {

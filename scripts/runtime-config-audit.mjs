@@ -24,6 +24,20 @@ const PRODUCTION_DANGEROUS = new Map([
   ['DISABLE_AUTH', 'true'],
   ['NODE_ENV', 'development']
 ]);
+const OPTIONAL_KEYS = new Set([
+  'RELEASE_SHA',
+  'RELEASE_DEPLOYED_AT',
+  'ONBOARDING_SESSION_SECRET',
+  'HUBSPOT_OPTIONAL_SCOPES',
+  'EMAIL_FROM_ADDRESS',
+  'EMAIL_FROM_NAME',
+  'RESEND_API_KEY',
+  'POSTMARK_SERVER_TOKEN',
+  'EMAIL_DELIVERY_POLL_INTERVAL_MS',
+  'AI_API_KEY',
+  'AI_MODEL'
+]);
+const EMAIL_PROVIDERS = new Set(['disabled', 'resend', 'postmark']);
 
 function parseArgs(argv) {
   const options = {
@@ -104,7 +118,17 @@ function addFinding(findings, severity, code, key, message) {
 
 export function evaluateRuntimeConfig({ env, template, composeKeys, mode = 0o600, production = true }) {
   const findings = [];
-  const requiredKeys = new Set([...template.values.keys(), ...composeKeys]);
+  const documentedKeys = new Set([...template.values.keys(), ...composeKeys]);
+  const requiredKeys = new Set([...documentedKeys].filter((key) => !OPTIONAL_KEYS.has(key)));
+  const emailProvider = String(env.values.get('EMAIL_PROVIDER') ?? '').trim().toLowerCase();
+
+  if (emailProvider === 'resend') {
+    requiredKeys.add('EMAIL_FROM_ADDRESS');
+    requiredKeys.add('RESEND_API_KEY');
+  } else if (emailProvider === 'postmark') {
+    requiredKeys.add('EMAIL_FROM_ADDRESS');
+    requiredKeys.add('POSTMARK_SERVER_TOKEN');
+  }
 
   for (const key of requiredKeys) {
     if (!env.values.has(key)) addFinding(findings, 'critical', 'missing_required_key', key, 'Required configuration key is missing.');
@@ -115,6 +139,10 @@ export function evaluateRuntimeConfig({ env, template, composeKeys, mode = 0o600
   const permissionBits = mode & 0o777;
   if ((permissionBits & 0o077) !== 0) {
     addFinding(findings, 'critical', 'unsafe_env_permissions', null, `Environment file permissions are ${permissionBits.toString(8)}; expected 600 or stricter.`);
+  }
+
+  if (emailProvider && !EMAIL_PROVIDERS.has(emailProvider)) {
+    addFinding(findings, 'critical', 'invalid_email_provider', 'EMAIL_PROVIDER', 'Email provider must be disabled, resend, or postmark.');
   }
 
   for (const [key, value] of env.values) {
@@ -135,7 +163,7 @@ export function evaluateRuntimeConfig({ env, template, composeKeys, mode = 0o600
     }
   }
 
-  const unknown = [...env.values.keys()].filter((key) => !requiredKeys.has(key));
+  const unknown = [...env.values.keys()].filter((key) => !documentedKeys.has(key));
   for (const key of unknown) addFinding(findings, 'warning', 'undocumented_key', key, 'Configuration key is not documented in the template or referenced by Compose.');
 
   const severityRank = { healthy: 0, warning: 1, critical: 2 };
