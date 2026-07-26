@@ -5,6 +5,7 @@ import { PdfSnapshotAction } from '@/components/sdr/PdfSnapshotAction';
 import '@/components/sdr/dashboard-layout-fix.css';
 import '@/components/sdr/dashboard-saas-refresh.css';
 import '@/components/sdr/object-route-navigation.css';
+import '@/components/sdr/dashboard-obsidian-orange.css';
 
 export const dynamic = 'force-dynamic';
 
