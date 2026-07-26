@@ -3,9 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const shellPath = new URL('../components/sdr/DashboardProductShell.tsx', import.meta.url);
+const commandCenterPath = new URL('../components/sdr/CommandCenterV2.tsx', import.meta.url);
 const routePath = new URL('../app/api/dashboard/[workspaceId]/reports/route.ts', import.meta.url);
 
-test('dashboard requests the core report before advanced operating reports', async () => {
+test('legacy dashboard requests the core report before advanced operating reports', async () => {
   const shell = await readFile(shellPath, 'utf8');
 
   assert.match(shell, /searchParams\.set\('scope', 'core'\)/);
@@ -16,7 +17,7 @@ test('dashboard requests the core report before advanced operating reports', asy
   assert.match(shell, /operatingAbort\?\.abort\(\)/);
 });
 
-test('advanced report failures cannot block the core dashboard response', async () => {
+test('advanced report failures cannot block the legacy core dashboard response', async () => {
   const shell = await readFile(shellPath, 'utf8');
 
   const coreAwait = shell.indexOf('response = await originalFetch(coreUrl.toString(), args[1])');
@@ -24,6 +25,17 @@ test('advanced report failures cannot block the core dashboard response', async 
   assert.ok(coreAwait >= 0);
   assert.ok(operatingBackground > coreAwait);
   assert.match(shell, /\.catch\(\(\) => undefined\)\.finally/);
+});
+
+test('the active command center is protected by a core-scope proxy default', async () => {
+  const [commandCenter, route] = await Promise.all([
+    readFile(commandCenterPath, 'utf8'),
+    readFile(routePath, 'utf8')
+  ]);
+
+  assert.match(commandCenter, /\/api\/dashboard\/\$\{encodeURIComponent\(workspaceId\)\}\/reports/);
+  assert.doesNotMatch(commandCenter, /scope[^\n]*full/);
+  assert.match(route, /if \(!target\.searchParams\.has\('scope'\)\) target\.searchParams\.set\('scope', 'core'\)/);
 });
 
 test('report proxy applies separate bounded timeouts per report scope', async () => {
