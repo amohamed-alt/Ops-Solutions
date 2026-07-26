@@ -1,0 +1,443 @@
+/*
+ * Obsidian Orange command-center theme.
+ *
+ * This layer intentionally loads after the SaaS refresh stylesheet. It keeps the
+ * existing multi-tenant behavior and component contracts while giving the live
+ * dashboard the denser, higher-contrast visual hierarchy used by the SDR command
+ * center: immediate KPIs, compact controls, decisive alerts and richer charts.
+ */
+.dashboard-workspace-experience {
+  --workspace-accent: #f97316;
+  --workspace-accent-strong: #ea580c;
+  --workspace-accent-soft: #fff3e8;
+  --obsidian: #111111;
+  --obsidian-soft: #1b1b1b;
+  --obsidian-raised: #252525;
+  --paper: #ffffff;
+  --paper-soft: #f7f7f5;
+  --paper-warm: #fffaf5;
+  --ink: #141414;
+  --muted: #717171;
+  --line: #e7e4df;
+  --line-strong: #d6d0c8;
+  --shadow-sm: 0 8px 24px rgba(17, 17, 17, 0.06);
+  --shadow-md: 0 18px 48px rgba(17, 17, 17, 0.1);
+  --shadow-accent: 0 14px 34px rgba(249, 115, 22, 0.2);
+  background:
+    radial-gradient(circle at 88% 0%, rgba(249, 115, 22, 0.08), transparent 28rem),
+    linear-gradient(180deg, #ffffff 0, #f7f7f5 34rem);
+  color: var(--ink);
+}
+
+/* Navigation: dark, compact and operational. */
+.dashboard-workspace-experience .ric-sidebar {
+  border-right: 1px solid #2c2c2c;
+  color: #f6f6f6;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(249, 115, 22, 0.2), transparent 18rem),
+    linear-gradient(180deg, #171717 0%, #0d0d0d 100%);
+  box-shadow: 16px 0 45px rgba(0, 0, 0, 0.16);
+}
+
+.dashboard-workspace-experience .ric-brand {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.dashboard-workspace-experience .ric-brand > span {
+  color: #111;
+  background: linear-gradient(145deg, #fb923c, #f97316);
+  box-shadow: 0 10px 28px rgba(249, 115, 22, 0.34);
+}
+
+.dashboard-workspace-experience .ric-brand strong,
+.dashboard-workspace-experience .ric-sync strong {
+  color: #fff !important;
+}
+
+.dashboard-workspace-experience .ric-brand small,
+.dashboard-workspace-experience .ric-nav-label,
+.dashboard-workspace-experience .ric-sync,
+.dashboard-workspace-experience .ric-sync small {
+  color: rgba(255, 255, 255, 0.54);
+}
+
+.dashboard-workspace-experience .ric-sidebar nav button,
+.dashboard-workspace-experience .ric-workspaces button {
+  border-color: transparent;
+  color: rgba(255, 255, 255, 0.68);
+  background: transparent;
+}
+
+.dashboard-workspace-experience .ric-sidebar nav button:hover,
+.dashboard-workspace-experience .ric-sidebar nav button.active,
+.dashboard-workspace-experience .ric-sidebar nav button[aria-current='page'],
+.dashboard-workspace-experience .ric-workspaces button:hover,
+.dashboard-workspace-experience .ric-workspaces button.active {
+  border-color: rgba(249, 115, 22, 0.38) !important;
+  color: #fff !important;
+  background: linear-gradient(90deg, rgba(249, 115, 22, 0.2), rgba(249, 115, 22, 0.07)) !important;
+  box-shadow: inset 3px 0 0 #f97316, 0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.dashboard-workspace-experience .ric-workspaces i {
+  color: #111;
+  background: #fb923c;
+}
+
+.dashboard-workspace-experience .ric-sync {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: none;
+}
+
+/* One compact, high-signal application header. */
+.dashboard-workspace-brand,
+.dashboard-workspace-experience .ric-topbar {
+  border-bottom-color: var(--line);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 6px 22px rgba(17, 17, 17, 0.045);
+  backdrop-filter: blur(18px);
+}
+
+.dashboard-workspace-brand {
+  min-height: 64px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.dashboard-workspace-logo {
+  border-radius: 11px;
+  box-shadow: 0 8px 22px rgba(17, 17, 17, 0.1);
+}
+
+.dashboard-workspace-copy h1 {
+  color: #111;
+  letter-spacing: -0.035em;
+}
+
+.dashboard-workspace-clock,
+.dashboard-command-mode-options,
+.dashboard-command-actions a,
+.dashboard-command-actions button,
+.dashboard-workspace-experience .ric-topbar button {
+  border-color: var(--line);
+  color: #4b4b4b;
+  background: #fff;
+}
+
+.dashboard-command-mode {
+  gap: 10px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  border-bottom-color: var(--line);
+  background: #faf9f7;
+}
+
+.dashboard-command-mode-options button.active {
+  border-color: rgba(249, 115, 22, 0.34);
+  color: #c2410c;
+  background: var(--workspace-accent-soft);
+  box-shadow: 0 7px 18px rgba(249, 115, 22, 0.12);
+}
+
+.dashboard-command-actions a:hover,
+.dashboard-command-actions button:hover,
+.dashboard-workspace-experience .ric-topbar button:hover {
+  border-color: #f97316;
+  color: #c2410c;
+  transform: translateY(-1px);
+}
+
+.dashboard-data-health {
+  border-color: #fed7aa;
+  color: #7c2d12;
+  background: #fff8f1;
+}
+
+/* Reduce dead space so decision metrics appear above the fold. */
+.dashboard-workspace-experience .ric-content {
+  padding-top: 18px;
+  padding-right: clamp(16px, 2.2vw, 32px);
+  padding-left: clamp(16px, 2.2vw, 32px);
+}
+
+.dashboard-workspace-experience .ric-heading {
+  min-height: 126px;
+  padding: clamp(20px, 2.3vw, 29px);
+  border-color: #252525;
+  border-radius: 20px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 88% 10%, rgba(249, 115, 22, 0.42), transparent 21rem),
+    linear-gradient(135deg, #101010 0%, #202020 68%, #2d170b 100%);
+  box-shadow: 0 22px 56px rgba(17, 17, 17, 0.2);
+  overflow: hidden;
+}
+
+.dashboard-workspace-experience .ric-heading h1,
+.dashboard-workspace-experience .ric-heading h1::after,
+.dashboard-workspace-experience .ric-heading strong {
+  color: #fff;
+}
+
+.dashboard-workspace-experience .ric-heading p,
+.dashboard-workspace-experience .ric-heading small {
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.dashboard-workspace-experience .ric-heading h1::after {
+  font-size: clamp(25px, 2.55vw, 38px);
+  line-height: 1.02;
+}
+
+.dashboard-workspace-experience .ric-score {
+  min-width: 166px;
+  padding: 12px 14px;
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: none;
+  backdrop-filter: blur(10px);
+}
+
+.dashboard-workspace-experience .ric-score strong {
+  color: #fb923c;
+}
+
+.dashboard-workspace-experience .ric-filterbar {
+  padding: 11px;
+  border-color: var(--line);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+
+.dashboard-workspace-experience .ric-filterbar input,
+.dashboard-workspace-experience .ric-filterbar select {
+  height: 37px;
+  border-color: var(--line);
+  color: #222;
+  background: #f8f7f5;
+}
+
+.dashboard-workspace-experience .ric-filterbar input:focus,
+.dashboard-workspace-experience .ric-filterbar select:focus {
+  border-color: #f97316;
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.13);
+  outline: none;
+}
+
+/* KPI cards: compact, tactile and visually ranked. */
+.dashboard-workspace-experience .ric-kpi-grid {
+  gap: 12px;
+}
+
+.dashboard-workspace-experience .ric-kpi-grid .ric-kpi,
+.dashboard-workspace-experience[data-command-role='executive'] .ric-kpi-grid .ric-kpi {
+  position: relative;
+  min-height: 126px;
+  padding: 15px;
+  border-color: var(--line);
+  border-radius: 16px;
+  color: var(--ink);
+  background: linear-gradient(180deg, #fff 0%, #fcfbf9 100%);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.dashboard-workspace-experience .ric-kpi-grid .ric-kpi::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  content: '';
+  background: linear-gradient(180deg, #fb923c, #ea580c);
+}
+
+.dashboard-workspace-experience .ric-kpi-grid .ric-kpi::after {
+  position: absolute;
+  right: -24px;
+  bottom: -30px;
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  content: '';
+  background: rgba(249, 115, 22, 0.06);
+}
+
+.dashboard-workspace-experience .ric-kpi-grid .ric-kpi:hover {
+  border-color: #fed7aa;
+  box-shadow: var(--shadow-md);
+  transform: translateY(-3px);
+}
+
+.dashboard-workspace-experience .ric-kpi > strong {
+  margin: 13px 0 4px;
+  color: #111;
+  font-size: clamp(27px, 2.4vw, 35px);
+  letter-spacing: -0.05em;
+}
+
+.dashboard-workspace-experience .ric-kpi h3,
+.dashboard-workspace-experience .ric-kpi p {
+  position: relative;
+  z-index: 1;
+}
+
+/* Operational attention should look urgent without becoming noisy. */
+.dashboard-workspace-experience .ric-attention {
+  padding: 17px;
+  border: 1px solid #2a2a2a;
+  border-radius: 18px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 91% 0, rgba(249, 115, 22, 0.23), transparent 23rem),
+    linear-gradient(135deg, #151515, #232323);
+  box-shadow: 0 20px 50px rgba(17, 17, 17, 0.16);
+}
+
+.dashboard-workspace-experience .ric-attention header span,
+.dashboard-workspace-experience .ric-attention button > span {
+  color: #fb923c;
+}
+
+.dashboard-workspace-experience .ric-attention header b {
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dashboard-workspace-experience .ric-attention button {
+  min-height: 70px;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.dashboard-workspace-experience .ric-attention button:hover {
+  border-color: rgba(249, 115, 22, 0.55);
+  background: rgba(249, 115, 22, 0.12);
+  transform: translateY(-2px);
+}
+
+.dashboard-workspace-experience .ric-attention button strong,
+.dashboard-workspace-experience .ric-attention button h3 {
+  color: #fff;
+}
+
+.dashboard-workspace-experience .ric-attention button p,
+.dashboard-workspace-experience .ric-attention button > svg {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.dashboard-workspace-experience .ric-attention button > span {
+  background: rgba(249, 115, 22, 0.13);
+}
+
+/* Panels and charts: stronger hierarchy, cleaner plot surfaces. */
+.dashboard-workspace-experience .ric-panel {
+  padding: 17px;
+  border-color: var(--line);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow 180ms ease, transform 180ms ease;
+}
+
+.dashboard-workspace-experience .ric-panel:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.dashboard-workspace-experience .ric-panel > header {
+  min-height: 56px;
+  border-bottom: 1px solid #f0ede8;
+}
+
+.dashboard-workspace-experience .ric-panel > header h2,
+.dashboard-workspace-experience .ric-panel > header h3 {
+  color: #161616;
+  letter-spacing: -0.025em;
+}
+
+.dashboard-workspace-experience .ric-chart {
+  border: 1px solid #eeeae4;
+  border-radius: 14px;
+  background:
+    linear-gradient(rgba(249, 115, 22, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(249, 115, 22, 0.025) 1px, transparent 1px),
+    #fffdfa;
+  background-size: 32px 32px;
+}
+
+.dashboard-workspace-experience .recharts-cartesian-grid line {
+  stroke: #e9e4dd;
+}
+
+.dashboard-workspace-experience .recharts-text,
+.dashboard-workspace-experience .recharts-cartesian-axis-tick-value {
+  fill: #777 !important;
+  font-size: 11px;
+}
+
+.dashboard-workspace-experience .recharts-tooltip-wrapper {
+  filter: drop-shadow(0 14px 28px rgba(17, 17, 17, 0.14));
+}
+
+.dashboard-workspace-experience .recharts-default-tooltip {
+  border: 1px solid #292929 !important;
+  border-radius: 12px !important;
+  color: #fff !important;
+  background: rgba(17, 17, 17, 0.96) !important;
+}
+
+.dashboard-workspace-experience .ric-owner-table article:hover,
+.dashboard-workspace-experience .ric-drawer-table article:hover {
+  background: #fff6ed;
+}
+
+.dashboard-workspace-experience button:focus-visible,
+.dashboard-workspace-experience a:focus-visible,
+.dashboard-workspace-experience input:focus-visible,
+.dashboard-workspace-experience select:focus-visible {
+  outline: 3px solid rgba(249, 115, 22, 0.38);
+  outline-offset: 2px;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-workspace-experience .ric-heading {
+    min-height: 112px;
+  }
+
+  .dashboard-command-mode {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-workspace-experience .ric-content {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .dashboard-workspace-experience .ric-heading {
+    min-height: auto;
+    padding: 20px;
+    border-radius: 16px;
+  }
+
+  .dashboard-workspace-experience .ric-kpi-grid .ric-kpi,
+  .dashboard-workspace-experience[data-command-role='executive'] .ric-kpi-grid .ric-kpi {
+    min-height: 112px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-workspace-experience *,
+  .dashboard-workspace-experience *::before,
+  .dashboard-workspace-experience *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
