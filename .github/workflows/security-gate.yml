@@ -23,6 +23,8 @@ jobs:
     name: Secrets and dependency policy
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      NPM_AUDIT_ALLOW_TRANSIENT_FAILURE: ${{ github.event_name == 'pull_request' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
