@@ -1,5 +1,6 @@
 import './globals.css';
 import './sdr-dashboard.css';
+import '@/components/sdr/command-center-design-system-v2.css';
 
 import { CustomerNavigation } from '@/components/customer/CustomerNavigation';
 
