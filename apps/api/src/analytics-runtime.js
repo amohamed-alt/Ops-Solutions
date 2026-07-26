@@ -4,6 +4,13 @@ import {
   compileMetricQuery,
   indexTemplate
 } from './analytics.js';
+import {
+  decoratePropertyBag,
+  firstPropertyValueLabel,
+  loadPropertyPresentation,
+  loadReferenceLabels,
+  propertyDescriptor
+} from './crm-presentation.js';
 import { sdrDashboardTemplate } from './templates/sdr-dashboard.js';
 
 const indexedTemplate = indexTemplate(sdrDashboardTemplate);
@@ -119,6 +126,7 @@ export async function executeActivityTrend(postgres, workspaceId, days = 21) {
 }
 
 export async function executeLeadStatusDistribution(postgres, workspaceId) {
+  const presentation = await loadPropertyPresentation(postgres, workspaceId, ['contacts']);
   const result = await postgres.query(
     `SELECT
        COALESCE(
@@ -136,7 +144,15 @@ export async function executeLeadStatusDistribution(postgres, workspaceId) {
      LIMIT 8`,
     [workspaceId]
   );
-  return serializeMetricRows(result.rows, true);
+  return serializeMetricRows(result.rows, true).map((row) => ({
+    ...row,
+    label: firstPropertyValueLabel(
+      presentation,
+      'contacts',
+      ['hs_lead_status', 'lifecyclestage'],
+      row.key
+    )
+  }));
 }
 
 export async function executeOperationalSnapshot(postgres, workspaceId) {
@@ -527,7 +543,11 @@ async function fallbackAttentionDrilldown(postgres, workspaceId, limit, offset) 
 
 export async function getPriorityLeadDrilldown(postgres, workspaceId, { limit, offset } = {}) {
   const widget = sdrDashboardTemplate.widgets.find((item) => item.type === 'table');
-  const mappings = await loadMappings(postgres, workspaceId, widget.objectType);
+  const [mappings, presentation, references] = await Promise.all([
+    loadMappings(postgres, workspaceId, widget.objectType),
+    loadPropertyPresentation(postgres, workspaceId, [widget.objectType]),
+    loadReferenceLabels(postgres, workspaceId)
+  ]);
   let rows;
   let queryLimit;
   let queryOffset;
@@ -563,6 +583,19 @@ export async function getPriorityLeadDrilldown(postgres, workspaceId, { limit, o
       'firstname', 'lastname', 'email', 'phone', 'company', 'country',
       'hubspot_owner_id', 'hs_lead_status', 'notes_last_contacted'
     ],
+    propertyLabels: Object.fromEntries(
+      [
+        'firstname', 'lastname', 'email', 'phone', 'company', 'country',
+        'hubspot_owner_id', 'hs_lead_status', 'notes_last_contacted'
+      ].map((propertyName) => [
+        propertyName,
+        propertyDescriptor(
+          presentation,
+          widget.objectType,
+          propertyName
+        ).label
+      ])
+    ),
     limit: queryLimit,
     offset: queryOffset,
     fallback,
@@ -570,6 +603,12 @@ export async function getPriorityLeadDrilldown(postgres, workspaceId, { limit, o
     results: rows.map((row) => ({
       id: row.record_id,
       properties: row.properties ?? {},
+      displayProperties: decoratePropertyBag(
+        presentation,
+        widget.objectType,
+        row.properties ?? {},
+        references
+      ),
       hubspotCreatedAt: row.hubspot_created_at,
       hubspotUpdatedAt: row.hubspot_updated_at,
       syncedAt: row.synced_at

@@ -153,12 +153,26 @@ export function buildRevenueCsv({
   section(lines, 'Period comparisons', ['Metric', 'Current', 'Previous', 'Delta percent'], Object.entries(report.comparisons).map(([key, value]) => [humanize(key), value.current, value.previous, value.deltaPercent]));
   section(lines, 'Activity trend', ['Date', 'Calls', 'Meetings', 'Tasks'], report.activityTrend.map((row) => [row.day, row.calls, row.meetings, row.tasks]));
   section(lines, 'Pipeline by stage', ['Pipeline', 'Stage', 'Deals', `Amount (${resolvedPreferences.currency})`], report.pipelineByStage.map((row) => [row.pipelineLabel, row.stageLabel, row.deals, formatReportCurrency(row.amount, resolvedPreferences)]));
-  section(lines, 'Lead source performance', ['Lead source', 'Contacts', 'Contacted', 'Opportunities', 'Won', 'Win rate'], report.leadSourcePerformance.map((row) => [row.key, row.contacts, row.contacted, row.opportunities, row.won, row.winRate]));
-  section(lines, 'Market distribution', ['Country or market', 'Contacts'], report.countryDistribution.map((row) => [row.key, row.value]));
+  section(lines, 'Lead source performance', ['Lead source', 'Contacts', 'Contacted', 'Opportunities', 'Won', 'Win rate'], report.leadSourcePerformance.map((row) => [row.label ?? humanize(row.key), row.contacts, row.contacted, row.opportunities, row.won, row.winRate]));
+  section(lines, 'Market distribution', ['Country or market', 'Contacts'], report.countryDistribution.map((row) => [row.label ?? humanize(row.key), row.value]));
+  const contactBreakdowns = report.crmBreakdowns?.contacts;
+  const companyBreakdowns = report.crmBreakdowns?.companies;
+  if (contactBreakdowns) {
+    section(lines, `Contacts by ${contactBreakdowns.leadStatus.propertyLabel}`, [contactBreakdowns.leadStatus.propertyLabel, 'Contacts'], contactBreakdowns.leadStatus.rows.map((row) => [row.label, row.value]));
+    section(lines, `Contacts by ${contactBreakdowns.lifecycleStage.propertyLabel}`, [contactBreakdowns.lifecycleStage.propertyLabel, 'Contacts'], contactBreakdowns.lifecycleStage.rows.map((row) => [row.label, row.value]));
+    section(lines, `Contacts by ${contactBreakdowns.country.propertyLabel}`, [contactBreakdowns.country.propertyLabel, 'Contacts'], contactBreakdowns.country.rows.map((row) => [row.label, row.value]));
+    section(lines, 'Contacts created monthly', ['Month', 'Contacts created'], contactBreakdowns.createdMonthly.rows.map((row) => [row.label, row.value]));
+  }
+  if (companyBreakdowns) {
+    section(lines, `Companies by ${companyBreakdowns.industry.propertyLabel}`, [companyBreakdowns.industry.propertyLabel, 'Companies'], companyBreakdowns.industry.rows.map((row) => [row.label, row.value]));
+    section(lines, `Companies by ${companyBreakdowns.country.propertyLabel}`, [companyBreakdowns.country.propertyLabel, 'Companies'], companyBreakdowns.country.rows.map((row) => [row.label, row.value]));
+    section(lines, `Companies by ${companyBreakdowns.employeeSize.propertyLabel}`, [companyBreakdowns.employeeSize.propertyLabel, 'Companies'], companyBreakdowns.employeeSize.rows.map((row) => [row.label, row.value]));
+    section(lines, 'Companies created monthly', ['Month', 'Companies created'], companyBreakdowns.createdMonthly.rows.map((row) => [row.label, row.value]));
+  }
   section(lines, 'Owner performance', ['Owner', 'Email', 'Calls', 'Meetings', 'Tasks', 'Meeting rate', 'Open deals', `Open pipeline (${resolvedPreferences.currency})`, `Won revenue (${resolvedPreferences.currency})`], report.ownerPerformance.map((row) => [row.ownerName, row.email, row.calls, row.meetings, row.tasks, row.meetingRate, row.openDeals, formatReportCurrency(row.openPipeline, resolvedPreferences), formatReportCurrency(row.wonRevenue, resolvedPreferences)]));
-  section(lines, 'Call outcomes', ['Outcome', 'Count'], report.outcomes.calls.map((row) => [humanize(row.key), row.value]));
-  section(lines, 'Meeting outcomes', ['Outcome', 'Count'], report.outcomes.meetings.map((row) => [humanize(row.key), row.value]));
-  section(lines, 'Task outcomes', ['Status', 'Count'], report.outcomes.tasks.map((row) => [humanize(row.key), row.value]));
+  section(lines, 'Call outcomes', ['Outcome', 'Count'], report.outcomes.calls.map((row) => [row.label ?? humanize(row.key), row.value]));
+  section(lines, 'Meeting outcomes', ['Outcome', 'Count'], report.outcomes.meetings.map((row) => [row.label ?? humanize(row.key), row.value]));
+  section(lines, 'Task outcomes', ['Status', 'Count'], report.outcomes.tasks.map((row) => [row.label ?? humanize(row.key), row.value]));
   section(lines, 'Action queue', ['Signal', 'Count'], Object.entries(report.attention).map(([key, value]) => [humanize(key), value]));
   section(lines, 'CRM data quality', ['Field', 'Complete', 'Missing', 'Completeness percent'], report.dataQuality.fields.map((row) => [humanize(row.key), row.complete, row.missing, row.percentage]));
   lines.push(csvRow(['Overall CRM quality score', report.dataQuality.score]));

@@ -442,11 +442,12 @@ export function Dashboard() {
             <div className="sdr-priority-table">
               <div className="sdr-priority-header"><span>Priority</span><span>Contact</span><span>Company</span><span>Country</span><span>Owner</span><span>Lead status</span><span>Phone</span></div>
               {(drilldown?.results ?? []).map((row, index) => {
-                const properties = row.properties ?? {};
+                const rawProperties = row.properties ?? {};
+                const properties = row.displayProperties ?? rawProperties;
                 const name = [properties.firstname, properties.lastname].filter(Boolean).join(' ') || `Contact ${row.id}`;
-                const owner = leaderboard.find((item: OwnerActivityDatum) => String(item.owner?.id) === String(properties.hubspot_owner_id))?.owner;
+                const owner = leaderboard.find((item: OwnerActivityDatum) => String(item.owner?.id) === String(rawProperties.hubspot_owner_id))?.owner;
                 const hubspotUrl = portalId ? `https://app.hubspot.com/contacts/${portalId}/contact/${row.id}` : null;
-                return <article key={row.id}><span className="sdr-priority-number">{String(drillOffset + index + 1).padStart(2, '0')}</span><span className="sdr-contact-cell">{hubspotUrl ? <a href={hubspotUrl} target="_blank" rel="noreferrer">{name}</a> : <strong>{name}</strong>}<small>{properties.jobtitle || properties.email || `HubSpot ID ${row.id}`}</small></span><span>{properties.company || '—'}</span><span>{properties.country || '—'}</span><span>{owner?.name || properties.hubspot_owner_id || 'Unassigned'}</span><span><i>{humanize(properties.hs_lead_status || properties.lifecyclestage)}</i></span><span>{properties.phone || properties.mobilephone || '—'}</span></article>;
+                return <article key={row.id}><span className="sdr-priority-number">{String(drillOffset + index + 1).padStart(2, '0')}</span><span className="sdr-contact-cell">{hubspotUrl ? <a href={hubspotUrl} target="_blank" rel="noreferrer">{name}</a> : <strong>{name}</strong>}<small>{properties.jobtitle || properties.email || `HubSpot ID ${row.id}`}</small></span><span>{properties.company || '—'}</span><span>{properties.country || '—'}</span><span>{owner?.name || properties.hubspot_owner_id || 'Unassigned'}</span><span><i>{properties.hs_lead_status || properties.lifecyclestage || 'Unknown'}</i></span><span>{properties.phone || properties.mobilephone || '—'}</span></article>;
               })}
               {!drilldown?.results.length ? <div className="sdr-table-empty">No contacts currently match the priority workspace.</div> : null}
             </div>

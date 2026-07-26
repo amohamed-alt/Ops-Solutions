@@ -162,7 +162,7 @@ export function ConversionFunnelChart({ rows, onSelect }: { rows: FunnelDatum[];
 
 export function LeadStatusBars({ rows, onSelect }: { rows: StatusDatum[]; onSelect?: (datum: StatusDatum) => void }) {
   if (!rows.length) return <EmptyChart message="Lead status values will appear after contact synchronization." />;
-  const data = rows.slice(0, 10).map((row) => ({ ...row, name: humanize(row.key) }));
+  const data = rows.slice(0, 10).map((row) => ({ ...row, name: row.label || humanize(row.key) }));
   return (
     <ResponsiveContainer width="100%" height={Math.max(290, data.length * 42 + 50)}>
       <BarChart data={data} layout="vertical" margin={{ left: 8, right: 28, top: 8, bottom: 4 }}>

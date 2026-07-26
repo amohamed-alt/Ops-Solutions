@@ -23,6 +23,7 @@ export interface FunnelDatum {
 
 export interface StatusDatum {
   key: string;
+  label?: string;
   value: number;
 }
 
@@ -119,6 +120,7 @@ export interface WorkspaceState {
 export interface PriorityLead {
   id: string;
   properties: Record<string, string | undefined>;
+  displayProperties?: Record<string, string | undefined>;
   hubspotCreatedAt?: string | null;
   hubspotUpdatedAt?: string | null;
   syncedAt?: string | null;
@@ -128,6 +130,7 @@ export interface PriorityDrilldown {
   key: string;
   objectType: string;
   columns?: string[];
+  propertyLabels?: Record<string, string>;
   limit: number;
   offset: number;
   fallback?: boolean;

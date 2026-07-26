@@ -106,6 +106,11 @@ test('accepts partial rename and default updates', () => {
   assert.throws(() => normalizeSavedView({}, { partial: true }), /at least one/);
 });
 
+test('accepts contact and company intelligence dashboard sections', () => {
+  assert.equal(normalizeSavedView({ name: 'Contacts', section: 'crm-contacts' }).section, 'crm-contacts');
+  assert.equal(normalizeSavedView({ name: 'Companies', section: 'crm-companies' }).section, 'crm-companies');
+});
+
 test('lists views with both workspace and user isolation', async () => {
   let captured;
   const result = await listSavedViews({

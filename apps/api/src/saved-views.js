@@ -12,7 +12,16 @@ const DATE_PRESETS = new Set([
   'custom'
 ]);
 
-const SECTIONS = new Set(['overview', 'activity', 'pipeline', 'sources', 'team', 'quality']);
+const SECTIONS = new Set([
+  'overview',
+  'crm-contacts',
+  'crm-companies',
+  'activity',
+  'pipeline',
+  'sources',
+  'team',
+  'quality'
+]);
 const FILTER_KEYS = Object.freeze(['from', 'to', 'ownerId', 'country', 'pipelineId', 'stageId', 'leadSource']);
 const VIEW_NAME_MAX_LENGTH = 100;
 const FILTER_VALUE_MAX_LENGTH = 240;
