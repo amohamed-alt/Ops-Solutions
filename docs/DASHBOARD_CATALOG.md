@@ -39,17 +39,22 @@ All customer dashboards:
 
 The revenue command center includes:
 
+- a progressively loaded management brief so the core dashboard stays fast while operating intelligence compiles;
+- role-specific Executive, Manager, SDR and RevOps decision signals;
 - portfolio contacts and new contacts;
 - calls, connected calls and connection rate;
 - meetings booked, completed and no-show metrics;
 - open deals, open pipeline, won deals and won revenue;
-- closing-soon pipeline and revenue risk;
+- pipeline value at risk, risk percentage, overdue-close value and closing-soon value;
+- contract-to-cash milestone values for Signed Contract, Booked and Cashing stages;
 - overdue tasks, due-today tasks and records without a next activity;
 - lead source and country performance;
-- owner performance;
+- owner performance with owner-scoped activity drill-downs;
 - Rank/Tier or Lead Quality funnel when an approved semantic mapping exists;
 - commercial milestones and retention readiness;
 - data quality, mapping health and synchronization health.
+
+Pipeline stages, acquisition sources, countries, owners, KPI cards and action queues open tenant-scoped record drawers. Supported standard records link directly to their HubSpot record. Currency, locale, timezone, accent color and workspace logo are loaded from workspace preferences.
 
 Missing customer-specific semantic mappings return an explicit configuration-required state instead of guessing a property.
 

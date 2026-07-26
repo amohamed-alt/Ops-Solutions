@@ -28,7 +28,7 @@ jobs:
         working-directory: apps/api
         run: |
           set -Eeuo pipefail
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           for file in src/*.js src/templates/*.js test/*.js; do node --check "$file"; done
           npm test > api-test.log 2>&1 || { tail -n 180 api-test.log; exit 1; }
 
@@ -45,7 +45,7 @@ jobs:
         working-directory: apps/worker
         run: |
           set -Eeuo pipefail
-          npm install --no-audit --no-fund
+          npm ci --no-audit --no-fund
           for file in src/*.js test/*.js; do node --check "$file"; done
           npm test
 
@@ -85,8 +85,9 @@ jobs:
           NEXT_TELEMETRY_DISABLED: 1
         run: |
           set -Eeuo pipefail
-          npm install --no-audit --no-fund
-          node --test test/*.test.js > web-test.log 2>&1 || { tail -n 200 web-test.log; exit 1; }
+          npm ci --no-audit --no-fund
+          npm test > web-test.log 2>&1 || { tail -n 200 web-test.log; exit 1; }
+          npm run typecheck > web-typecheck.log 2>&1 || { tail -n 200 web-typecheck.log; exit 1; }
           npm run build > web-build.log 2>&1 || { tail -n 200 web-build.log; exit 1; }
 
       - name: Print web test diagnostics
@@ -106,6 +107,7 @@ jobs:
           name: web-diagnostics-${{ github.run_id }}
           path: |
             apps/web/web-test.log
+            apps/web/web-typecheck.log
             apps/web/web-build.log
           if-no-files-found: ignore
           retention-days: 7

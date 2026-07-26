@@ -9,11 +9,12 @@
   "scripts": {
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p 3000",
+    "test": "node --test test/*.test.js test/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
-    "next": "16.2.11",
+    "next": "16.2.12",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "recharts": "3.9.2"
@@ -23,5 +24,9 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "typescript": "^5.9.0"
+  },
+  "overrides": {
+    "postcss": "8.5.23",
+    "sharp": "0.35.3"
   }
 }

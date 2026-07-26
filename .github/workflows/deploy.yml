@@ -14,8 +14,51 @@ permissions:
   contents: read
 
 jobs:
+  quality-gate:
+    name: Validate release candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Validate API
+        working-directory: apps/api
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm test
+          node ../../scripts/npm-audit-with-retry.mjs --omit=dev --audit-level=high
+
+      - name: Validate worker
+        working-directory: apps/worker
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm test
+          node ../../scripts/npm-audit-with-retry.mjs --omit=dev --audit-level=high
+
+      - name: Validate web application
+        working-directory: apps/web
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm test
+          npm run typecheck
+          npm run build
+          node ../../scripts/npm-audit-with-retry.mjs --omit=dev --audit-level=high
+
   deploy:
     name: Deploy production
+    needs: quality-gate
     runs-on: ubuntu-latest
     timeout-minutes: 40
 

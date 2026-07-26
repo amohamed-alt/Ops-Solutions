@@ -20,6 +20,8 @@ Production multi-tenant HubSpot analytics SaaS that discovers each customer's CR
 
 - Executive, Sales Manager, SDR and RevOps dashboard modes
 - Progressive report loading, bounded caching and sync-driven cache invalidation
+- Decision-intelligence brief with pipeline risk value, closing-soon exposure and role-specific action signals
+- Contract-to-cash milestones, SDR execution rates and mapped Lead Quality funnel
 - Revenue, pipeline, activity, source, market, owner and data-quality reports
 - Object dashboards for Contacts, Companies, Deals, Calls, Meetings, Tasks and Tickets
 - Dynamic reporting for Leads, Products, Line Items, Quotes, Email engagements and discovered custom objects

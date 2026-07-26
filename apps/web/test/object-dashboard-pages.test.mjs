@@ -7,7 +7,7 @@ const routePath = new URL('../app/dashboard/objects/[objectType]/page.tsx', impo
 const indexPath = new URL('../app/dashboard/objects/page.tsx', import.meta.url);
 const sectionPath = new URL('../app/dashboard/[section]/page.tsx', import.meta.url);
 const dashboardPath = new URL('../app/dashboard/page.js', import.meta.url);
-const navigationPath = new URL('../components/sdr/ObjectRouteNavigationEnhancer.tsx', import.meta.url);
+const commandCenterPath = new URL('../components/sdr/CommandCenterV2.tsx', import.meta.url);
 
 test('object dashboards expose every supported standard HubSpot object as a stable route', async () => {
   const component = await readFile(componentPath, 'utf8');
@@ -37,13 +37,16 @@ test('standalone object dashboards preserve tenant scoping and live HubSpot dril
 
 test('command center links to the object pages without removing the embedded report pack', async () => {
   const dashboard = await readFile(dashboardPath, 'utf8');
-  const navigation = await readFile(navigationPath, 'utf8');
+  const commandCenter = await readFile(commandCenterPath, 'utf8');
 
-  assert.match(dashboard, /ObjectIntelligenceWorkspace/);
-  assert.match(dashboard, /ObjectRouteNavigationEnhancer/);
-  assert.match(dashboard, /object-route-navigation\.css/);
-  assert.match(navigation, /dataset\.objectRouteGroup/);
-  assert.match(navigation, /\/dashboard\/objects\/\$\{type\}/);
+  assert.match(dashboard, /CommandCenterV2/);
+  assert.match(commandCenter, /\/dashboard\/all-objects/);
+  assert.match(commandCenter, /\/dashboard\/objects\/contacts/);
+  assert.match(commandCenter, /\/dashboard\/objects\/companies/);
+  assert.match(commandCenter, /\/dashboard\/objects\/deals/);
+  assert.match(commandCenter, /\/dashboard\/objects\/calls/);
+  assert.match(commandCenter, /\/dashboard\/objects\/meetings/);
+  assert.match(commandCenter, /\/dashboard\/objects\/tasks/);
 });
 
 test('business dashboard aliases remain stable and route to the existing command-center sections', async () => {
