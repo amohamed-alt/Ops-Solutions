@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  BarChart3,
   BriefcaseBusiness,
   Building2,
   ChevronRight,
@@ -12,7 +11,6 @@ import {
   Gauge,
   Settings2,
   Target,
-  UsersRound,
   type LucideIcon
 } from 'lucide-react';
 
