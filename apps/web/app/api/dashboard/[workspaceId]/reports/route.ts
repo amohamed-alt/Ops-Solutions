@@ -25,10 +25,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const incoming = new URL(request.url);
     const target = new URL(`${API_URL}/api/v1/workspaces/${encodeURIComponent(workspaceId)}/analytics/revenue`);
     for (const [key, value] of incoming.searchParams.entries()) target.searchParams.set(key, value);
+    if (!target.searchParams.has('scope')) target.searchParams.set('scope', 'core');
     const response = await fetch(target, {
       headers: operationsAccess.ok ? adminHeaders() : internalAdminHeaders(),
       cache: 'no-store',
-      signal: AbortSignal.timeout(reportTimeoutMs(incoming.searchParams.get('scope')))
+      signal: AbortSignal.timeout(reportTimeoutMs(target.searchParams.get('scope')))
     });
     const payload = await response.json();
     return NextResponse.json(payload, { status: response.status });
