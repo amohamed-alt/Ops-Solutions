@@ -10,6 +10,7 @@ export const metadata = {
 
 const labelAwareEnabled = process.env.LABEL_AWARE_COMMAND_CENTER === 'true';
 
+// CommandCenterV2 remains the stable production default inside DashboardCommandCenterRollout.
 export default function DashboardPage() {
   return (
     <>
