@@ -1,8 +1,27 @@
+const ARABIC_KEYWORD_HINTS = {
+  lead_quality: ['جودة العميل المحتمل', 'تصنيف العميل المحتمل', 'أولوية العميل', 'العميل الساخن', 'العميل الدافئ', 'العميل البارد', 'الفئة', 'الترتيب'],
+  lead_source: ['مصدر العميل المحتمل', 'مصدر العميل', 'مصدر الاستحواذ', 'القناة', 'الحملة', 'مصدر الحملة'],
+  market: ['السوق', 'المنطقة', 'الإقليم', 'النطاق الجغرافي', 'المنطقة التجارية'],
+  country: ['الدولة', 'البلد', 'رمز الدولة', 'دولة السوق'],
+  product: ['المنتج', 'الخدمة', 'الباقة', 'الحل', 'الخطة', 'العرض'],
+  customer_segment: ['شريحة العملاء', 'شريحة العميل', 'تصنيف الحساب', 'فئة العميل', 'حجم الشركة'],
+  account_status: ['حالة الحساب', 'حالة العميل', 'حالة الشركة', 'نشط', 'غير نشط', 'متوقف', 'محتمل'],
+  meeting_outcome: ['نتيجة الاجتماع', 'حالة الاجتماع', 'لم يحضر', 'اكتمل الاجتماع'],
+  call_outcome: ['نتيجة المكالمة', 'حالة المكالمة', 'تم الاتصال', 'رقم خاطئ', 'لم يرد'],
+  renewal_date: ['تاريخ التجديد', 'موعد التجديد', 'تجديد العقد', 'تجديد الاشتراك', 'تاريخ الانتهاء', 'شهر التجديد'],
+  revenue: ['الإيراد', 'الإيرادات', 'القيمة', 'قيمة العقد', 'الميزانية', 'المبلغ', 'الإيراد السنوي']
+};
+
 function normalize(value) {
   return String(value ?? '')
     .toLowerCase()
+    .normalize('NFKC')
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[إأآٱ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
     .replace(/[_-]+/g, ' ')
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^a-z0-9\u0600-\u06FF\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -24,22 +43,34 @@ function scoreOptionPattern(semanticKey, values) {
       /tier 1.*tier 2.*tier 3/,
       /hot.*warm.*cold/,
       /high.*medium.*low/,
-      /priority 1.*priority 2/
+      /priority 1.*priority 2/,
+      /ساخن.*دافئ.*بارد/,
+      /عالي.*متوسط.*منخفض/,
+      /اولوية 1.*اولوية 2/
     ],
     account_status: [
       /active.*churned/,
       /customer.*prospect/,
-      /active.*inactive/
+      /active.*inactive/,
+      /نشط.*متوقف/,
+      /عميل.*محتمل/,
+      /نشط.*غير نشط/
     ],
     meeting_outcome: [
       /completed.*no show/,
       /scheduled.*completed/,
-      /rescheduled.*cancelled/
+      /rescheduled.*cancelled/,
+      /مكتمل.*لم يحضر/,
+      /مجدول.*مكتمل/,
+      /اعاده جدوله.*ملغي/
     ],
     call_outcome: [
       /connected.*wrong number/,
       /answered.*no answer/,
-      /busy.*voicemail/
+      /busy.*voicemail/,
+      /تم الاتصال.*رقم خاطئ/,
+      /تم الرد.*لم يرد/,
+      /مشغول.*بريد صوتي/
     ]
   };
 
@@ -58,7 +89,10 @@ function scoreProperty(field, property) {
   ].filter(Boolean).join(' '));
   const normalizedName = normalize(property.property_name);
   const normalizedLabel = normalize(property.label);
-  const keywords = Array.isArray(field.keyword_hints) ? field.keyword_hints : [];
+  const keywords = [
+    ...(Array.isArray(field.keyword_hints) ? field.keyword_hints : []),
+    ...(ARABIC_KEYWORD_HINTS[field.semantic_key] ?? [])
+  ];
   const expectedTypes = Array.isArray(field.expected_types) ? field.expected_types : [];
   const reasons = [];
   let score = 0;
@@ -148,9 +182,9 @@ export function inferValueMapping(semanticKey, options) {
 
   if (semanticKey === 'lead_quality') {
     const classifiers = [
-      { target: 'highest', patterns: [/\brank a\b/, /\ba\b/, /tier 1/, /hot/, /high/, /priority 1/, /platinum/] },
-      { target: 'medium', patterns: [/\brank b\b/, /\bb\b/, /tier 2/, /warm/, /medium/, /priority 2/, /gold/] },
-      { target: 'lowest', patterns: [/\brank c\b/, /\bc\b/, /tier 3/, /cold/, /low/, /priority 3/, /silver/] }
+      { target: 'highest', patterns: [/\brank a\b/, /\ba\b/, /tier 1/, /hot/, /high/, /priority 1/, /platinum/, /ساخن/, /عالي/, /اولوية 1/, /بلاتيني/] },
+      { target: 'medium', patterns: [/\brank b\b/, /\bb\b/, /tier 2/, /warm/, /medium/, /priority 2/, /gold/, /دافئ/, /متوسط/, /اولوية 2/, /ذهبي/] },
+      { target: 'lowest', patterns: [/\brank c\b/, /\bc\b/, /tier 3/, /cold/, /low/, /priority 3/, /silver/, /بارد/, /منخفض/, /اولوية 3/, /فضي/] }
     ];
 
     for (const option of normalizedOptions) {
@@ -161,9 +195,9 @@ export function inferValueMapping(semanticKey, options) {
 
   if (semanticKey === 'account_status') {
     for (const option of normalizedOptions) {
-      if (/active|customer|live|renewed/.test(option.label)) output[option.value] = 'active';
-      else if (/churn|lost|cancel|inactive/.test(option.label)) output[option.value] = 'inactive';
-      else if (/prospect|lead|potential/.test(option.label)) output[option.value] = 'prospect';
+      if (/active|customer|live|renewed|نشط|عميل|مجدد/.test(option.label)) output[option.value] = 'active';
+      else if (/churn|lost|cancel|inactive|متوقف|مفقود|ملغي|غير نشط/.test(option.label)) output[option.value] = 'inactive';
+      else if (/prospect|lead|potential|محتمل|فرصه|عميل محتمل/.test(option.label)) output[option.value] = 'prospect';
     }
   }
 
