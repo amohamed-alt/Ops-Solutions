@@ -37,6 +37,16 @@ test('the rollout wrapper defaults to stable and exposes recovery actions for th
   assert.match(component, /aria-live="assertive"/);
 });
 
+test('saved view delete failures do not remove views optimistically', async () => {
+  const component = await readFile(rolloutPath, 'utf8');
+  assert.match(component, /SAVED_VIEW_DELETE_PATTERN/);
+  assert.match(component, /method !== 'DELETE'/);
+  assert.match(component, /!response\.ok/);
+  assert.match(component, /throw error/);
+  assert.match(component, /Saved view was not deleted\./);
+  assert.match(component, /saved-view-delete-guard/);
+});
+
 test('the label-aware command center remains available for controlled rollout', async () => {
   const component = await readFile(labelAwareCommandCenterPath, 'utf8');
 
