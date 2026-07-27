@@ -181,7 +181,7 @@ export default async function HomePage() {
         </div>
 
         <aside className="panel action-panel">
-          <span className="section-label">RECOMMENDED FLOW</span>
+          <span className="section-label">Recommended flow</span>
           <h2>What to do from here</h2>
           <div className={styles.flowList}>
             {flows.map((flow) => (
