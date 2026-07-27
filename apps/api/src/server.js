@@ -22,6 +22,7 @@ import { ensureScheduledReportSchema, registerScheduledReportRoutes } from './sc
 import { inferValueMapping } from './semantic.js';
 import { registerCustomerReportExportRoutes } from './report-exports.js';
 import { registerSavedViewRoutes } from './saved-views.js';
+import { ensureOpsActionsSchema, registerOpsActionsRoutes } from './ops-actions.js';
 import { registerSyncOperationsRoutes } from './sync-operations.js';
 
 assertRuntimeConfiguration();
@@ -160,7 +161,8 @@ app.get('/api/v1/platform', async () => ({
     'customer mapping wizard',
     'mapping version history and rollback',
     'initial and incremental CRM synchronization',
-    'sync health and manual recovery controls'
+    'sync health and manual recovery controls',
+    'guarded HubSpot write actions'
   ],
   hubspot: getHubSpotConfigurationStatus()
 }));
@@ -179,6 +181,12 @@ registerSavedViewRoutes(app, {
   postgres,
   withTransaction,
   requireViewer: customerAuth.requireViewer,
+  writeAudit: customerAuth.writeAudit
+});
+
+registerOpsActionsRoutes(app, {
+  postgres,
+  requireAdmin: customerAuth.requireAdmin,
   writeAudit: customerAuth.writeAudit
 });
 
@@ -549,6 +557,7 @@ try {
   await postgres.query('SELECT 1');
   await runMigrations({ throughVersion: 1 });
   await ensureCustomerAuthSchema(postgres);
+  await ensureOpsActionsSchema(postgres);
   await runMigrations();
   await ensureMappingWizardSchema(postgres);
   await ensureScheduledReportSchema(postgres);
