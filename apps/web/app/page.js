@@ -31,24 +31,73 @@ async function getPlatformStatus() {
 
 const modules = [
   {
-    title: 'HubSpot Connection',
-    description: 'OAuth authorization, encrypted tokens and scope-aware portal connections.',
-    status: 'Built'
+    title: 'Command Dashboard',
+    description: 'Stable HubSpot revenue dashboard, sync status, drilldowns, saved views, exports and guarded enhanced rollout.',
+    status: 'Live',
+    href: '/dashboard'
   },
   {
-    title: 'Portal Discovery',
-    description: 'Properties, owners, pipelines, stages and optional custom objects.',
-    status: 'Built'
+    title: 'Analytics Builder',
+    description: 'Report Builder, Dashboard Builder and recurring email schedules built on saved reporting views.',
+    status: 'Live',
+    href: '/builder'
   },
   {
-    title: 'Semantic Mapping',
-    description: 'Map Rank, Tier and custom properties into one reusable analytics model.',
-    status: 'Built'
+    title: 'Ops Actions',
+    description: 'Admin-only guarded HubSpot write actions: create tasks, update lifecycle stage and mark records as reviewed.',
+    status: 'Live · reconnect required for writes',
+    href: '/settings/actions'
   },
   {
-    title: 'Dashboard Engine',
-    description: 'Reusable metrics, filters, drill-down and smart templates.',
-    status: 'Next'
+    title: 'Billing & Lifecycle',
+    description: 'Plan packaging, commercial readiness, uninstall foundation and export-first data lifecycle guardrails.',
+    status: 'Foundation · provider not connected',
+    href: '/settings/billing'
+  },
+  {
+    title: 'Setup Center',
+    description: 'Workspace onboarding, HubSpot OAuth, portal discovery, mapping and sync preparation.',
+    status: 'Live',
+    href: '/setup'
+  }
+];
+
+const readiness = [
+  { label: 'Production dashboard restored', state: 'Done' },
+  { label: 'Builder and scheduled emails visible', state: 'Done' },
+  { label: 'Guarded CRM write actions visible', state: 'Done' },
+  { label: 'Product pages connected by navigation flow', state: 'Done' },
+  { label: 'HubSpot write scopes on old workspaces', state: 'Needs reconnect' },
+  { label: 'Stripe/Paddle live payments', state: 'Needs provider setup' },
+  { label: 'Automated uninstall and hard deletion', state: 'Needs approval workflow' },
+  { label: 'Timezone and webhook hardening', state: 'Next engineering slice' }
+];
+
+const flows = [
+  {
+    step: '1',
+    title: 'Connect and verify',
+    body: 'Start in Setup to confirm HubSpot OAuth, mapping and sync health.'
+  },
+  {
+    step: '2',
+    title: 'Read the business',
+    body: 'Use Dashboard to read KPIs, drilldowns and data freshness before taking action.'
+  },
+  {
+    step: '3',
+    title: 'Build repeatable reporting',
+    body: 'Use Builder to create report definitions, dashboards and scheduled executive emails.'
+  },
+  {
+    step: '4',
+    title: 'Act with control',
+    body: 'Use Ops Actions only after reconnecting write scopes and validating the CRM record.'
+  },
+  {
+    step: '5',
+    title: 'Package and sell',
+    body: 'Use Billing to position plans, lifecycle guardrails and the remaining provider setup.'
   }
 ];
 
@@ -60,12 +109,16 @@ export default async function HomePage() {
     <main className="page-shell">
       <section className="hero">
         <div>
-          <div className="eyebrow">OPS SOLUTIONS · HUBSPOT INTELLIGENCE</div>
-          <h1>Analytics that adapts to every HubSpot portal.</h1>
+          <div className="eyebrow">OPS SOLUTIONS · LAUNCH READINESS</div>
+          <h1>One connected HubSpot revenue intelligence product.</h1>
           <p className="hero-copy">
-            The platform can securely connect a portal, inspect its custom CRM structure and
-            recommend how each property should map into reusable dashboard concepts.
+            The project now has a stable command dashboard, builder, scheduled email reporting,
+            guarded write actions, commercial packaging and a clear flow between every product area.
           </p>
+          <div className={styles.heroActions}>
+            <Link className={styles.primaryLink} href="/dashboard">Open dashboard</Link>
+            <Link className={styles.secondaryLink} href="/builder">Open builder</Link>
+          </div>
         </div>
 
         <div className={`status-card ${platform.connected ? 'healthy' : 'unhealthy'}`}>
@@ -81,26 +134,26 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="metrics-grid" aria-label="Platform status">
+      <section className="metrics-grid" aria-label="Product entry points">
         <article className="metric-card">
-          <span>Connection</span>
-          <strong>OAuth</strong>
-          <small>Encrypted refreshable tokens</small>
+          <span>Core</span>
+          <strong>Dashboard</strong>
+          <small>KPIs, drilldowns and sync status</small>
         </article>
         <article className="metric-card">
-          <span>Discovery</span>
-          <strong>CRM Schema</strong>
-          <small>Properties, owners and pipelines</small>
+          <span>Builder</span>
+          <strong>Reports</strong>
+          <small>Dashboards and email schedules</small>
         </article>
         <article className="metric-card">
-          <span>Intelligence</span>
-          <strong>Semantic</strong>
-          <small>Rank, Tier and custom fields</small>
+          <span>Actions</span>
+          <strong>Guarded write</strong>
+          <small>Tasks, lifecycle and review markers</small>
         </article>
         <article className="metric-card">
-          <span>Persistence</span>
-          <strong>PostgreSQL</strong>
-          <small>Tenant-isolated configuration</small>
+          <span>Commercial</span>
+          <strong>Plans</strong>
+          <small>Billing and lifecycle readiness</small>
         </article>
       </section>
 
@@ -108,40 +161,58 @@ export default async function HomePage() {
         <div className="panel">
           <div className="panel-heading">
             <div>
-              <span className="section-label">PRODUCT MODULES</span>
-              <h2>Connection and interpretation layer</h2>
+              <span className="section-label">PRODUCT MAP</span>
+              <h2>Where every feature lives</h2>
             </div>
-            <span className="pill">Foundation v0.2</span>
+            <span className="pill">Launch view</span>
           </div>
 
           <div className="module-list">
             {modules.map((module) => (
-              <article className="module-row" key={module.title}>
+              <Link className={styles.moduleLink} href={module.href} key={module.title}>
                 <div>
                   <h3>{module.title}</h3>
                   <p>{module.description}</p>
                 </div>
                 <span>{module.status}</span>
-              </article>
+              </Link>
             ))}
           </div>
         </div>
 
         <aside className="panel action-panel">
-          <span className="section-label">SETUP CENTER</span>
-          <h2>Prepare the first HubSpot portal</h2>
-          <p>
-            Review configuration readiness, create the first workspace and follow the exact
-            OAuth and discovery sequence.
-          </p>
-          <ol>
-            <li>Configure production secrets</li>
-            <li>Create the HubSpot OAuth app</li>
-            <li>Connect and discover the portal</li>
-            <li>Approve semantic mappings</li>
-          </ol>
-          <Link className={styles.primaryLink} href="/setup">Open setup center</Link>
+          <span className="section-label">RECOMMENDED FLOW</span>
+          <h2>What to do from here</h2>
+          <div className={styles.flowList}>
+            {flows.map((flow) => (
+              <article key={flow.step} className={styles.flowStep}>
+                <strong>{flow.step}</strong>
+                <div>
+                  <h3>{flow.title}</h3>
+                  <p>{flow.body}</p>
+                </div>
+              </article>
+            ))}
+          </div>
         </aside>
+      </section>
+
+      <section className="panel">
+        <div className="panel-heading">
+          <div>
+            <span className="section-label">READINESS CHECKLIST</span>
+            <h2>Done vs what still needs external setup</h2>
+          </div>
+          <span className="pill">Truthful launch state</span>
+        </div>
+        <div className={styles.readinessGrid}>
+          {readiness.map((item) => (
+            <article key={item.label} className={styles.readinessCard}>
+              <strong>{item.label}</strong>
+              <span>{item.state}</span>
+            </article>
+          ))}
+        </div>
       </section>
     </main>
   );
