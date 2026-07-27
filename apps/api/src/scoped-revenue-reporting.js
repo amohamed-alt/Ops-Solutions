@@ -6,6 +6,12 @@ import {
   getRevenueDrilldown
 } from './agreed-reporting.js';
 import {
+  decoratePropertyBag,
+  loadPropertyPresentation,
+  loadReferenceLabels,
+  propertyDescriptor
+} from './crm-presentation.js';
+import {
   buildObjectReportingOverview,
   buildObjectReportingDetail,
   getObjectReportingDrilldown
@@ -24,6 +30,15 @@ import {
 
 const REPORT_SCOPES = new Set(['core', 'operating', 'full']);
 const reportCache = createReportCache({ maxEntries: 1000 });
+
+const DRILLDOWN_OBJECT_COLUMNS = Object.freeze({
+  contacts: ['firstname', 'lastname', 'email', 'phone', 'mobilephone', 'company', 'country', 'hubspot_owner_id', 'hs_lead_status', 'lifecyclestage', 'notes_last_contacted'],
+  companies: ['name', 'domain', 'phone', 'country', 'industry', 'numberofemployees', 'annualrevenue', 'lifecyclestage', 'hubspot_owner_id', 'createdate'],
+  deals: ['dealname', 'amount', 'pipeline', 'dealstage', 'closedate', 'hubspot_owner_id', 'hs_next_activity_date', 'hs_is_closed', 'hs_is_closed_won'],
+  tasks: ['hs_task_subject', 'hs_task_status', 'hs_task_priority', 'hs_timestamp', 'hubspot_owner_id', 'hs_activity_assigned_to_user_id'],
+  calls: ['hs_call_title', 'hs_call_status', 'hs_call_disposition', 'hs_timestamp', 'hubspot_owner_id', 'hs_activity_assigned_to_user_id'],
+  meetings: ['hs_meeting_title', 'hs_meeting_outcome', 'hs_meeting_start_time', 'hs_timestamp', 'hubspot_owner_id', 'hs_activity_assigned_to_user_id']
+});
 
 const TTL_MS = Object.freeze({
   revenueCore: 30_000,
@@ -58,6 +73,49 @@ async function buildScopedRevenueReport(postgres, workspaceId, query = {}) {
     filters: report.filters,
     operatingReports: report.operatingReports,
     drilldowns: report.drilldowns
+  };
+}
+
+export async function decorateRevenueDrilldownContract(postgres, workspaceId, drilldown) {
+  if (!drilldown || !drilldown.objectType || !Array.isArray(drilldown.results)) {
+    return drilldown;
+  }
+
+  const objectType = String(drilldown.objectType);
+  const columns = Array.isArray(drilldown.columns) && drilldown.columns.length
+    ? drilldown.columns
+    : (DRILLDOWN_OBJECT_COLUMNS[objectType] ?? []);
+
+  const [presentation, references] = await Promise.all([
+    loadPropertyPresentation(postgres, workspaceId, [objectType]),
+    loadReferenceLabels(postgres, workspaceId)
+  ]);
+
+  const propertyLabels = {
+    ...Object.fromEntries(columns.map((propertyName) => [
+      propertyName,
+      propertyDescriptor(presentation, objectType, propertyName).label
+    ])),
+    ...(drilldown.propertyLabels ?? {})
+  };
+
+  return {
+    ...drilldown,
+    columns,
+    propertyLabels,
+    results: drilldown.results.map((row) => {
+      const properties = row.properties ?? {};
+      return {
+        ...row,
+        properties,
+        displayProperties: row.displayProperties ?? decoratePropertyBag(
+          presentation,
+          objectType,
+          properties,
+          references
+        )
+      };
+    })
   };
 }
 
@@ -102,7 +160,11 @@ export function registerRevenueReportingRoutes(app, { postgres, requireAdmin, re
       query: request.query ?? {},
       parts: [reportKey],
       ttlMs: TTL_MS.revenueDrilldown,
-      loader: () => getRevenueDrilldown(postgres, workspace.id, reportKey, request.query ?? {})
+      loader: async () => decorateRevenueDrilldownContract(
+        postgres,
+        workspace.id,
+        await getRevenueDrilldown(postgres, workspace.id, reportKey, request.query ?? {})
+      )
     });
     return { workspaceId: workspace.id, drilldown };
   });
