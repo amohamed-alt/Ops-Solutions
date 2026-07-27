@@ -18,3 +18,127 @@
   transform: translateY(-2px);
   box-shadow: 0 14px 34px rgba(69, 227, 143, 0.2);
 }
+
+.secondaryLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  margin-top: 26px;
+  padding: 0 18px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 12px;
+  color: #dbeafe;
+  background: rgba(15, 23, 42, 0.78);
+  font-weight: 800;
+  text-decoration: none;
+  transition: transform 160ms ease, border-color 160ms ease;
+}
+
+.secondaryLink:hover {
+  transform: translateY(-2px);
+  border-color: rgba(69, 227, 143, 0.38);
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.moduleLink {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 18px 0;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.moduleLink:hover h3 {
+  color: #45e38f;
+}
+
+.moduleLink h3 {
+  margin: 0 0 6px;
+  transition: color 160ms ease;
+}
+
+.moduleLink p {
+  margin: 0;
+  color: #94a3b8;
+}
+
+.moduleLink span {
+  max-width: 180px;
+  text-align: right;
+  color: #45e38f;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.flowList {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.flowStep {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.flowStep > strong {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(69, 227, 143, 0.12);
+  color: #45e38f;
+}
+
+.flowStep h3 {
+  margin: 0 0 4px;
+}
+
+.flowStep p {
+  margin: 0;
+  color: #94a3b8;
+}
+
+.readinessGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.readinessCard {
+  padding: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.54);
+}
+
+.readinessCard strong,
+.readinessCard span {
+  display: block;
+}
+
+.readinessCard strong {
+  margin-bottom: 8px;
+}
+
+.readinessCard span {
+  color: #45e38f;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
