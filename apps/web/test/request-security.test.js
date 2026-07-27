@@ -12,6 +12,12 @@ import {
 const proxyPath = new URL('../proxy.ts', import.meta.url);
 const configPath = new URL('../next.config.mjs', import.meta.url);
 
+const privateApiMatchers = [
+  '/api/customer/:path*',
+  '/api/dashboard/:path*',
+  '/api/operations/:path*'
+];
+
 test('allows safe customer requests without an Origin header', () => {
   for (const method of ['GET', 'HEAD', 'OPTIONS']) {
     const result = evaluateCustomerRequestSecurity({ method, requestOrigin: 'https://ops.example.com' });
@@ -63,9 +69,11 @@ test('canonical origins reject credentials and unsupported protocols', () => {
   assert.equal(canonicalOrigin('not a url'), null);
 });
 
-test('Next proxy covers only customer API routes and emits correlation IDs', async () => {
+test('Next proxy covers every private web API and emits correlation IDs', async () => {
   const source = await readFile(proxyPath, 'utf8');
-  assert.match(source, /matcher: \['\/api\/customer\/:path\*'\]/);
+  for (const matcher of privateApiMatchers) {
+    assert.ok(source.includes(`'${matcher}'`), `${matcher} must be protected by the Next proxy`);
+  }
   assert.match(source, /request\.nextUrl\.origin/);
   assert.match(source, /sec-fetch-site/);
   assert.match(source, /x-request-id/);
@@ -75,11 +83,15 @@ test('Next proxy covers only customer API routes and emits correlation IDs', asy
 
 test('global web headers deny framing and disable sensitive browser capabilities', async () => {
   const source = await readFile(configPath, 'utf8');
+  assert.match(source, /Content-Security-Policy/);
+  assert.match(source, /frame-ancestors 'none'/);
   assert.match(source, /X-Frame-Options/);
   assert.match(source, /DENY/);
   assert.match(source, /Strict-Transport-Security/);
   assert.match(source, /includeSubDomains; preload/);
   assert.match(source, /camera=\(\), microphone=\(\), geolocation=\(\)/);
-  assert.match(source, /source: '\/api\/customer\/:path\*'/);
+  for (const matcher of privateApiMatchers) {
+    assert.ok(source.includes(`source: '${matcher}'`), `${matcher} must receive private cache headers`);
+  }
   assert.match(source, /no-store, max-age=0/);
 });
