@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { ensureOpsActionsSchema, registerOpsActionsRoutes } from '../src/ops-actions.js';
+import {
+  ensureOpsActionsSchema,
+  getOpsActionsCapabilities,
+  registerOpsActionsRoutes
+} from '../src/ops-actions.js';
 
 test('ops actions schema creates review markers with tenant isolation', async () => {
   let schemaSql = '';
@@ -40,21 +44,17 @@ test('ops actions register admin-protected write routes', () => {
   assert.ok(routes.every((route) => route.options.preHandler === requireAdmin));
 });
 
-test('ops actions expose the requested write capability names', async () => {
-  const routes = [];
-  const app = { get: (path, options, handler) => routes.push({ path, handler }), post: () => undefined, patch: () => undefined };
-  registerOpsActionsRoutes(app, {
-    postgres: { async query() { return { rows: [], rowCount: 0 }; } },
-    requireAdmin: [],
-    writeAudit: async () => undefined
-  });
+test('ops actions expose the requested write capability names without database access', () => {
+  const disconnected = getOpsActionsCapabilities(null);
+  assert.equal(disconnected.can.createTask, false);
+  assert.equal(disconnected.can.updateLifecycleStage, false);
+  assert.equal(disconnected.can.markReviewed, true);
+  assert.deepEqual(disconnected.requiredScopes.createTask, ['crm.objects.tasks.write']);
+  assert.deepEqual(disconnected.requiredScopes.updateLifecycleStage, ['crm.objects.contacts.write']);
 
-  const capabilitiesRoute = routes.find((route) => route.path.endsWith('/capabilities'));
-  assert.ok(capabilitiesRoute);
-  const payload = await capabilitiesRoute.handler({ params: { workspaceId: 'missing-workspace' } });
-  assert.equal(payload.can.createTask, false);
-  assert.equal(payload.can.updateLifecycleStage, false);
-  assert.equal(payload.can.markReviewed, true);
-  assert.deepEqual(payload.requiredScopes.createTask, ['crm.objects.tasks.write']);
-  assert.deepEqual(payload.requiredScopes.updateLifecycleStage, ['crm.objects.contacts.write']);
+  const connected = getOpsActionsCapabilities({ scopes: ['crm.objects.tasks.write', 'crm.objects.contacts.write'] });
+  assert.equal(connected.connected, true);
+  assert.equal(connected.can.createTask, true);
+  assert.equal(connected.can.updateLifecycleStage, true);
+  assert.equal(connected.can.markReviewed, true);
 });
