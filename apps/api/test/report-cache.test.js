@@ -116,3 +116,29 @@ test('keeps the resolved cache bounded and supports workspace invalidation', asy
   cache.clearWorkspace('workspace-a');
   assert.equal(cache.stats().resolved, 1);
 });
+
+test('workspace invalidation never matches IDs embedded in report parts or query values', async () => {
+  const cache = createReportCache({ maxEntries: 10 });
+  let workspaceALoads = 0;
+  let workspaceBLoads = 0;
+  const workspaceAKey = reportCacheKey(
+    'report',
+    'workspace-a',
+    { comparisonWorkspace: 'workspace-b' },
+    ['workspace-b', 'contacts']
+  );
+  const workspaceBKey = reportCacheKey('report', 'workspace-b', {}, ['contacts']);
+
+  await cache.execute({ key: workspaceAKey, ttlMs: 30_000, query: {}, loader: async () => ++workspaceALoads });
+  await cache.execute({ key: workspaceBKey, ttlMs: 30_000, query: {}, loader: async () => ++workspaceBLoads });
+
+  cache.clearWorkspace('workspace-b');
+
+  const workspaceAResult = await cache.execute({ key: workspaceAKey, ttlMs: 30_000, query: {}, loader: async () => ++workspaceALoads });
+  const workspaceBResult = await cache.execute({ key: workspaceBKey, ttlMs: 30_000, query: {}, loader: async () => ++workspaceBLoads });
+
+  assert.equal(workspaceAResult.status, 'HIT');
+  assert.equal(workspaceBResult.status, 'MISS');
+  assert.equal(workspaceALoads, 1);
+  assert.equal(workspaceBLoads, 2);
+});
