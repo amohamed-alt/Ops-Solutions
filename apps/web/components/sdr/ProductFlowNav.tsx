@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { ArrowRight, Route } from 'lucide-react';
 
+import { PRODUCT_ROUTES, productFlowLabel } from './product-routes.js';
 import './command-center-v2.css';
 
 type ProductFlowStep = {
@@ -11,14 +12,6 @@ type ProductFlowStep = {
   description: string;
   badge?: string;
 };
-
-const productNav = [
-  { key: 'dashboard', label: 'Dashboard', href: '/dashboard', description: 'Read KPIs, drilldowns, and synced HubSpot analytics.' },
-  { key: 'builder', label: 'Builder', href: '/builder', description: 'Create reports, dashboards, and email schedules.' },
-  { key: 'actions', label: 'Ops Actions', href: '/settings/actions', description: 'Create tasks, update lifecycle, and review records.' },
-  { key: 'billing', label: 'Billing', href: '/settings/billing', description: 'Package plans, lifecycle, billing readiness, and deletion flow.' },
-  { key: 'setup', label: 'Setup', href: '/setup', description: 'Connect workspaces, HubSpot, mappings, and sync settings.' }
-];
 
 export function ProductFlowNav({
   current,
@@ -39,7 +32,7 @@ export function ProductFlowNav({
       </header>
       <div className="cc2-panel-body" style={{ display: 'grid', gap: 18 }}>
         <div className="cc2-grid two" aria-label="Main product routes">
-          {productNav.map((item) => {
+          {PRODUCT_ROUTES.map((item) => {
             const active = item.key === current;
             return (
               <Link
@@ -58,7 +51,7 @@ export function ProductFlowNav({
         </div>
 
         <div className="cc2-empty" style={{ textAlign: 'left' }}>
-          Recommended flow: Dashboard → Builder → Email schedule → Ops Actions → Billing/Data lifecycle.
+          {productFlowLabel()}
         </div>
 
         <div className="cc2-grid two" aria-label="Recommended next actions">
