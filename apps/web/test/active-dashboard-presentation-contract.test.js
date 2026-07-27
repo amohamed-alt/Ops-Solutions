@@ -47,6 +47,17 @@ test('saved view delete failures do not remove views optimistically', async () =
   assert.match(component, /saved-view-delete-guard/);
 });
 
+test('the dashboard shell shows explicit HubSpot sync status instead of relying on live wording', async () => {
+  const component = await readFile(rolloutPath, 'utf8');
+  assert.match(component, /SYNC_STATUS_REFRESH_MS/);
+  assert.match(component, /newest_record_sync/);
+  assert.match(component, /Synced from HubSpot/);
+  assert.match(component, /Data delayed/);
+  assert.match(component, /Sync status unavailable/);
+  assert.match(component, /dashboard-sync-status/);
+  assert.match(component, /aria-live="polite"/);
+});
+
 test('the label-aware command center remains available for controlled rollout', async () => {
   const component = await readFile(labelAwareCommandCenterPath, 'utf8');
 
