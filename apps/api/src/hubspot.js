@@ -71,11 +71,12 @@ export function createAuthorizationUrl(state) {
   url.searchParams.set('client_id', config.hubspot.clientId);
   url.searchParams.set('redirect_uri', config.hubspot.redirectUri);
   url.searchParams.set('scope', config.hubspot.scopes.join(' '));
-  url.searchParams.set('state', state);
 
   if (config.hubspot.optionalScopes.length > 0) {
     url.searchParams.set('optional_scope', config.hubspot.optionalScopes.join(' '));
   }
+
+  url.searchParams.set('state', state);
 
   return url.toString();
 }
@@ -99,7 +100,7 @@ export async function refreshOAuthToken(refreshToken) {
   });
 }
 
-export async function hubSpotGet(path, accessToken, query = {}) {
+export async function hubSpotRequest(method, path, accessToken, { query = {}, body } = {}) {
   const url = new URL(path, config.hubspot.apiBaseUrl);
 
   for (const [key, value] of Object.entries(query)) {
@@ -107,15 +108,39 @@ export async function hubSpotGet(path, accessToken, query = {}) {
     url.searchParams.set(key, String(value));
   }
 
-  const response = await fetch(url, {
-    headers: {
-      authorization: `Bearer ${accessToken}`,
-      accept: 'application/json'
-    },
+  const headers = {
+    authorization: `Bearer ${accessToken}`,
+    accept: 'application/json'
+  };
+  const request = {
+    method,
+    headers,
     signal: AbortSignal.timeout(30_000)
-  });
+  };
 
+  if (body !== undefined) {
+    headers['content-type'] = 'application/json';
+    request.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(url, request);
   return parseResponse(response);
+}
+
+export async function hubSpotGet(path, accessToken, query = {}) {
+  return hubSpotRequest('GET', path, accessToken, { query });
+}
+
+export async function hubSpotPost(path, accessToken, body, query = {}) {
+  return hubSpotRequest('POST', path, accessToken, { body, query });
+}
+
+export async function hubSpotPatch(path, accessToken, body, query = {}) {
+  return hubSpotRequest('PATCH', path, accessToken, { body, query });
+}
+
+export async function hubSpotPut(path, accessToken, body, query = {}) {
+  return hubSpotRequest('PUT', path, accessToken, { body, query });
 }
 
 export async function getConnectionForWorkspace(workspaceId) {
