@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const pagePath = new URL('../app/dashboard/page.js', import.meta.url);
-const commandCenterPath = new URL('../components/sdr/RevenueCommandCenter.tsx', import.meta.url);
+const labelAwareCommandCenterPath = new URL('../components/sdr/RevenueCommandCenter.tsx', import.meta.url);
 
 const requiredBreakdownKeys = [
   'contacts-by-lead-status',
@@ -16,22 +16,16 @@ const requiredBreakdownKeys = [
   'companies-by-created-month'
 ];
 
-test('the production dashboard route renders the label-aware command center', async () => {
+test('the production dashboard defaults to the stable command center with a controlled rollout flag', async () => {
   const page = await readFile(pagePath, 'utf8');
-  assert.match(
-    page,
-    /RevenueCommandCenter as CommandCenterV2/,
-    'the active dashboard must point at the command center that implements the CRM presentation contract'
-  );
-  assert.doesNotMatch(
-    page,
-    /from ['"]@\/components\/sdr\/CommandCenterV2['"]/,
-    'the raw-value command center must not be reactivated accidentally'
-  );
+  assert.match(page, /CommandCenterV2 as StableCommandCenter/);
+  assert.match(page, /RevenueCommandCenter as LabelAwareCommandCenter/);
+  assert.match(page, /process\.env\.LABEL_AWARE_COMMAND_CENTER === 'true'/);
+  assert.match(page, /:\s*StableCommandCenter/);
 });
 
-test('the active command center implements the full CRM presentation contract', async () => {
-  const component = await readFile(commandCenterPath, 'utf8');
+test('the label-aware command center remains available for controlled rollout', async () => {
+  const component = await readFile(labelAwareCommandCenterPath, 'utf8');
 
   assert.match(component, /crmBreakdowns:/, 'the report contract must include CRM breakdowns');
   assert.match(component, /displayProperties\s*\|\|\s*row\.properties/, 'drilldowns must prefer HubSpot display labels');
@@ -42,7 +36,7 @@ test('the active command center implements the full CRM presentation contract', 
   for (const reportKey of requiredBreakdownKeys) {
     assert.ok(
       component.includes(`'${reportKey}'`),
-      `the active command center must expose the ${reportKey} drilldown`
+      `the label-aware command center must expose the ${reportKey} drilldown`
     );
   }
 });
