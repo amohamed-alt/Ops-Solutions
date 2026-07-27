@@ -133,7 +133,7 @@ export async function ensureOpsActionsSchema(postgres) {
   `);
 }
 
-function capabilities(connection) {
+export function getOpsActionsCapabilities(connection) {
   const scopes = normalizeScopes(connection?.scopes);
   const can = Object.fromEntries(Object.entries(ACTION_SCOPES).map(([key, required]) => [
     key,
@@ -164,7 +164,7 @@ export function registerOpsActionsRoutes(app, { postgres, requireAdmin, writeAud
 
   app.get(`${basePath}/capabilities`, { preHandler: requireAdmin }, async (request) => {
     const connection = await getConnectionForWorkspace(request.params.workspaceId);
-    return capabilities(connection);
+    return getOpsActionsCapabilities(connection);
   });
 
   app.post(`${basePath}/tasks`, { preHandler: requireAdmin }, async (request, reply) => {
