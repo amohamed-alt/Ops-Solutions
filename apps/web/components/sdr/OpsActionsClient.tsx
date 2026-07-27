@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ClipboardCheck, ListTodo, RefreshCw, ShieldCheck, UserRoundCog } from 'lucide-react';
 
+import { ProductFlowNav } from './ProductFlowNav';
 import './command-center-v2.css';
 
 type WorkspaceRow = {
@@ -145,6 +146,16 @@ export function OpsActionsClient() {
           <p>Create tasks, update contact lifecycle stages, and mark records as reviewed with admin-only access and audit logging.</p>
         </div>
       </section>
+
+      <ProductFlowNav
+        current="actions"
+        purpose="Use Ops Actions after the dashboard or builder surfaces a record that needs action. This page is for audited HubSpot writes and local review markers, not for building reports."
+        nextSteps={[
+          { label: 'Build reports first', href: '/builder', description: 'Create the report or dashboard that identifies which records need action.', badge: 'Before acting' },
+          { label: 'Open command dashboard', href: '/dashboard', description: 'Review the live reporting context before changing CRM data.', badge: 'Validate' },
+          { label: 'Review billing package', href: '/settings/billing', description: 'Decide whether guarded actions belong in the Automation plan.', badge: 'Package' }
+        ]}
+      />
 
       <section className="cc2-panel ric-panel">
         <header>
