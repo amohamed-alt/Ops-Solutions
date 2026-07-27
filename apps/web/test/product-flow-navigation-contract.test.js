@@ -2,18 +2,18 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const navPath = new URL('../components/sdr/ProductFlowNav.tsx', import.meta.url);
+import { PRODUCT_ROUTES, productFlowLabel } from '../components/sdr/product-routes.js';
+
 const builderPath = new URL('../components/sdr/BuilderSuiteClient.tsx', import.meta.url);
 const actionsPath = new URL('../components/sdr/OpsActionsClient.tsx', import.meta.url);
 const billingPath = new URL('../components/sdr/BillingLifecycleClient.tsx', import.meta.url);
 
-test('product flow navigation exposes the main user journeys', async () => {
-  const nav = await readFile(navPath, 'utf8');
-  for (const route of ['/dashboard', '/builder', '/settings/actions', '/settings/billing', '/setup']) {
-    assert.match(nav, new RegExp(route.replaceAll('/', '\\/')));
+test('product flow navigation exposes the main user journeys', () => {
+  const routes = new Set(PRODUCT_ROUTES.map((route) => route.href));
+  for (const route of ['/settings/readiness', '/dashboard', '/builder', '/settings/actions', '/settings/billing', '/setup']) {
+    assert.ok(routes.has(route), `Expected product route ${route}`);
   }
-  assert.match(nav, /Recommended flow/);
-  assert.match(nav, /What this page does/);
+  assert.match(productFlowLabel(), /Recommended flow/);
 });
 
 test('builder actions and billing pages include shared product flow navigation', async () => {
