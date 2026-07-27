@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BarChart3, CalendarClock, CheckCircle2, LayoutDashboard, Mail, PlusCircle, RefreshCw, Settings2 } from 'lucide-react';
 
+import { ProductFlowNav } from './ProductFlowNav';
 import './command-center-v2.css';
 
 type WorkspaceRow = {
@@ -239,6 +240,16 @@ export function BuilderSuiteClient() {
           <p>Create reusable report definitions, assemble dashboards, and schedule executive email reports from saved views.</p>
         </div>
       </section>
+
+      <ProductFlowNav
+        current="builder"
+        purpose="Use Builder when you want to create report definitions, combine them into dashboards, and schedule the output by email. It is the setup layer that feeds the command dashboard."
+        nextSteps={[
+          { label: 'Open command dashboard', href: '/dashboard', description: 'Review the dashboards and drilldowns your team reads every day.', badge: 'View output' },
+          { label: 'Run Ops Actions', href: '/settings/actions', description: 'Turn insights into audited HubSpot actions when write scopes are ready.', badge: 'Act' },
+          { label: 'Package billing plan', href: '/settings/billing', description: 'Move the configured reporting package into a sellable plan.', badge: 'Commercialize' }
+        ]}
+      />
 
       <section className="cc2-panel ric-panel">
         <header>

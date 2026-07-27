@@ -2,6 +2,7 @@
 
 import { AlertTriangle, CheckCircle2, CreditCard, DatabaseZap, Download, PlugZap, ShieldCheck, Trash2 } from 'lucide-react';
 
+import { ProductFlowNav } from './ProductFlowNav';
 import './command-center-v2.css';
 
 const plans = [
@@ -62,6 +63,16 @@ export function BillingLifecycleClient() {
           <p>Prepare the SaaS commercial layer without exposing secrets or enabling destructive actions before approval workflows are implemented.</p>
         </div>
       </section>
+
+      <ProductFlowNav
+        current="billing"
+        purpose="Use Billing after the dashboard, builder, and Ops Actions are clear enough to package into plans. This page explains commercial readiness and data lifecycle guardrails."
+        nextSteps={[
+          { label: 'Build the product package', href: '/builder', description: 'Define the reports, dashboards, and email schedule that belong in each plan.', badge: 'Before pricing' },
+          { label: 'Review automation scope', href: '/settings/actions', description: 'Confirm which guarded write actions belong in the Automation plan.', badge: 'Upsell' },
+          { label: 'Open command dashboard', href: '/dashboard', description: 'Validate that the reporting experience is strong before selling it.', badge: 'Validate' }
+        ]}
+      />
 
       <div className="dashboard-rollout-recovery" role="status">
         <div>
