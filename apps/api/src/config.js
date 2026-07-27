@@ -10,7 +10,9 @@ const DEFAULT_HUBSPOT_SCOPES = [
 ];
 
 const DEFAULT_OPTIONAL_HUBSPOT_SCOPES = [
-  'crm.schemas.custom.read'
+  'crm.schemas.custom.read',
+  'crm.objects.contacts.write',
+  'crm.objects.tasks.write'
 ];
 
 function splitScopes(value, fallback) {
