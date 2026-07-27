@@ -1,4 +1,4 @@
-import { CommandCenterV2 } from '@/components/sdr/CommandCenterV2';
+import { RevenueCommandCenter as CommandCenterV2 } from '@/components/sdr/RevenueCommandCenter';
 import { PdfSnapshotAction } from '@/components/sdr/PdfSnapshotAction';
 
 export const dynamic = 'force-dynamic';
