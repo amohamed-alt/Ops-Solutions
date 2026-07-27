@@ -195,9 +195,9 @@ export function inferValueMapping(semanticKey, options) {
 
   if (semanticKey === 'account_status') {
     for (const option of normalizedOptions) {
-      if (/active|customer|live|renewed|نشط|عميل|مجدد/.test(option.label)) output[option.value] = 'active';
-      else if (/churn|lost|cancel|inactive|متوقف|مفقود|ملغي|غير نشط/.test(option.label)) output[option.value] = 'inactive';
+      if (/churn|lost|cancel|inactive|متوقف|مفقود|ملغي|غير نشط/.test(option.label)) output[option.value] = 'inactive';
       else if (/prospect|lead|potential|محتمل|فرصه|عميل محتمل/.test(option.label)) output[option.value] = 'prospect';
+      else if (/active|customer|live|renewed|نشط|عميل|مجدد/.test(option.label)) output[option.value] = 'active';
     }
   }
 
