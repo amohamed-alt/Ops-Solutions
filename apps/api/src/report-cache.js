@@ -26,6 +26,16 @@ export function reportCacheKey(namespace, workspaceId, query = {}, parts = []) {
   ]);
 }
 
+function workspaceFromCacheKey(key) {
+  try {
+    const parsed = JSON.parse(String(key));
+    if (!Array.isArray(parsed) || parsed.length < 2) return null;
+    return String(parsed[1]);
+  } catch {
+    return null;
+  }
+}
+
 export function createReportCache({ maxEntries = DEFAULT_MAX_ENTRIES, now = () => Date.now() } = {}) {
   const resolved = new Map();
   const inflight = new Map();
@@ -85,9 +95,9 @@ export function createReportCache({ maxEntries = DEFAULT_MAX_ENTRIES, now = () =
   }
 
   function clearWorkspace(workspaceId) {
-    const marker = `\"${String(workspaceId)}\"`;
+    const targetWorkspaceId = String(workspaceId);
     for (const key of resolved.keys()) {
-      if (key.includes(marker)) resolved.delete(key);
+      if (workspaceFromCacheKey(key) === targetWorkspaceId) resolved.delete(key);
     }
   }
 
