@@ -1,5 +1,4 @@
-import { CommandCenterV2 as StableCommandCenter } from '@/components/sdr/CommandCenterV2';
-import { RevenueCommandCenter as LabelAwareCommandCenter } from '@/components/sdr/RevenueCommandCenter';
+import { DashboardCommandCenterRollout } from '@/components/sdr/DashboardCommandCenterRollout';
 import { PdfSnapshotAction } from '@/components/sdr/PdfSnapshotAction';
 
 export const dynamic = 'force-dynamic';
@@ -9,14 +8,13 @@ export const metadata = {
   description: 'Focused HubSpot revenue, SDR, pipeline, team and data-quality intelligence.'
 };
 
-const CommandCenter = process.env.LABEL_AWARE_COMMAND_CENTER === 'true'
-  ? LabelAwareCommandCenter
-  : StableCommandCenter;
+const labelAwareEnabled = process.env.LABEL_AWARE_COMMAND_CENTER === 'true';
 
+// CommandCenterV2 remains the stable production default inside DashboardCommandCenterRollout.
 export default function DashboardPage() {
   return (
     <>
-      <CommandCenter />
+      <DashboardCommandCenterRollout labelAwareEnabled={labelAwareEnabled} />
       <PdfSnapshotAction />
     </>
   );
