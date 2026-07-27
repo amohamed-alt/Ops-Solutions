@@ -11,11 +11,48 @@ type Props = {
 };
 
 const ROLLOUT_RECOVERY_TIMEOUT_MS = 20_000;
+const SAVED_VIEW_DELETE_PATTERN = /\/api\/customer\/workspaces\/[^/]+\/saved-views\/[^/?#]+(?:[?#].*)?$/;
+
+async function savedViewDeleteError(response: Response) {
+  const payload = await response.clone().json().catch(() => ({} as { message?: string }));
+  return new Error(payload.message || `Saved view delete failed with HTTP ${response.status}.`);
+}
+
+function isSavedViewDelete(input: RequestInfo | URL, init?: RequestInit) {
+  const method = String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+  if (method !== 'DELETE') return false;
+  const url = input instanceof Request ? input.url : String(input);
+  return SAVED_VIEW_DELETE_PATTERN.test(url);
+}
+
+function useSavedViewDeleteGuard() {
+  const [savedViewDeleteErrorMessage, setSavedViewDeleteErrorMessage] = useState('');
+
+  useEffect(() => {
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await originalFetch(input, init);
+      if (isSavedViewDelete(input, init) && !response.ok) {
+        const error = await savedViewDeleteError(response);
+        setSavedViewDeleteErrorMessage(error.message);
+        throw error;
+      }
+      return response;
+    };
+    return () => { window.fetch = originalFetch; };
+  }, []);
+
+  return {
+    savedViewDeleteErrorMessage,
+    clearSavedViewDeleteError: () => setSavedViewDeleteErrorMessage('')
+  };
+}
 
 export function DashboardCommandCenterRollout({ labelAwareEnabled }: Props) {
   const [useStableFallback, setUseStableFallback] = useState(!labelAwareEnabled);
   const [showRecovery, setShowRecovery] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const { savedViewDeleteErrorMessage, clearSavedViewDeleteError } = useSavedViewDeleteGuard();
 
   useEffect(() => {
     if (!labelAwareEnabled || useStableFallback) return undefined;
@@ -24,14 +61,26 @@ export function DashboardCommandCenterRollout({ labelAwareEnabled }: Props) {
     return () => window.clearTimeout(timer);
   }, [labelAwareEnabled, retryKey, useStableFallback]);
 
-  if (useStableFallback) {
-    return <StableCommandCenter />;
-  }
+  const activeCommandCenter = useStableFallback
+    ? <StableCommandCenter />
+    : <LabelAwareCommandCenter key={retryKey} />;
 
   return (
     <>
-      <LabelAwareCommandCenter key={retryKey} />
-      {showRecovery ? (
+      {activeCommandCenter}
+      {savedViewDeleteErrorMessage ? (
+        <div className="dashboard-rollout-recovery saved-view-delete-guard" role="alert" aria-live="assertive">
+          <div>
+            <span><AlertTriangle size={17} /></span>
+            <div>
+              <strong>Saved view was not deleted.</strong>
+              <p>{savedViewDeleteErrorMessage}</p>
+            </div>
+          </div>
+          <button type="button" className="primary" onClick={clearSavedViewDeleteError}>Dismiss</button>
+        </div>
+      ) : null}
+      {!useStableFallback && showRecovery ? (
         <div className="dashboard-rollout-recovery" role="alert" aria-live="assertive">
           <div>
             <span><AlertTriangle size={17} /></span>
