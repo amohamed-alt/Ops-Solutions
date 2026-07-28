@@ -6,6 +6,12 @@ export const PRODUCT_ROUTES = Object.freeze([
     description: 'Review launch blockers, readiness incidents, sync health, and required next actions.'
   },
   {
+    key: 'reconnect',
+    label: 'HubSpot Access',
+    href: '/settings/reconnect',
+    description: 'Check granted HubSpot scopes and reconnect workspaces that need additional permissions.'
+  },
+  {
     key: 'dashboard',
     label: 'Dashboard',
     href: '/dashboard',
@@ -40,6 +46,7 @@ export const PRODUCT_ROUTES = Object.freeze([
 export const PRODUCT_FLOW = Object.freeze([
   'Setup',
   'Readiness',
+  'HubSpot Access',
   'Dashboard',
   'Builder',
   'Email schedule',

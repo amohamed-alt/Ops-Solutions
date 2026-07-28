@@ -10,7 +10,7 @@ const billingPath = new URL('../components/sdr/BillingLifecycleClient.tsx', impo
 
 test('product flow navigation exposes the main user journeys', () => {
   const routes = new Set(PRODUCT_ROUTES.map((route) => route.href));
-  for (const route of ['/settings/readiness', '/dashboard', '/builder', '/settings/actions', '/settings/billing', '/setup']) {
+  for (const route of ['/settings/readiness', '/settings/reconnect', '/dashboard', '/builder', '/settings/actions', '/settings/billing', '/setup']) {
     assert.ok(routes.has(route), `Expected product route ${route}`);
   }
   assert.match(productFlowLabel(), /Recommended flow/);
