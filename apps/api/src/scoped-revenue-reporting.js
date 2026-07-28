@@ -27,6 +27,10 @@ import {
   createReportCache,
   reportCacheKey
 } from './report-cache.js';
+import {
+  annotateReportingConfidence,
+  loadReportingConfidence
+} from './reporting-confidence.js';
 
 const REPORT_SCOPES = new Set(['core', 'operating', 'full']);
 const reportCache = createReportCache({ maxEntries: 1000 });
@@ -92,15 +96,20 @@ async function buildScopedRevenueReport(postgres, workspaceId, query = {}) {
   }
 
   try {
-    const report = await buildFullRevenueReportingPack(postgres, workspaceId, query);
-    if (scope !== 'operating') return report;
+    const [report, confidence] = await Promise.all([
+      buildFullRevenueReportingPack(postgres, workspaceId, query),
+      loadReportingConfidence(postgres, workspaceId)
+    ]);
+    if (scope !== 'operating') {
+      return annotateReportingConfidence(report, confidence);
+    }
 
-    return {
+    return annotateReportingConfidence({
       generatedAt: report.generatedAt,
       filters: report.filters,
       operatingReports: report.operatingReports,
       drilldowns: report.drilldowns
-    };
+    }, confidence);
   } catch (error) {
     if (!isReportConfigurationRequired(error)) throw error;
     const coreReport = await buildCoreRevenueReportingPack(postgres, workspaceId, query);
@@ -185,6 +194,7 @@ export function registerRevenueReportingRoutes(app, { postgres, requireAdmin, re
       scope,
       availableScope: report.availableScope ?? scope,
       degraded: report.reportingDegradation?.active === true,
+      confidenceLevel: report.reportingConfidence?.level ?? (report.reportingDegradation?.level ?? 'exact'),
       report
     };
   });
