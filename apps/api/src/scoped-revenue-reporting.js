@@ -58,6 +58,32 @@ export function normalizeRevenueReportScope(value) {
   return REPORT_SCOPES.has(scope) ? scope : 'full';
 }
 
+export function isReportConfigurationRequired(error) {
+  return error?.category === 'REPORT_CONFIGURATION_REQUIRED'
+    || error?.code === 'REPORT_CONFIGURATION_REQUIRED';
+}
+
+export function reportingDegradation(error, requestedScope) {
+  return {
+    active: true,
+    level: 'proxy',
+    requestedScope,
+    availableScope: 'core',
+    category: 'REPORT_CONFIGURATION_REQUIRED',
+    message: String(error?.message ?? 'A semantic mapping is required for the requested report.'),
+    nextAction: 'Confirm the suggested semantic mappings in Setup to unlock the full report.'
+  };
+}
+
+export function degradeRevenueReport(coreReport, error, requestedScope) {
+  return {
+    ...coreReport,
+    requestedScope,
+    availableScope: 'core',
+    reportingDegradation: reportingDegradation(error, requestedScope)
+  };
+}
+
 async function buildScopedRevenueReport(postgres, workspaceId, query = {}) {
   const scope = normalizeRevenueReportScope(query.scope);
 
@@ -65,15 +91,21 @@ async function buildScopedRevenueReport(postgres, workspaceId, query = {}) {
     return buildCoreRevenueReportingPack(postgres, workspaceId, query);
   }
 
-  const report = await buildFullRevenueReportingPack(postgres, workspaceId, query);
-  if (scope !== 'operating') return report;
+  try {
+    const report = await buildFullRevenueReportingPack(postgres, workspaceId, query);
+    if (scope !== 'operating') return report;
 
-  return {
-    generatedAt: report.generatedAt,
-    filters: report.filters,
-    operatingReports: report.operatingReports,
-    drilldowns: report.drilldowns
-  };
+    return {
+      generatedAt: report.generatedAt,
+      filters: report.filters,
+      operatingReports: report.operatingReports,
+      drilldowns: report.drilldowns
+    };
+  } catch (error) {
+    if (!isReportConfigurationRequired(error)) throw error;
+    const coreReport = await buildCoreRevenueReportingPack(postgres, workspaceId, query);
+    return degradeRevenueReport(coreReport, error, scope);
+  }
 }
 
 export async function decorateRevenueDrilldownContract(postgres, workspaceId, drilldown) {
@@ -148,7 +180,13 @@ export function registerRevenueReportingRoutes(app, { postgres, requireAdmin, re
       ttlMs: ttlForScope(scope),
       loader: () => buildScopedRevenueReport(postgres, workspace.id, request.query ?? {})
     });
-    return { workspace, scope, report };
+    return {
+      workspace,
+      scope,
+      availableScope: report.availableScope ?? scope,
+      degraded: report.reportingDegradation?.active === true,
+      report
+    };
   });
 
   app.get('/api/v1/workspaces/:workspaceId/analytics/revenue/drilldowns/:reportKey', { preHandler: requireAdmin }, async (request, reply) => {
