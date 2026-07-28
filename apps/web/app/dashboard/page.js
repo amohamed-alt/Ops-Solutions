@@ -1,4 +1,5 @@
 import { DashboardCommandCenterRollout } from '@/components/sdr/DashboardCommandCenterRollout';
+import { DashboardPipelineStageActions } from '@/components/sdr/DashboardPipelineStageActions';
 import { DrilldownPresentationGuard } from '@/components/sdr/DrilldownPresentationGuard';
 import { PdfSnapshotAction } from '@/components/sdr/PdfSnapshotAction';
 
@@ -16,6 +17,7 @@ export default function DashboardPage() {
   return (
     <>
       <DrilldownPresentationGuard />
+      <DashboardPipelineStageActions />
       <DashboardCommandCenterRollout labelAwareEnabled={labelAwareEnabled} />
       <PdfSnapshotAction />
     </>
