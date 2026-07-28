@@ -1,6 +1,7 @@
+import { selectAutoMappings } from './auto-mapping.js';
 import { postgres, withTransaction } from './database.js';
 import { getConnectionForWorkspace, getValidAccessToken, hubSpotGet } from './hubspot.js';
-import { buildMappingSuggestions } from './semantic.js';
+import { buildMappingSuggestions, inferValueMapping } from './semantic.js';
 
 const CORE_OBJECT_TYPES = ['contacts', 'companies', 'deals'];
 const ACTIVITY_OBJECT_TYPES = ['calls', 'meetings', 'tasks'];
@@ -95,6 +96,56 @@ function customSchemaProperties(schema) {
     options: property.options ?? [],
     raw: property
   }));
+}
+
+async function persistAutoMappings(client, workspaceId, suggestions, properties) {
+  const existingResult = await client.query(
+    `SELECT semantic_key, object_type
+     FROM property_mappings
+     WHERE workspace_id = $1`,
+    [workspaceId]
+  );
+  const candidates = selectAutoMappings(suggestions, existingResult.rows);
+  const propertyIndex = new Map(
+    properties.map((property) => [`${property.object_type}:${property.property_name}`, property])
+  );
+  let inserted = 0;
+
+  for (const candidate of candidates) {
+    const property = propertyIndex.get(`${candidate.objectType}:${candidate.propertyName}`);
+    const valueMapping = property
+      ? inferValueMapping(candidate.semanticKey, property.options ?? [])
+      : {};
+    const result = await client.query(
+      `INSERT INTO property_mappings (
+         workspace_id, semantic_key, object_type, property_name,
+         value_mapping, source, approved_by, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5::jsonb, 'inferred_auto', NULL, NOW(), NOW())
+       ON CONFLICT (workspace_id, semantic_key, object_type) DO NOTHING
+       RETURNING id`,
+      [
+        workspaceId,
+        candidate.semanticKey,
+        candidate.objectType,
+        candidate.propertyName,
+        JSON.stringify(valueMapping ?? {})
+      ]
+    );
+
+    if (result.rowCount === 0) continue;
+    inserted += 1;
+    await client.query(
+      `UPDATE property_mapping_suggestions
+       SET status = 'approved', updated_at = NOW()
+       WHERE workspace_id = $1
+         AND semantic_key = $2
+         AND object_type = $3
+         AND property_name = $4`,
+      [workspaceId, candidate.semanticKey, candidate.objectType, candidate.propertyName]
+    );
+  }
+
+  return inserted;
 }
 
 async function persistDiscovery({
@@ -239,6 +290,7 @@ async function persistDiscovery({
     }
 
     summary.mappingSuggestions = suggestions.length;
+    summary.autoApprovedMappings = await persistAutoMappings(client, workspaceId, suggestions, properties);
 
     await client.query(
       `
