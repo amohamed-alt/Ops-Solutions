@@ -111,7 +111,8 @@ export function DashboardPipelineStageActions() {
   }, []);
 
   const stages = useMemo(() => (context?.stages ?? []).filter((row) => row.stageId).slice(0, 14), [context]);
-  if (!context || stages.length === 0) return null;
+  const activeContext = context;
+  if (!activeContext || stages.length === 0) return null;
 
   async function openStage(stage: PipelineStage) {
     setSelectedStage(stage);
@@ -119,13 +120,13 @@ export function DashboardPipelineStageActions() {
     setError('');
     setDrilldown(null);
     try {
-      const params = new URLSearchParams(context.search);
+      const params = new URLSearchParams(activeContext.search);
       params.delete('scope');
       params.set('pipelineId', stage.pipelineId);
       params.set('stageId', stage.stageId);
       params.set('limit', '50');
       params.set('offset', '0');
-      const response = await fetch(`/api/dashboard/${encodeURIComponent(context.workspaceId)}/reports/open-deals?${params.toString()}`, { cache: 'no-store' });
+      const response = await fetch(`/api/dashboard/${encodeURIComponent(activeContext.workspaceId)}/reports/open-deals?${params.toString()}`, { cache: 'no-store' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload?.message || `Drilldown failed with HTTP ${response.status}.`);
       setDrilldown(payload.drilldown ?? null);
@@ -210,7 +211,7 @@ export function DashboardPipelineStageActions() {
             <div style={{ display: 'grid', gap: 10, marginTop: 20 }}>
               {(drilldown?.results ?? []).map((row) => {
                 const label = rowLabel(row);
-                const href = hubspotRecordUrl(context.portalId, drilldown?.objectType || 'deals', row.id);
+                const href = hubspotRecordUrl(activeContext.portalId, drilldown?.objectType || 'deals', row.id);
                 return (
                   <article key={row.id} style={{ border: '1px solid rgba(15,23,42,.1)', borderRadius: 12, padding: 14 }}>
                     <strong>{label.name}</strong>
