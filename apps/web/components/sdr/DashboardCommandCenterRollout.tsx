@@ -1,10 +1,17 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { AlertTriangle, RefreshCw, ShieldCheck } from 'lucide-react';
 
 import { CommandCenterV2 as StableCommandCenter } from './CommandCenterV2';
 import { RevenueCommandCenter as LabelAwareCommandCenter } from './RevenueCommandCenter';
+import {
+  formatReportingConfidenceStatus,
+  isDashboardReportRequest,
+  reportingConfidenceFromPayload,
+  type ReportingConfidenceStatus
+} from './reporting-confidence-status';
 
 type Props = {
   labelAwareEnabled: boolean;
@@ -99,6 +106,33 @@ function useSyncStatus() {
   return syncStatus;
 }
 
+function useReportingConfidenceObserver() {
+  const [status, setStatus] = useState<ReportingConfidenceStatus | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await originalFetch(input, init);
+      if (response.ok && isDashboardReportRequest(input, init)) {
+        void response.clone().json()
+          .then((payload) => {
+            if (!active) return;
+            setStatus(formatReportingConfidenceStatus(reportingConfidenceFromPayload(payload)));
+          })
+          .catch(() => undefined);
+      }
+      return response;
+    };
+    return () => {
+      active = false;
+      window.fetch = originalFetch;
+    };
+  }, []);
+
+  return status;
+}
+
 function useSavedViewDeleteGuard() {
   const [savedViewDeleteErrorMessage, setSavedViewDeleteErrorMessage] = useState('');
 
@@ -127,6 +161,7 @@ export function DashboardCommandCenterRollout({ labelAwareEnabled }: Props) {
   const [showRecovery, setShowRecovery] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
   const syncStatus = useSyncStatus();
+  const reportingConfidence = useReportingConfidenceObserver();
   const { savedViewDeleteErrorMessage, clearSavedViewDeleteError } = useSavedViewDeleteGuard();
 
   useEffect(() => {
@@ -140,10 +175,41 @@ export function DashboardCommandCenterRollout({ labelAwareEnabled }: Props) {
     ? <StableCommandCenter />
     : <LabelAwareCommandCenter key={retryKey} />;
   const syncAccent = syncStatus?.tone === 'synced' ? '#0f766e' : syncStatus?.tone === 'delayed' ? '#b45309' : syncStatus?.tone === 'failed' ? '#b91c1c' : '#475569';
+  const confidenceAccent = reportingConfidence?.level === 'exact' ? '#0f766e' : reportingConfidence?.level === 'inferred' ? '#b45309' : '#b91c1c';
 
   return (
     <>
       {activeCommandCenter}
+      {reportingConfidence ? (
+        <div
+          className={`dashboard-reporting-confidence ${reportingConfidence.level}`}
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            right: 18,
+            bottom: syncStatus ? 108 : 18,
+            zIndex: 70,
+            maxWidth: 360,
+            padding: '12px 14px',
+            borderRadius: 16,
+            border: '1px solid rgba(15, 23, 42, 0.12)',
+            background: 'rgba(255, 255, 255, 0.96)',
+            boxShadow: '0 18px 48px rgba(15, 23, 42, 0.16)',
+            color: '#0f172a',
+            display: 'grid',
+            gap: 5,
+            fontSize: 12
+          }}
+        >
+          <strong style={{ color: confidenceAccent }}>{reportingConfidence.label}</strong>
+          <span>{reportingConfidence.detail}</span>
+          {reportingConfidence.actionHref && reportingConfidence.actionLabel ? (
+            <Link href={reportingConfidence.actionHref} style={{ color: confidenceAccent, fontWeight: 800 }}>
+              {reportingConfidence.actionLabel}
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
       {syncStatus ? (
         <div
           className={`dashboard-sync-status ${syncStatus.tone}`}
