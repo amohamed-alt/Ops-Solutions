@@ -18,6 +18,16 @@ for required in POSTGRES_PASSWORD DATABASE_URL REDIS_PASSWORD REDIS_URL; do
     || fail "$required must use required-variable interpolation"
 done
 
+for email_setting in EMAIL_PROVIDER EMAIL_FROM_ADDRESS EMAIL_FROM_NAME RESEND_API_KEY POSTMARK_SERVER_TOKEN EMAIL_DELIVERY_POLL_INTERVAL_MS; do
+  grep -Fq "${email_setting}: \${${email_setting}:-" "$compose_file" \
+    || fail "$email_setting must be forwarded into the API runtime"
+done
+
+grep -Fq 'EMAIL_PROVIDER: ${EMAIL_PROVIDER:-disabled}' "$compose_file" \
+  || fail 'email delivery must remain disabled by default'
+grep -Fq 'EMAIL_DELIVERY_POLL_INTERVAL_MS: ${EMAIL_DELIVERY_POLL_INTERVAL_MS:-60000}' "$compose_file" \
+  || fail 'email delivery polling must keep the documented bounded default'
+
 grep -Fq -- '--requirepass "$${REDIS_PASSWORD}"' "$compose_file" \
   || fail 'Redis must start with requirepass'
 
@@ -36,6 +46,12 @@ POSTGRES_PASSWORD='ci-postgres-password' \
 DATABASE_URL='postgresql://ops_solutions:ci-postgres-password@postgres:5432/ops_solutions' \
 REDIS_PASSWORD='ci-redis-password' \
 REDIS_URL='redis://:ci-redis-password@redis:6379' \
+EMAIL_PROVIDER='resend' \
+EMAIL_FROM_ADDRESS='reports@example.test' \
+EMAIL_FROM_NAME='Ops Intelligence' \
+RESEND_API_KEY='ci-placeholder-not-a-secret' \
+POSTMARK_SERVER_TOKEN='' \
+EMAIL_DELIVERY_POLL_INTERVAL_MS='60000' \
 docker compose -f "$compose_file" config --quiet
 
 printf 'production infra credential contract passed\n'
