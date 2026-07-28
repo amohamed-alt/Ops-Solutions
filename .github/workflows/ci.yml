@@ -13,7 +13,7 @@ jobs:
   validate:
     name: Build and validate
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -90,10 +90,23 @@ jobs:
           npm run typecheck > web-typecheck.log 2>&1 || { tail -n 200 web-typecheck.log; exit 1; }
           npm run build > web-build.log 2>&1 || { tail -n 200 web-build.log; exit 1; }
 
+      - name: Run browser behavior tests
+        working-directory: apps/web
+        env:
+          CI: 1
+          NEXT_TELEMETRY_DISABLED: 1
+        run: |
+          set -Eeuo pipefail
+          npm install --no-save --package-lock=false --no-audit --no-fund @playwright/test@1.61.1
+          npx playwright install --with-deps chromium
+          npx playwright test --config=playwright.config.mjs > playwright-test.log 2>&1 || { tail -n 240 playwright-test.log; exit 1; }
+
       - name: Print web test diagnostics
         if: failure()
         working-directory: apps/web
-        run: tail -n 200 web-test.log || true
+        run: |
+          tail -n 200 web-test.log || true
+          tail -n 240 playwright-test.log || true
 
       - name: Print web build diagnostics
         if: failure()
@@ -109,6 +122,9 @@ jobs:
             apps/web/web-test.log
             apps/web/web-typecheck.log
             apps/web/web-build.log
+            apps/web/playwright-test.log
+            apps/web/playwright-report
+            apps/web/test-results
           if-no-files-found: ignore
           retention-days: 7
 
