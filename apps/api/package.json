@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "node --import ./src/email-delivery-bootstrap.js src/server.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "readiness:email": "node scripts/email-provider-readiness.js"
   },
   "dependencies": {
     "bullmq": "5.61.0",
