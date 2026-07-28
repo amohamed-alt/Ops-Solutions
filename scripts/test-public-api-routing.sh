@@ -49,4 +49,6 @@ if ! grep -Fq '"127.0.0.1:${API_PORT:-3211}:3001"' "$compose_file"; then
   exit 1
 fi
 
+node scripts/check-duplicate-api-routes.mjs
+
 echo "Public API routing is restricted to health and HubSpot authorization/webhook endpoints."
