@@ -135,6 +135,7 @@ jobs:
           bash -n scripts/*.sh
           bash scripts/test-monitoring-readiness-integration.sh
           bash scripts/test-production-infra-credentials.sh
+          bash scripts/test-public-api-routing.sh
           test -x scripts/verify-production.sh || chmod +x scripts/verify-production.sh
           VERIFY_MODE=invalid VERIFY_ATTEMPTS=1 scripts/verify-production.sh >/tmp/verify-invalid.log 2>&1 && exit 1 || true
           grep -q 'VERIFY_MODE must be internal, public, or all' /tmp/verify-invalid.log
