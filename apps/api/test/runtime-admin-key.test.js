@@ -17,34 +17,25 @@ async function importConfigWithEnv(nextEnv) {
   }
 }
 
-test('runtime configuration requires ADMIN_API_KEY outside development', async () => {
-  const { assertRuntimeConfiguration } = await importConfigWithEnv({
-    NODE_ENV: 'staging',
-    DATABASE_URL: 'postgres://example.local/ops',
-    REDIS_URL: 'redis://example.local:6379',
-    ADMIN_API_KEY: undefined
+for (const nodeEnv of ['development', 'test', 'staging', 'production']) {
+  test(`${nodeEnv} runtime refuses to start without ADMIN_API_KEY`, async () => {
+    const { assertRuntimeConfiguration } = await importConfigWithEnv({
+      NODE_ENV: nodeEnv,
+      DATABASE_URL: 'postgres://example.local/ops',
+      REDIS_URL: 'redis://example.local:6379',
+      ADMIN_API_KEY: undefined
+    });
+
+    assert.throws(
+      () => assertRuntimeConfiguration(),
+      /ADMIN_API_KEY is required/
+    );
   });
+}
 
-  assert.throws(
-    () => assertRuntimeConfiguration(),
-    /ADMIN_API_KEY is required outside development/
-  );
-});
-
-test('development runtime can start without ADMIN_API_KEY for local setup', async () => {
+test('runtime accepts a configured ADMIN_API_KEY', async () => {
   const { assertRuntimeConfiguration } = await importConfigWithEnv({
     NODE_ENV: 'development',
-    DATABASE_URL: 'postgres://example.local/ops',
-    REDIS_URL: 'redis://example.local:6379',
-    ADMIN_API_KEY: undefined
-  });
-
-  assert.doesNotThrow(() => assertRuntimeConfiguration());
-});
-
-test('production runtime accepts a configured ADMIN_API_KEY', async () => {
-  const { assertRuntimeConfiguration } = await importConfigWithEnv({
-    NODE_ENV: 'production',
     DATABASE_URL: 'postgres://example.local/ops',
     REDIS_URL: 'redis://example.local:6379',
     ADMIN_API_KEY: 'configured-admin-key'

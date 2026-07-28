@@ -28,10 +28,6 @@ function parsePort(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 && parsed <= 65535 ? parsed : fallback;
 }
 
-function adminApiKeyRequired(nodeEnv) {
-  return nodeEnv !== 'development';
-}
-
 export const config = Object.freeze({
   nodeEnv: process.env.NODE_ENV ?? 'development',
   host: '0.0.0.0',
@@ -67,8 +63,8 @@ export function assertRuntimeConfiguration() {
     throw new Error('REDIS_URL is required');
   }
 
-  if (adminApiKeyRequired(config.nodeEnv) && !config.adminApiKey) {
-    throw new Error('ADMIN_API_KEY is required outside development');
+  if (!config.adminApiKey) {
+    throw new Error('ADMIN_API_KEY is required');
   }
 }
 
