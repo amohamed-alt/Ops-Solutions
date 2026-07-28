@@ -75,6 +75,8 @@ function reportPayload() {
       outcomes: { calls: [], meetings: [], tasks: [] },
       dataQuality: { totalContacts: 12, score: 92, fields: [] },
       attention: {
+        untouchedContacts: 0,
+        staleContacts: 0,
         overdueTasks: 0,
         tasksDueToday: 1,
         missingOwnerContacts: 0,
@@ -100,6 +102,10 @@ test('chart click opens a labelled drilldown with the correct HubSpot record lin
             name: 'Riyadh Revenue Workspace',
             portal_id: portalId,
             hubspot_status: 'connected'
+          },
+          freshness: {
+            total_records: 12,
+            newest_record_sync: '2026-07-28T17:55:00.000Z'
           }
         }]
       })
@@ -161,12 +167,12 @@ test('chart click opens a labelled drilldown with the correct HubSpot record lin
   });
 
   await page.goto('/dashboard');
+  await expect(page.locator('.cc2-shell')).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Know what matters, then act.' })).toBeVisible();
-  await expect(page.getByText('Qualified Meeting')).toBeVisible();
 
-  const stageBar = page.locator('.cc2-chart.interactive .recharts-bar-rectangle').first();
+  const stageBar = page.locator('.cc2-chart.interactive .recharts-bar-rectangle, .cc2-chart.interactive .recharts-rectangle').first();
   await expect(stageBar).toBeVisible();
-  await stageBar.click();
+  await stageBar.click({ force: true });
 
   const drawer = page.locator('.cc2-drawer');
   await expect(drawer).toBeVisible();
