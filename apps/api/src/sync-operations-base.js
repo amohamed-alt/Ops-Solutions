@@ -1,4 +1,5 @@
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { Transform } from 'node:stream';
 
 import { Queue } from 'bullmq';
 
@@ -74,6 +75,31 @@ export function validateHubSpotV3Signature({
   const actualBuffer = Buffer.from(String(signature));
   const expectedBuffer = Buffer.from(expected);
   return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+export function captureRawHubSpotWebhookBody(request, _reply, payload, done) {
+  const chunks = [];
+  const stream = new Transform({
+    transform(chunk, encoding, callback) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, encoding);
+      chunks.push(buffer);
+      stream.receivedEncodedLength += buffer.length;
+      callback(null, chunk);
+    },
+    flush(callback) {
+      request.rawHubSpotWebhookBody = Buffer.concat(chunks);
+      callback();
+    }
+  });
+  stream.receivedEncodedLength = 0;
+  done(null, payload.pipe(stream));
+}
+
+export function rawHubSpotWebhookBody(request) {
+  if (!Buffer.isBuffer(request.rawHubSpotWebhookBody)) {
+    throw webhookError('Raw HubSpot webhook body was not captured.', 400, 'RAW_WEBHOOK_BODY_UNAVAILABLE');
+  }
+  return request.rawHubSpotWebhookBody.toString('utf8');
 }
 
 export function normalizeHubSpotWebhookEvent(value) {
@@ -363,13 +389,13 @@ export function registerSyncOperationsRoutes(app, { postgres, redisUrl, requireA
   });
   const webhookSchemaReady = ensureHubSpotWebhookSchema(postgres);
 
-  app.post('/api/v1/hubspot/webhooks', async (request, reply) => {
+  app.post('/api/v1/hubspot/webhooks', { preParsing: captureRawHubSpotWebhookBody }, async (request, reply) => {
     await webhookSchemaReady;
     if (!config.hubspot.clientSecret) {
       return reply.code(503).send({ error: 'webhook_not_configured', message: 'HubSpot webhook validation is not configured.' });
     }
 
-    const body = JSON.stringify(request.body ?? null);
+    const body = rawHubSpotWebhookBody(request);
     const signature = String(request.headers['x-hubspot-signature-v3'] ?? '');
     const timestamp = String(request.headers['x-hubspot-request-timestamp'] ?? '');
     const uri = new URL(request.raw.url, config.appUrl).toString();
