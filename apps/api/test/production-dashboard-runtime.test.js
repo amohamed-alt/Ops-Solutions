@@ -8,10 +8,12 @@ async function source(path) {
   return readFile(new URL(path, repositoryRoot), 'utf8');
 }
 
-test('production Redis preserves queue jobs instead of evicting them', async () => {
+test('production Redis preserves queue jobs and requires authentication', async () => {
   const compose = await source('docker-compose.prod.yml');
-  assert.match(compose, /--maxmemory-policy", "noeviction"/);
-  assert.doesNotMatch(compose, /--maxmemory-policy", "allkeys-lru"/);
+  assert.match(compose, /--maxmemory-policy(?:\s+|"\s*,\s*")noeviction/);
+  assert.doesNotMatch(compose, /--maxmemory-policy(?:\s+|"\s*,\s*")allkeys-lru/);
+  assert.match(compose, /--requirepass\s+"\$\$\{REDIS_PASSWORD\}"/);
+  assert.match(compose, /redis-cli\s+-a\s+\\?"\$\$\{REDIS_PASSWORD\}\\?"\s+--no-auth-warning\s+ping/);
 });
 
 test('deployment verification compiles a tenant-scoped core revenue report', async () => {

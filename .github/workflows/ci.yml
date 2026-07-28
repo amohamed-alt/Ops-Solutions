@@ -133,11 +133,17 @@ jobs:
           set -Eeuo pipefail
           bash -n scripts/*.sh
           bash scripts/test-monitoring-readiness-integration.sh
+          bash scripts/test-production-infra-credentials.sh
           test -x scripts/verify-production.sh || chmod +x scripts/verify-production.sh
           VERIFY_MODE=invalid VERIFY_ATTEMPTS=1 scripts/verify-production.sh >/tmp/verify-invalid.log 2>&1 && exit 1 || true
           grep -q 'VERIFY_MODE must be internal, public, or all' /tmp/verify-invalid.log
 
       - name: Validate Docker Compose
+        env:
+          POSTGRES_PASSWORD: ci-postgres-password
+          DATABASE_URL: postgresql://ops_solutions:ci-postgres-password@postgres:5432/ops_solutions
+          REDIS_PASSWORD: ci-redis-password
+          REDIS_URL: redis://:ci-redis-password@redis:6379
         run: |
           set -Eeuo pipefail
           touch .env
