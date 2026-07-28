@@ -1,33 +1,42 @@
 import { JSDOM } from 'jsdom';
 
+const GLOBAL_KEYS = ['window', 'document', 'navigator', 'HTMLElement', 'Node', 'getComputedStyle'];
+
 export function installDom() {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {
     url: 'http://localhost'
   });
 
-  const previous = {
-    window: globalThis.window,
-    document: globalThis.document,
-    navigator: globalThis.navigator,
-    HTMLElement: globalThis.HTMLElement,
-    Node: globalThis.Node,
-    getComputedStyle: globalThis.getComputedStyle
+  const previousDescriptors = new Map(
+    GLOBAL_KEYS.map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)])
+  );
+
+  const replacements = {
+    window: dom.window,
+    document: dom.window.document,
+    navigator: dom.window.navigator,
+    HTMLElement: dom.window.HTMLElement,
+    Node: dom.window.Node,
+    getComputedStyle: dom.window.getComputedStyle.bind(dom.window)
   };
 
-  globalThis.window = dom.window;
-  globalThis.document = dom.window.document;
-  globalThis.navigator = dom.window.navigator;
-  globalThis.HTMLElement = dom.window.HTMLElement;
-  globalThis.Node = dom.window.Node;
-  globalThis.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+  for (const [key, value] of Object.entries(replacements)) {
+    Object.defineProperty(globalThis, key, {
+      value,
+      configurable: true,
+      enumerable: false,
+      writable: true
+    });
+  }
 
   return function restoreDom() {
     dom.window.close();
-    for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) {
-        delete globalThis[key];
+    for (const key of GLOBAL_KEYS) {
+      const descriptor = previousDescriptors.get(key);
+      if (descriptor) {
+        Object.defineProperty(globalThis, key, descriptor);
       } else {
-        globalThis[key] = value;
+        delete globalThis[key];
       }
     }
   };
