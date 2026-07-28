@@ -86,6 +86,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           npm ci --no-audit --no-fund
+          npm install --no-save --package-lock=false --no-audit --no-fund @testing-library/react@16.3.0 jsdom@26.1.0
           npm test > web-test.log 2>&1 || { tail -n 200 web-test.log; exit 1; }
           npm run typecheck > web-typecheck.log 2>&1 || { tail -n 200 web-typecheck.log; exit 1; }
           npm run build > web-build.log 2>&1 || { tail -n 200 web-build.log; exit 1; }
