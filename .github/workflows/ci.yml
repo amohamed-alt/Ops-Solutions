@@ -14,6 +14,11 @@ jobs:
     name: Build and validate
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      POSTGRES_PASSWORD: ci-postgres-password
+      DATABASE_URL: postgresql://ops_solutions:ci-postgres-password@postgres:5432/ops_solutions
+      REDIS_PASSWORD: ci-redis-password
+      REDIS_URL: redis://:ci-redis-password@redis:6379
 
     steps:
       - name: Checkout repository
@@ -139,11 +144,6 @@ jobs:
           grep -q 'VERIFY_MODE must be internal, public, or all' /tmp/verify-invalid.log
 
       - name: Validate Docker Compose
-        env:
-          POSTGRES_PASSWORD: ci-postgres-password
-          DATABASE_URL: postgresql://ops_solutions:ci-postgres-password@postgres:5432/ops_solutions
-          REDIS_PASSWORD: ci-redis-password
-          REDIS_URL: redis://:ci-redis-password@redis:6379
         run: |
           set -Eeuo pipefail
           touch .env
