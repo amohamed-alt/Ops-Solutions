@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, ExternalLink, RefreshCw, ShieldAlert } from 'lucide-react';
 
 import { ProductFlowNav } from './ProductFlowNav';
+import { missingHubSpotScopes, summarizeHubSpotAccess } from './hubspot-access.js';
 import './command-center-v2.css';
 
 type WorkspaceRow = {
@@ -29,12 +30,6 @@ async function json<T>(input: RequestInfo | URL): Promise<T> {
   const payload = await response.json().catch(() => ({})) as T & { message?: string };
   if (!response.ok) throw new Error(payload.message || `Request failed with HTTP ${response.status}.`);
   return payload;
-}
-
-function missingScopes(capabilities: Capabilities | null) {
-  if (!capabilities) return [];
-  const required = new Set(Object.values(capabilities.requiredScopes ?? {}).flat());
-  return [...required].filter((scope) => !capabilities.scopes.includes(scope)).sort();
 }
 
 export function HubSpotReconnectClient() {
@@ -75,11 +70,7 @@ export function HubSpotReconnectClient() {
     void load();
   }, []);
 
-  const summary = useMemo(() => {
-    const connected = rows.filter((row) => row.workspace.hubspot_status === 'connected').length;
-    const ready = rows.filter((row) => row.capabilities && missingScopes(row.capabilities).length === 0).length;
-    return { connected, ready, needsReconnect: Math.max(0, connected - ready) };
-  }, [rows]);
+  const summary = useMemo(() => summarizeHubSpotAccess(rows), [rows]);
 
   return (
     <main className="cc2-shell" style={{ padding: 28 }}>
@@ -117,9 +108,9 @@ export function HubSpotReconnectClient() {
 
       <div className="cc2-grid two">
         {rows.length === 0 && !busy ? <div className="cc2-empty">No customer workspaces are available.</div> : rows.map((row) => {
-          const missing = missingScopes(row.capabilities);
+          const missing = missingHubSpotScopes(row.capabilities);
           const connected = row.workspace.hubspot_status === 'connected';
-          const ready = connected && row.capabilities && missing.length === 0;
+          const ready = Boolean(connected && row.capabilities && missing.length === 0);
           return (
             <article className="cc2-company-card" key={row.workspace.id}>
               <strong>{row.workspace.name}</strong>
@@ -143,5 +134,3 @@ export function HubSpotReconnectClient() {
     </main>
   );
 }
-
-export { missingScopes };
