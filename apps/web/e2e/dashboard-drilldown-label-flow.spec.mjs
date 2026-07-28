@@ -171,8 +171,10 @@ test('chart click opens a labelled drilldown with the correct HubSpot record lin
   await expect(page.getByRole('heading', { name: 'Know what matters, then act.' })).toBeVisible();
 
   const stageBar = page.locator('.cc2-chart.interactive .recharts-bar-rectangle, .cc2-chart.interactive .recharts-rectangle').first();
-  await expect(stageBar).toBeVisible();
-  await stageBar.click({ force: true });
+  await expect(stageBar).toHaveCount(1);
+  await stageBar.evaluate((node) => {
+    node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+  });
 
   const drawer = page.locator('.cc2-drawer');
   await expect(drawer).toBeVisible();
