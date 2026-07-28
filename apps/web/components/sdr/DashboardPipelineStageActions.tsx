@@ -18,6 +18,11 @@ type ReportContext = {
   stages: PipelineStage[];
 };
 
+type ReportPayload = {
+  workspace?: { portal_id?: string | number | null };
+  report?: { pipelineByStage?: PipelineStage[] };
+};
+
 type DrilldownRow = {
   id: string;
   properties?: Record<string, string | undefined>;
@@ -31,6 +36,16 @@ type Drilldown = {
   results: DrilldownRow[];
 };
 
+type DrilldownPayload = {
+  drilldown?: Drilldown;
+  message?: string;
+};
+
+type RequestContext = {
+  workspaceId: string;
+  search: string;
+};
+
 const REPORT_PATTERN = /\/api\/dashboard\/([^/?#]+)\/reports(?:\?|$)/;
 const OBJECT_IDS: Record<string, string> = {
   contacts: '0-1',
@@ -42,7 +57,7 @@ const OBJECT_IDS: Record<string, string> = {
   calls: '0-48'
 };
 
-function requestContext(input: RequestInfo | URL, init?: RequestInit) {
+function requestContext(input: RequestInfo | URL, init?: RequestInit): RequestContext | null {
   const method = String(init?.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
   if (method !== 'GET') return null;
   const url = new URL(input instanceof Request ? input.url : String(input), window.location.origin);
@@ -92,11 +107,12 @@ export function DashboardPipelineStageActions() {
       const response = await originalFetch(input, init);
       const details = requestContext(input, init);
       if (active && response.ok && details) {
-        void response.clone().json().then((payload) => {
-          const stages = Array.isArray(payload?.report?.pipelineByStage) ? payload.report.pipelineByStage : [];
+        void response.clone().json().then((rawPayload: unknown) => {
+          const payload = rawPayload as ReportPayload;
+          const stages = Array.isArray(payload.report?.pipelineByStage) ? payload.report.pipelineByStage : [];
           setContext({
             workspaceId: details.workspaceId,
-            portalId: payload?.workspace?.portal_id ?? null,
+            portalId: payload.workspace?.portal_id ?? null,
             search: details.search,
             stages
           });
@@ -111,24 +127,23 @@ export function DashboardPipelineStageActions() {
   }, []);
 
   const stages = useMemo(() => (context?.stages ?? []).filter((row) => row.stageId).slice(0, 14), [context]);
-  const activeContext = context;
-  if (!activeContext || stages.length === 0) return null;
 
   async function openStage(stage: PipelineStage) {
+    if (!context) return;
     setSelectedStage(stage);
     setBusy(stage.stageId);
     setError('');
     setDrilldown(null);
     try {
-      const params = new URLSearchParams(activeContext.search);
+      const params = new URLSearchParams(context.search);
       params.delete('scope');
       params.set('pipelineId', stage.pipelineId);
       params.set('stageId', stage.stageId);
       params.set('limit', '50');
       params.set('offset', '0');
-      const response = await fetch(`/api/dashboard/${encodeURIComponent(activeContext.workspaceId)}/reports/open-deals?${params.toString()}`, { cache: 'no-store' });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.message || `Drilldown failed with HTTP ${response.status}.`);
+      const response = await fetch(`/api/dashboard/${encodeURIComponent(context.workspaceId)}/reports/open-deals?${params.toString()}`, { cache: 'no-store' });
+      const payload = await response.json().catch(() => ({})) as DrilldownPayload;
+      if (!response.ok) throw new Error(payload.message || `Drilldown failed with HTTP ${response.status}.`);
       setDrilldown(payload.drilldown ?? null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Unable to open pipeline stage deals.');
@@ -136,6 +151,8 @@ export function DashboardPipelineStageActions() {
       setBusy('');
     }
   }
+
+  if (!context || stages.length === 0) return null;
 
   return (
     <>
@@ -211,7 +228,7 @@ export function DashboardPipelineStageActions() {
             <div style={{ display: 'grid', gap: 10, marginTop: 20 }}>
               {(drilldown?.results ?? []).map((row) => {
                 const label = rowLabel(row);
-                const href = hubspotRecordUrl(activeContext.portalId, drilldown?.objectType || 'deals', row.id);
+                const href = hubspotRecordUrl(context.portalId, drilldown?.objectType || 'deals', row.id);
                 return (
                   <article key={row.id} style={{ border: '1px solid rgba(15,23,42,.1)', borderRadius: 12, padding: 14 }}>
                     <strong>{label.name}</strong>
