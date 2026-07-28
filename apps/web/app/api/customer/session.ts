@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { selectCustomerWorkspace } from './workspace-access.js';
+
 export const CUSTOMER_SESSION_COOKIE = 'ops_customer_session';
 export const API_URL = process.env.API_INTERNAL_URL ?? 'http://api:3001';
 
@@ -60,9 +62,8 @@ export async function requireCustomerWorkspace(request: NextRequest, workspaceId
   if (!context) {
     return { ok: false as const, response: NextResponse.json({ error: 'session_required', message: 'Sign in to continue.' }, { status: 401 }) };
   }
-  const workspace = workspaceId
-    ? context.workspaces?.find((item: { id: string }) => item.id === workspaceId)
-    : context.workspaces?.[0];
+
+  const workspace = selectCustomerWorkspace(context, workspaceId);
   if (!workspace) {
     return { ok: false as const, response: NextResponse.json({ error: 'workspace_forbidden', message: 'This workspace is not available to your account.' }, { status: 403 }) };
   }
