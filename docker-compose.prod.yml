@@ -81,7 +81,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=n8n_default
-      - traefik.http.routers.ops-solutions-api.rule=Host(`ops.dashboardtalentera.tech`) && PathPrefix(`/api/v1`)
+      - traefik.http.routers.ops-solutions-api.rule=Host(`ops.dashboardtalentera.tech`) && (Path(`/health`) || PathPrefix(`/api/v1/hubspot/oauth`) || PathPrefix(`/api/v1/hubspot/webhooks`))
       - traefik.http.routers.ops-solutions-api.priority=2000
       - traefik.http.routers.ops-solutions-api.entrypoints=websecure
       - traefik.http.routers.ops-solutions-api.tls=true
