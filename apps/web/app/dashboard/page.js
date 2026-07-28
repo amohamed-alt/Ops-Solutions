@@ -1,4 +1,5 @@
 import { DashboardCommandCenterRollout } from '@/components/sdr/DashboardCommandCenterRollout';
+import { DrilldownPresentationGuard } from '@/components/sdr/DrilldownPresentationGuard';
 import { PdfSnapshotAction } from '@/components/sdr/PdfSnapshotAction';
 
 export const dynamic = 'force-dynamic';
@@ -14,6 +15,7 @@ const labelAwareEnabled = process.env.LABEL_AWARE_COMMAND_CENTER === 'true';
 export default function DashboardPage() {
   return (
     <>
+      <DrilldownPresentationGuard />
       <DashboardCommandCenterRollout labelAwareEnabled={labelAwareEnabled} />
       <PdfSnapshotAction />
     </>
