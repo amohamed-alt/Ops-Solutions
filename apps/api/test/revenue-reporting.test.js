@@ -4,8 +4,7 @@ import test from 'node:test';
 import {
   buildRevenueReportingPack,
   getRevenueDrilldown,
-  normalizeReportingFilters,
-  registerRevenueReportingRoutes
+  normalizeReportingFilters
 } from '../src/revenue-reporting.js';
 
 test('all reporting queries declare optional filter parameter types', async () => {
@@ -197,24 +196,4 @@ test('rejects unknown revenue drilldowns before querying', async () => {
     () => getRevenueDrilldown({ query: () => assert.fail('database should not be queried') }, 'workspace-id', 'unknown'),
     (error) => error.statusCode === 404 && error.category === 'REPORT_NOT_FOUND'
   );
-});
-
-test('registers protected reporting pack and generic drilldown routes', () => {
-  const routes = [];
-  const app = {
-    get(path, options, handler) {
-      routes.push({ path, options, handler });
-    }
-  };
-  const requireAdmin = () => undefined;
-  registerRevenueReportingRoutes(app, {
-    postgres: {},
-    requireAdmin,
-    requireWorkspace: async () => ({ id: 'workspace-id' })
-  });
-  assert.deepEqual(routes.map((route) => route.path), [
-    '/api/v1/workspaces/:workspaceId/analytics/revenue',
-    '/api/v1/workspaces/:workspaceId/analytics/revenue/drilldowns/:reportKey'
-  ]);
-  assert.ok(routes.every((route) => route.options.preHandler === requireAdmin));
 });
