@@ -1,0 +1,41 @@
+name: Agent remove base revenue registrar
+
+on:
+  push:
+    branches:
+      - agent/remove-base-revenue-route-registrar
+
+permissions:
+  contents: write
+
+jobs:
+  edit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/remove-base-revenue-route-registrar
+          fetch-depth: 0
+      - name: Remove obsolete registrar and self-delete workflow
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/api/src/revenue-reporting.js')
+          text = path.read_text()
+          block = """\nexport function registerRevenueReportingRoutes(app, { postgres, requireAdmin, requireWorkspace }) {\n  app.get('/api/v1/workspaces/:workspaceId/analytics/revenue', { preHandler: requireAdmin }, async (request) => {\n    const workspace = await requireWorkspace(request.params.workspaceId);\n    return {\n      workspace,\n      report: await buildRevenueReportingPack(postgres, workspace.id, request.query ?? {})\n    };\n  });\n\n  app.get('/api/v1/workspaces/:workspaceId/analytics/revenue/drilldowns/:reportKey', { preHandler: requireAdmin }, async (request) => {\n    const workspace = await requireWorkspace(request.params.workspaceId);\n    return {\n      workspaceId: workspace.id,\n      drilldown: await getRevenueDrilldown(\n        postgres,\n        workspace.id,\n        String(request.params.reportKey ?? ''),\n        request.query ?? {}\n      )\n    };\n  });\n}\n"""
+          if text.count(block) != 1:
+              raise SystemExit('Expected exactly one obsolete registrar block')
+          path.write_text(text.replace(block, '\n'))
+          Path('.github/workflows/agent-remove-base-revenue-registrar.yml').unlink()
+          PY
+      - name: Commit branch change
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add apps/api/src/revenue-reporting.js .github/workflows/agent-remove-base-revenue-registrar.yml
+          git commit -m 'Remove base revenue route registrar'
+          git push origin HEAD:agent/remove-base-revenue-route-registrar
