@@ -244,27 +244,4 @@ export async function buildRevenueReportingPack(postgres, workspaceId, rawFilter
   };
 }
 
-export function registerRevenueReportingRoutes(app, { postgres, requireAdmin, requireWorkspace }) {
-  app.get('/api/v1/workspaces/:workspaceId/analytics/revenue', { preHandler: requireAdmin }, async (request) => {
-    const workspace = await requireWorkspace(request.params.workspaceId);
-    return {
-      workspace,
-      report: await buildRevenueReportingPack(postgres, workspace.id, request.query ?? {})
-    };
-  });
-
-  app.get('/api/v1/workspaces/:workspaceId/analytics/revenue/drilldowns/:reportKey', { preHandler: requireAdmin }, async (request) => {
-    const workspace = await requireWorkspace(request.params.workspaceId);
-    return {
-      workspaceId: workspace.id,
-      drilldown: await getRevenueDrilldown(
-        postgres,
-        workspace.id,
-        String(request.params.reportKey ?? ''),
-        request.query ?? {}
-      )
-    };
-  });
-}
-
 export { getRevenueDrilldown, normalizeReportingFilters };
