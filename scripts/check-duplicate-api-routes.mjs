@@ -6,14 +6,12 @@ import path from 'node:path';
 const sourceRoot = path.resolve('apps/api/src');
 const routePattern = /\bapp\.(get|post|put|patch|delete|options|head)\s*\(\s*(['"`])([^'"`]+)\2/g;
 
-// Existing legacy ownership is documented here so CI prevents regression while
-// the route-consolidation work is completed incrementally. New duplicates fail.
+// Object analytics still has a documented legacy registrar. Revenue analytics
+// is owned exclusively by scoped-revenue-reporting.js.
 const legacyDuplicateRoutes = new Set([
   'GET /api/v1/workspaces/:workspaceId/analytics/objects',
   'GET /api/v1/workspaces/:workspaceId/analytics/objects/:objectType',
-  'GET /api/v1/workspaces/:workspaceId/analytics/objects/:objectType/drilldowns/:reportKey',
-  'GET /api/v1/workspaces/:workspaceId/analytics/revenue',
-  'GET /api/v1/workspaces/:workspaceId/analytics/revenue/drilldowns/:reportKey'
+  'GET /api/v1/workspaces/:workspaceId/analytics/objects/:objectType/drilldowns/:reportKey'
 ]);
 
 async function walk(directory) {
