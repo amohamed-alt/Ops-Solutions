@@ -11,7 +11,9 @@ const routePattern = /\bapp\.(get|post|put|patch|delete|options|head)\s*\(\s*(['
 const legacyDuplicateRoutes = new Set([
   'GET /api/v1/workspaces/:workspaceId/analytics/objects',
   'GET /api/v1/workspaces/:workspaceId/analytics/objects/:objectType',
-  'GET /api/v1/workspaces/:workspaceId/analytics/objects/:objectType/drilldowns/:reportKey'
+  'GET /api/v1/workspaces/:workspaceId/analytics/objects/:objectType/drilldowns/:reportKey',
+  'GET /api/v1/workspaces/:workspaceId/analytics/revenue',
+  'GET /api/v1/workspaces/:workspaceId/analytics/revenue/drilldowns/:reportKey'
 ]);
 
 async function walk(directory) {
